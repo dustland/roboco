@@ -13,6 +13,7 @@ uvicorn = "^0.34.0"
 pydantic = "^2.10.6"
 python-dotenv = "^1.0.1"
 loguru = "^0.7.3"
+pyautogen = "^0.7.4"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.0.0"
