@@ -1,0 +1,26 @@
+[tool.poetry]
+name = "roboco"
+version = "0.1.0"
+description = "Humanoid Robot Development Platform"
+authors = ["Your Name <your.email@example.com>"]
+
+[tool.poetry.dependencies]
+python = "^3.9"
+fastapi = "^0.104.0"
+uvicorn = {extras = ["standard"], version = "^0.24.0"}
+pydantic = "^2.5.0"
+langchain = "^0.0.340"
+jupyterlab = "^4.0.0"
+numpy = "^1.26.0"
+pyautogen = "^1.0.0"
+
+[tool.poetry.dev-dependencies]
+autogenstudio = "^0.1.0"
+pytest = "^7.4.0"
+
+[tool.poetry.scripts]
+roboco = "roboco.cli:main"
+
+[build-system]
+requires = ["poetry-core>=1.0.0", "setuptools"]
+build-backend = "poetry.core.masonry.api"
