@@ -84,15 +84,15 @@ We should define a set of key roles and responsibilities for the RoboCo project,
 The key roles are:
 
 - Executive Board
-- Occupation Expert
-- Robot Behavior Designer
-- Vision and Perception Specialist
-- Motion Control Expert
-- Learning System Engineer
+- Product Manager
+- System Architect
+- Embodied AI Researcher
+- Robotics Developer
+- Quality Assurance Engineer
 
 Below we will define the key areas of responsibility for each role.
 
-Considering the limitation of AI and AutoGen, we should not let the system run in fully autonomous mode without human intervention. Therefore, we need to design a set of human-in-the-loop mechanisms, as well as the observability and operability of the system, which will be exposed as API and then we will view and manage the system status and performance in the Studio.
+Considering the limitation of AI and AutoGen, we should not let the system run in fully autonomous mode without human intervention. Therefore, we need to design a set of human-in-the-loop mechanisms, as well as the observability and operability of the system.
 
 ### 1. Executive Board
 
@@ -115,7 +115,16 @@ Considering the limitation of AI and AutoGen, we should not let the system run i
 - Define the key performance metrics for each occupation
 - Sign off the release of each version of the product
 
-### 3. Embodied AI Researcher
+### 3. System Architect
+
+**Role**: Technical Architecture and System Design
+**Key Areas**:
+
+- Define technical stack and standards
+- Design the overall system architecture ensures scalability and maintainability
+- Design APIs and system interfaces
+
+### 4. Embodied AI Researcher
 
 **Role**: Embodied AI and Robotics Kinematics  
 **Focus Areas**:
@@ -125,17 +134,17 @@ Considering the limitation of AI and AutoGen, we should not let the system run i
 - Implement the model and algorithms as easy-to-use modules for the developers
 - Iterate the models based the engineering feedback
 
-### 4. Robotics Developer
+### 5. Robotics Developer
 
 **Role**: Apply the research results to the robots
 **Responsibilities**:
 
 - Prepare the development environment and continous integration proccess
 - Implement the models from researchers on both simulation and real robots
-- Implement the observability (data collection and visualization, monitoring, etc.) and operability systems including APIs and Studio
+- Implement the observability and operability systems
 - Analyze the engineering feedback and iterate the systems
 
-### 5. Quality Assurance Engineer
+### 6. Quality Assurance Engineer
 
 **Role**: Quality Assurance and Field Engineering  
 **Key Functions**:
@@ -146,39 +155,74 @@ Considering the limitation of AI and AutoGen, we should not let the system run i
 
 ## Workflow and Collaboration
 
-### 1. Occupation Adaptation Process
+### 1. Development Lifecycle
 
 ```mermaid
 sequenceDiagram
-    participant OE as Occupation Expert
-    participant RB as Robot Behavior Designer
-    participant MC as Motion Control Expert
-    participant VP as Vision Specialist
+    participant EB as Executive Board
+    participant PM as Product Manager
+    participant SA as System Architect
+    participant AI as AI Researcher
+    participant RD as Robotics Dev
+    participant QA as QA Engineer
+    participant HU as Human Operator
 
-    OE->>RB: Task Requirements
-    RB->>VP: Visual Recognition Needs
-    RB->>MC: Movement Patterns
-    MC->>VP: Visual Feedback Needs
-    VP-->>RB: Perception Capabilities
-    MC-->>RB: Motion Capabilities
-    RB-->>OE: Behavior Implementation
+    EB->>PM: Occupation Selection
+    PM->>SA: Requirements
+    SA->>AI: Technical Constraints
+
+    rect rgb(200, 220, 250)
+        note right of AI: Research Phase
+        AI->>AI: Research SOTA Models
+        AI->>RD: Prototype Models
+        RD->>AI: Engineering Feedback
+    end
+
+    rect rgb(250, 220, 200)
+        note right of RD: Implementation Phase
+        RD->>QA: Implementation
+        QA->>HU: Human Validation
+        HU->>QA: Feedback
+        QA->>RD: Test Results
+    end
+
+    rect rgb(220, 250, 220)
+        note right of PM: Validation Phase
+        RD->>PM: System Demo
+        PM->>HU: Field Testing
+        HU->>PM: Performance Review
+        PM->>EB: Deployment Proposal
+    end
 ```
 
-### 2. Learning and Validation
+### 2. Human-in-the-Loop Process
 
 ```mermaid
 sequenceDiagram
-    participant LE as Learning Engineer
-    participant SO as Safety Officer
-    participant IS as Integration Specialist
-    participant OE as Occupation Expert
+    participant HU as Human Operator
+    participant QA as QA Engineer
+    participant RD as Robotics Dev
+    participant PM as Product Manager
 
-    LE->>SO: Training Scenarios
-    SO->>LE: Safety Constraints
-    LE->>IS: Trained Behaviors
-    IS->>OE: Workplace Testing
-    OE-->>LE: Performance Feedback
-    SO-->>IS: Safety Verification
+    rect rgb(200, 220, 250)
+        note right of HU: Monitoring & Feedback
+        RD->>HU: System Status
+        HU->>QA: Performance Feedback
+        QA->>RD: Improvement Requests
+    end
+
+    rect rgb(250, 220, 200)
+        note right of HU: Critical Decisions
+        RD->>HU: Decision Points
+        HU->>RD: Approvals/Adjustments
+    end
+
+    rect rgb(220, 250, 220)
+        note right of PM: Validation
+        QA->>PM: Test Results
+        PM->>HU: Field Validation
+        HU->>PM: Acceptance Sign-off
+    end
 ```
 
 ## Success Metrics
