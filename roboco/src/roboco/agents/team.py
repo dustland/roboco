@@ -17,7 +17,7 @@ class Team(autogen.GroupChat):
         super().__init__(
             agents=[self.user_proxy, self.executive, self.product_manager],
             messages=[],
-            max_round=12
+            max_round=4
         )
 
 class TeamManager(autogen.GroupChatManager):
@@ -30,13 +30,11 @@ class TeamManager(autogen.GroupChatManager):
             "temperature": 0.7,
             "timeout": 600
         }
-        
-        # Create team
-        self.group_chat = Team(llm_config=self.llm_config)
+        self.team = Team(llm_config=self.llm_config)
         
         # Initialize manager
         super().__init__(
-            groupchat=self.group_chat,
+            groupchat=self.team,
             llm_config=self.llm_config
         )
     
@@ -44,11 +42,11 @@ class TeamManager(autogen.GroupChatManager):
         """Process a product vision through the team."""
         try:
             # Reset the chat for a new conversation
-            self.groupchat.messages.clear()
+            self.team.messages.clear()
             
             # Start the chat with the vision
-            self.groupchat.user_proxy.initiate_chat(
-                self.groupchat.executive,
+            self.team.user_proxy.initiate_chat(
+                recipient=self,
                 message=f"""Process this product vision:
 
 {vision}
@@ -63,7 +61,7 @@ Please ensure the final output is a structured JSON document containing the visi
             # Get the chat results
             return {
                 "vision": vision,
-                "messages": self.groupchat.messages,
+                "messages": self.team.messages,
                 "status": "completed"
             }
         except Exception as e:

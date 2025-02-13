@@ -18,7 +18,6 @@ RoboCo service is the core backend component that powers the RoboCo platform. It
 
 - Python >= 3.10, < 3.14
 - Poetry for dependency management
-- CUDA-enabled GPU (recommended)
 
 ## Installation
 
@@ -34,11 +33,11 @@ curl -sSL https://install.python-poetry.org | python3 -
 poetry install
 ```
 
-3. Configure environment variables:
+3. Configure OpenAI API:
 
 ```bash
-cp .env.example .env
-# Edit .env with your settings
+# Copy the example config and edit with your API key
+cp OAI_CONFIG_LIST.example OAI_CONFIG_LIST
 ```
 
 ## Running the Service
@@ -55,12 +54,40 @@ poetry run dev
 poetry run start
 ```
 
-The service will start on `http://127.0.0.1:5004` by default (configurable via PORT in .env).
+The service will start on `http://localhost:5004` by default (configurable via PORT in .env).
+
+## Testing
+
+1. Start the service in one terminal:
+
+```bash
+poetry run dev
+```
+
+2. In another terminal, run the test vision:
+
+```bash
+poetry run test
+```
+
+This will send a sample product vision to the team and show their analysis and specifications.
+
+### Available Commands
+
+- `poetry run dev` - Start the service in development mode
+- `poetry run start` - Start the service in production mode
+- `poetry run test` - Run a test vision through the team
 
 ### Available Endpoints
 
 - Health Check: `GET /health`
 - Root: `GET /`
+- Process Vision: `POST /vision`
+  ```json
+  {
+    "vision": "Your product vision here"
+  }
+  ```
 
 ## Configuration
 
@@ -68,13 +95,13 @@ Configuration is managed through environment variables. Key settings in `.env`:
 
 ```bash
 # Server Configuration
-HOST=127.0.0.1      # The host address to bind to
-PORT=5004           # The port number to listen on
-LOG_LEVEL=info      # Logging level (debug, info, warning, error, critical)
-RELOAD=true         # Enable auto-reload for development
+HOST=127.0.0.1
+PORT=5004
+LOG_LEVEL=info
+RELOAD=true
 
 # Development Settings
-DEBUG=true          # Enable debug mode
+DEBUG=true
 ```
 
 ## Development
@@ -84,14 +111,16 @@ DEBUG=true          # Enable debug mode
 ```
 src/roboco/
 ├── api/            # API endpoints and server configuration
-├── core/           # Core business logic and multi-agent system
-└── examples/       # Example configurations and usage
+├── agents/         # Multi-agent system implementation
+│   ├── roles/      # Agent role definitions
+│   └── team.py     # Team coordination logic
+└── examples/       # Example usage and tests
 ```
 
 ### Running Tests
 
 ```bash
-poetry run pytest
+poetry run test
 ```
 
 ## License
