@@ -1,51 +1,26 @@
 [tool.poetry]
 name = "roboco"
 version = "0.1.0"
-description = "Multi-Agent System for Humanoid Robot Development"
-authors = ["Dustland <hi@dustland.ai>"]
+description = "RoboCo - Multi-Agent System for Humanoid Robot Development"
+authors = ["Hugh Lyu <hugh.lv@gmail.com>"]
 readme = "README.md"
 packages = [{include = "roboco", from = "src"}]
 
 [tool.poetry.dependencies]
-python = ">=3.10,<3.13"
-fastapi = "^0.109.0"
-uvicorn = {extras = ["standard"], version = "^0.27.0"}
-pydantic = "^2.5.3"
-pyautogen = "^0.2.0"
-click = "^8.1.7"
-python-dotenv = "^1.0.0"
-pyyaml = "^6.0.1"
-loguru = "^0.7.2"
+python = ">=3.10,<3.14"
+fastapi = "^0.115.8"
+uvicorn = "^0.34.0"
+pydantic = "^2.10.6"
+python-dotenv = "^1.0.1"
+loguru = "^0.7.3"
 
 [tool.poetry.group.dev.dependencies]
-pytest = "^7.4.0"
-pytest-asyncio = "^0.23.0"
-black = "^24.1.0"
-isort = "^5.13.0"
-mypy = "^1.8.0"
-ruff = "^0.1.14"
-
-[tool.poetry.scripts]
-roboco = "roboco.cli.main:main"
+pytest = "^8.0.0"
 
 [build-system]
-requires = ["poetry-core>=1.0.0"]
+requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
 
-[tool.black]
-line-length = 100
-target-version = ["py310"]
-
-[tool.isort]
-profile = "black"
-line_length = 100
-multi_line_output = 3
-
-[tool.mypy]
-python_version = "3.10"
-strict = true
-ignore_missing_imports = true
-
-[tool.ruff]
-line-length = 100
-target-version = "py310"
+[tool.poetry.scripts]
+start = "roboco.api.app:start"
+dev = "roboco.api.app:start"

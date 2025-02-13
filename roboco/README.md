@@ -1,184 +1,91 @@
-# RoboCo
+# RoboCo Service
 
-> Multi-Agent System for Humanoid Robot Development
+> Backend service for the RoboCo multi-agent system for humanoid robot development
 
-RoboCo is an advanced multi-agent system designed to develop and adapt humanoid robots for specific occupations. Using the AutoGen framework, our system combines expertise in robotics, human behavior analysis, and occupation-specific knowledge to create effective robot workers that can naturally integrate into human workplaces.
+## Overview
+
+RoboCo service is the core backend component that powers the RoboCo platform. It provides a robust API for robot development, task management, and multi-agent coordination.
 
 ## Features
 
-- 🤖 Multi-agent architecture for robot development
-- 🧠 Intelligent task delegation and coordination
+- 🤖 Multi-agent system architecture
+- 🔄 Real-time robot task coordination
 - 📊 Built-in monitoring and logging
-- 🔄 Asynchronous communication between agents
-- ⚙️ Flexible configuration system
-- 🛠️ CLI tools for service management
+- 🔐 Secure API endpoints
+- ⚡ High-performance FastAPI backend
 
-## Requirements
+## Prerequisites
 
-- Python >= 3.10, < 3.13
+- Python >= 3.10, < 3.14
 - Poetry for dependency management
-- CUDA-enabled GPU (recommended for simulation)
-- Ubuntu 24.04 LTS (recommended for ROS2 integration)
+- CUDA-enabled GPU (recommended)
 
 ## Installation
 
-1. Clone the repository:
+1. Install Poetry if you haven't already:
 
 ```bash
-git clone <repository-url>
-cd roboco
+curl -sSL https://install.python-poetry.org | python3 -
 ```
 
-2. Install dependencies using Poetry:
+2. Install dependencies:
 
 ```bash
 poetry install
 ```
 
-3. Create a configuration file (optional):
+3. Configure environment variables:
 
 ```bash
-cp config/default.yaml config/local.yaml
+cp .env.example .env
+# Edit .env with your settings
 ```
 
-## Usage
+## Running the Service
 
-### Starting the Service
-
-Run the RoboCo service using uvicorn:
+### Development Mode
 
 ```bash
-# Basic usage
-uvicorn roboco.service:app --host 127.0.0.1 --port 8000
-
-# With custom host and port
-uvicorn roboco.service:app --host 0.0.0.0 --port 8080
-
-# Development mode with auto-reload
-uvicorn roboco.service:app --reload
-
-# With custom log level
-uvicorn roboco.service:app --log-level debug
+poetry run dev
 ```
 
-The service supports various uvicorn options:
-
-- `--workers`: Number of worker processes
-- `--log-level`: Logging level (debug, info, warning, error, critical)
-- `--ssl-keyfile`: SSL key file path
-- `--ssl-certfile`: SSL certificate file path
-- `--proxy-headers`: Enable processing of proxy headers
-- `--forwarded-allow-ips`: Allowed IPs for X-Forwarded-For header
-
-### Environment Variables
-
-The service can be configured using environment variables:
-
-- `ROBOCO_CONFIG`: Path to configuration file
-- `ROBOCO_LOG_LEVEL`: Logging level
-- `ROBOCO_HOST`: Service host
-- `ROBOCO_PORT`: Service port
-
-### Validating Configuration
-
-Validate your configuration file:
+### Production Mode
 
 ```bash
-poetry run roboco validate --config config/local.yaml
+poetry run start
 ```
 
-### Running Examples
+The service will start on `http://127.0.0.1:5004` by default (configurable via PORT in .env).
 
-Try the basic example to see the system in action:
+### Available Endpoints
 
-```bash
-poetry run python examples/basic_usage.py
-```
-
-## Project Structure
-
-```
-roboco/
-├── src/
-│   └── roboco/
-│       ├── __init__.py
-│       ├── agents/         # Agent implementations
-│       ├── config.py       # Configuration management
-│       ├── cli.py         # Command-line interface
-│       └── service.py     # FastAPI service
-├── config/
-│   └── default.yaml       # Default configuration
-├── examples/
-│   └── basic_usage.py     # Usage examples
-├── tests/                 # Test suite
-├── pyproject.toml         # Project metadata and dependencies
-└── README.md             # This file
-```
+- Health Check: `GET /health`
+- Root: `GET /`
 
 ## Configuration
 
-RoboCo uses YAML configuration files with the following structure:
+Configuration is managed through environment variables. Key settings in `.env`:
 
-```yaml
-human:
-  llm:
-    model: gpt-4-turbo-preview
-    temperature: 0.7
-    timeout: 600
-  additional_config:
-    human_input_mode: "ALWAYS"
+```bash
+# Server Configuration
+HOST=127.0.0.1      # The host address to bind to
+PORT=5004           # The port number to listen on
+LOG_LEVEL=info      # Logging level (debug, info, warning, error, critical)
+RELOAD=true         # Enable auto-reload for development
 
-executive_board:
-  llm:
-    model: gpt-4-turbo-preview
-    temperature: 0.7
-    timeout: 600
-  additional_config:
-    human_input_mode: "NEVER"
-# Additional agent configurations...
+# Development Settings
+DEBUG=true          # Enable debug mode
 ```
-
-## API Endpoints
-
-The service provides the following REST endpoints:
-
-- `POST /agents/message` - Send messages between agents
-- `GET /agents/roles` - List available agent roles
-- `GET /agents/status` - Check agent status
-- `GET /health` - Service health check
 
 ## Development
 
-### Setting Up Development Environment
+### Project Structure
 
-1. Install development dependencies:
-
-```bash
-poetry install --with dev
 ```
-
-2. Set up pre-commit hooks:
-
-```bash
-pre-commit install
-```
-
-### Code Style
-
-The project uses:
-
-- Black for code formatting
-- isort for import sorting
-- mypy for type checking
-- ruff for linting
-
-Run all checks:
-
-```bash
-poetry run black .
-poetry run isort .
-poetry run mypy .
-poetry run ruff check .
+src/roboco/
+├── api/            # API endpoints and server configuration
+├── core/           # Core business logic and multi-agent system
+└── examples/       # Example configurations and usage
 ```
 
 ### Running Tests
@@ -187,22 +94,10 @@ poetry run ruff check .
 poetry run pytest
 ```
 
-## Logging
-
-Logs are stored in the `logs/` directory:
-
-- `roboco.log` - Service logs
-- `roboco_cli.log` - CLI logs
-- `example.log` - Example script logs
-
 ## License
 
-[MIT License](LICENSE)
+Apache 2.0
 
-## Contributing
+## Contact
 
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+- Email: hi@dustland.ai

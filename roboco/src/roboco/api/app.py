@@ -1,34 +1,39 @@
-"""Main FastAPI application for RoboCo."""
-
+import os
 from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
+import uvicorn
+from dotenv import load_dotenv
 
-from roboco.core.logging import setup_logging
-from roboco.api.routes import agents
-
-# Configure logging
-setup_logging()
+# Load environment variables
+load_dotenv()
 
 # Create FastAPI app
 app = FastAPI(
     title="RoboCo API",
-    description="API for RoboCo - Multi-Agent System for Humanoid Robot Development",
+    description="API for RoboCo service",
     version="0.1.0"
 )
 
-# Configure CORS
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],  # In production, replace with specific origins
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-# Include routers
-app.include_router(agents.router)
+@app.get("/")
+async def root():
+    """Root endpoint."""
+    return {"message": "Welcome to RoboCo API"}
 
 @app.get("/health")
-async def health_check():
+async def health():
     """Health check endpoint."""
-    return {"status": "healthy"} 
+    return {"status": "healthy"}
+
+def start():
+    """Start the RoboCo service."""
+    host = os.getenv("HOST", "127.0.0.1")
+    port = int(os.getenv("PORT", "8000"))
+    log_level = os.getenv("LOG_LEVEL", "info")
+    reload = os.getenv("RELOAD", "false").lower() == "true"
+    
+    uvicorn.run(
+        "roboco.api.app:app",
+        host=host,
+        port=port,
+        log_level=log_level,
+        reload=reload
+    ) 
