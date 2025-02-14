@@ -1,6 +1,38 @@
 import autogen
+from typing import Dict, Any, Optional
+from autogen import SwarmAgent, SwarmResult
 
-class ProductManager(autogen.AssistantAgent):
+def update_product_spec(spec: Dict[str, Any], context_variables: Dict[str, Any]) -> SwarmResult:
+    """Update the product specification in the shared context."""
+    if "product_spec" not in context_variables:
+        context_variables["product_spec"] = {}
+    
+    # Merge new specifications with existing ones
+    context_variables["product_spec"].update(spec)
+    
+    # Record specification history
+    if "spec_history" not in context_variables:
+        context_variables["spec_history"] = []
+    
+    context_variables["spec_history"].append({
+        "timestamp": context_variables.get("current_timestamp", "unknown"),
+        "spec_update": spec,
+        "reviews_remaining": context_variables.get("reviews_left", 0)
+    })
+    
+    # Determine next agent based on context
+    next_agent = "executive" if context_variables.get("reviews_left", 0) > 0 else "user_proxy"
+    
+    return SwarmResult(
+        context_variables=context_variables,
+        next_agent=next_agent
+    )
+
+def get_current_spec(context_variables: Dict[str, Any]) -> Dict[str, Any]:
+    """Retrieve the current product specification."""
+    return context_variables.get("product_spec", {})
+
+class ProductManager(SwarmAgent):
     """Product manager agent responsible for detailed specifications.
     
     Acts as a technical product manager who translates high-level strategy
@@ -31,5 +63,6 @@ class ProductManager(autogen.AssistantAgent):
         super().__init__(
             name="product_manager",
             system_message=self.DEFAULT_SYSTEM_MESSAGE,
+            functions=[update_product_spec, get_current_spec],
             **kwargs
         ) 

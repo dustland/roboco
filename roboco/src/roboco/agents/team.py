@@ -1,26 +1,87 @@
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional, Union
 import autogen
 from loguru import logger
+from autogen import initiate_swarm_chat, AFTER_WORK, ON_CONDITION, AfterWorkOption
 
 from .roles import Executive, ProductManager, UserProxy
 
-class Team(autogen.GroupChat):
+class Team:
     """A team of specialized agents working together on product development."""
     
     def __init__(self, llm_config: Dict[str, Any]):
-        # Create agents
-        self.user_proxy = UserProxy()
+        # Create agents with llm_config
+        self.user_proxy = UserProxy(llm_config=llm_config)
         self.executive = Executive(llm_config=llm_config)
         self.product_manager = ProductManager(llm_config=llm_config)
         
-        # Initialize group chat
-        super().__init__(
-            agents=[self.user_proxy, self.executive, self.product_manager],
-            messages=[],
-            max_round=4
-        )
+        # Initialize shared context
+        self.context_variables = {
+            "vision": None,
+            "current_timestamp": None,
+            "product_spec": {},
+            "analyses": [],
+            "spec_history": [],
+            "current_analysis": None,
+            "reviews_left": 2  # Allow for 2 rounds of review/revision
+        }
+        
+        # Register hand-offs for each agent
+        self.user_proxy.handoff(hand_to=[
+            ON_CONDITION(
+                target=self.executive,
+                condition="After recording the vision, it must be analyzed.",
+                available="reviews_left"
+            ),
+            AFTER_WORK(AfterWorkOption.TERMINATE)  # End if no more work needed
+        ])
+        
+        self.executive.handoff(hand_to=[
+            ON_CONDITION(
+                target=self.product_manager,
+                condition="After analysis is recorded, create detailed specifications.",
+                available="reviews_left"
+            ),
+            AFTER_WORK(self.product_manager)  # Default to product manager if no condition met
+        ])
+        
+        self.product_manager.handoff(hand_to=[
+            ON_CONDITION(
+                target=self.executive,
+                condition="After specifications are updated, they need review.",
+                available="reviews_left"
+            ),
+            ON_CONDITION(
+                target=self.user_proxy,
+                condition="When specifications are complete and no more reviews needed, get final result.",
+                available=lambda context: not bool(context.get("reviews_left", 0))
+            ),
+            AFTER_WORK(self.executive)  # Default back to executive for review
+        ])
+    
+    def process_vision(self, vision: str) -> Dict[str, Any]:
+        """Process a vision through the team workflow."""
+        try:
+            # Run the swarm with proper configuration
+            chat_result, context_variables, last_agent = initiate_swarm_chat(
+                initial_agent=self.user_proxy,
+                agents=[self.user_proxy, self.executive, self.product_manager],
+                messages=vision,
+                context_variables=self.context_variables,
+                after_work=AFTER_WORK(AfterWorkOption.TERMINATE),  # Global fallback
+                max_turns=12  # Prevent infinite loops
+            )
+            
+            # Get final result
+            return self.user_proxy.get_final_result(context_variables)
+            
+        except Exception as e:
+            logger.error(f"Error in team workflow: {str(e)}")
+            return {
+                "error": str(e),
+                "status": "failed"
+            }
 
-class TeamManager(autogen.GroupChatManager):
+class TeamManager:
     """Manages team interactions and workflow."""
     
     def __init__(self, config_list: List[Dict[str, Any]]):
@@ -30,42 +91,23 @@ class TeamManager(autogen.GroupChatManager):
             "temperature": 0.7,
             "timeout": 600
         }
-        self.team = Team(llm_config=self.llm_config)
         
-        # Initialize manager
-        super().__init__(
-            groupchat=self.team,
-            llm_config=self.llm_config
-        )
+        # Create team
+        self.team = Team(llm_config=self.llm_config)
     
     def process_vision(self, vision: str) -> Dict[str, Any]:
         """Process a product vision through the team."""
         try:
-            # Reset the chat for a new conversation
-            self.team.messages.clear()
+            # Process the vision through the team workflow
+            result = self.team.process_vision(vision)
             
-            # Start the chat with the vision
-            self.team.user_proxy.initiate_chat(
-                recipient=self,
-                message=f"""Process this product vision:
-
-{vision}
-
-1. First, structure the vision into clear components
-2. Then, work with the product manager to create detailed specifications
-3. Finally, summarize the complete product specification
-
-Please ensure the final output is a structured JSON document containing the vision analysis and specifications."""
-            )
-            
-            # Get the chat results
             return {
                 "vision": vision,
-                "messages": self.team.messages,
+                "result": result,
                 "status": "completed"
             }
         except Exception as e:
-            logger.error(f"Error in team chat: {str(e)}")
+            logger.error(f"Error processing vision: {str(e)}")
             return {
                 "vision": vision,
                 "error": str(e),
