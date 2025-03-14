@@ -33,7 +33,17 @@ curl -sSL https://install.python-poetry.org | python3 -
 poetry install
 ```
 
-3. Configure OpenAI API:
+3. Configure the system:
+
+```bash
+# Run the configuration utility to set up your config.toml
+python configure.py
+
+# Or manually copy the example config and edit it
+cp config/config.example.toml config/config.toml
+```
+
+4. Configure OpenAI API (legacy method):
 
 ```bash
 # Copy the example config and edit with your API key
@@ -77,6 +87,8 @@ This will send a sample product vision to the team and show their analysis and s
 - `poetry run dev` - Start the service in development mode
 - `poetry run start` - Start the service in production mode
 - `poetry run test` - Run a test vision through the team
+- `poetry run embodied-research` - Run the embodied research example
+- `poetry run config-example` - Run the configuration system example
 
 ### Available Endpoints
 
@@ -91,7 +103,69 @@ This will send a sample product vision to the team and show their analysis and s
 
 ## Configuration
 
-Configuration is managed through environment variables. Key settings in `.env`:
+Roboco uses a flexible TOML-based configuration system. The configuration is stored in `config/config.toml` and can be generated using the `configure.py` script.
+
+### Configuration File Structure
+
+The configuration file is organized into sections:
+
+```toml
+# Core settings
+[core]
+workspace_base = "./workspace"
+debug = false
+
+# LLM settings
+[llm]
+model = "claude-3-opus-20240229"
+base_url = "https://api.anthropic.com/v1"
+api_key = "${ANTHROPIC_API_KEY}"
+
+# Agent settings
+[agents.research_team]
+enabled = true
+llm = "llm"
+```
+
+### Environment Variables
+
+Configuration values can reference environment variables using the `${VAR_NAME}` syntax. For example:
+
+```toml
+api_key = "${ANTHROPIC_API_KEY}"
+```
+
+This will use the value of the `ANTHROPIC_API_KEY` environment variable.
+
+### Using the Configuration System
+
+You can use the configuration system in your code as follows:
+
+```python
+from roboco.config import config
+
+# Load the configuration
+config.load()
+
+# Get a configuration value
+model_name = config.get('llm.model')
+
+# Get a configuration value with a default
+debug_mode = config.get('core.debug', False)
+
+# Get an entire section
+llm_config = config.get_section('llm')
+```
+
+To see a complete example, run:
+
+```bash
+poetry run config-example
+```
+
+### Legacy Configuration
+
+Configuration is also managed through environment variables. Key settings in `.env`:
 
 ```bash
 # Server Configuration
@@ -109,12 +183,15 @@ DEBUG=true
 ### Project Structure
 
 ```
-src/roboco/
-├── api/            # API endpoints and server configuration
-├── agents/         # Multi-agent system implementation
-│   ├── roles/      # Agent role definitions
-│   └── team.py     # Team coordination logic
-└── examples/       # Example usage and tests
+roboco/
+├── config/         # Configuration files
+├── examples/       # Example usage and tests
+└── src/roboco/
+    ├── api/        # API endpoints and server configuration
+    ├── agents/     # Multi-agent system implementation
+    │   ├── roles/  # Agent role definitions
+    │   └── team.py # Team coordination logic
+    └── tools/      # Tools for agents to use
 ```
 
 ### Running Tests
