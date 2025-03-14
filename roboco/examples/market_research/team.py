@@ -20,14 +20,19 @@ src_path = str(project_root / "src")
 if src_path not in sys.path:
     sys.path.insert(0, src_path)
 
-# Import AG2 components directly from the roboco core
-from roboco.core.ag2_integration import (
+# Import AG2 components directly from autogen
+import autogen
+from autogen import (
     AssistantAgent,
     ConversableAgent,
     UserProxyAgent,
     initiate_chats,
-    load_config_from_toml
+    config_list_from_json,
+    config_list_from_dotenv
 )
+
+# Import roboco specific components
+from roboco.core.ag2_integration import load_config_from_toml
 
 # Import tools
 from roboco.tools.web_search import WebSearchTool

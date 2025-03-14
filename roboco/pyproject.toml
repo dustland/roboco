@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "RoboCo - Multi-Agent System for Humanoid Robot Development"
 authors = ["Hugh Lyu <hugh.lv@gmail.com>"]
 readme = "README.md"
-packages = [{include = "roboco", from = "src"}]
+packages = [{include = "roboco", from = "src"}, {include = "examples"}]
 
 [tool.poetry.dependencies]
 python = ">=3.10,<3.14"
@@ -13,7 +13,7 @@ uvicorn = "^0.34.0"
 pydantic = "^2.10.6"
 python-dotenv = "^1.0.1"
 loguru = "^0.7.3"
-pyautogen = "^0.8.1"
+pyautogen = {extras = ["openai"], version = "^0.8.1"}
 requests = "^2.32.3"
 anthropic = "^0.23.1"
 tomli = "^2.0.1"
@@ -28,4 +28,4 @@ build-backend = "poetry.core.masonry.api"
 [tool.poetry.scripts]
 start = "roboco.api.app:start"
 dev = "roboco.server:run"
-research = "roboco.examples.market_research.main:run_embodied_research"
+research = "examples.market_research.main:run_embodied_research"

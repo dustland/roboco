@@ -33,7 +33,7 @@ if not os.environ.get("OPENAI_API_KEY"):
     logger.warning("OPENAI_API_KEY environment variable not set")
 
 # Import the research team from our module
-from team import ResearchTeam
+from examples.market_research.team import ResearchTeam
 
 def run_embodied_research():
     """Run the embodied AI research scenario using the AG2 framework."""

@@ -1,0 +1,3 @@
+"""
+RoboCo Examples package.
+"""
