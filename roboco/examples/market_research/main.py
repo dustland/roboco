@@ -3,32 +3,24 @@ Embodied AI Market Research Example
 
 This example demonstrates a scenario where a CEO asks about cutting-edge embodied AI
 technologies, and a Product Manager researches and creates a comprehensive report.
-
-The scenario uses AG2 to create a team of agents with specialized roles and tools.
 """
 
 import os
 import sys
-import time
 from pathlib import Path
 from loguru import logger
-from dotenv import load_dotenv
 
-# Add src directory to Python path
+# Add src directory to Python path if needed
 project_root = Path(__file__).parent.parent.parent.absolute()
 src_path = str(project_root / "src")
 if src_path not in sys.path:
     sys.path.insert(0, src_path)
 
-# Load environment variables from .env file
-env_path = project_root / ".env"
-if env_path.exists():
-    load_dotenv(dotenv_path=env_path)
-    logger.info(f"Loaded environment variables from {env_path}")
-else:
-    logger.warning("No .env file found, using existing environment variables")
+# Load environment variables
+from roboco.core import load_env_variables
+load_env_variables(project_root)
 
-# Set up OpenAI API key for testing (in production, use environment variables)
+# Check for API key
 if not os.environ.get("OPENAI_API_KEY"):
     logger.warning("OPENAI_API_KEY environment variable not set")
 
@@ -36,7 +28,7 @@ if not os.environ.get("OPENAI_API_KEY"):
 from examples.market_research.team import ResearchTeam
 
 def run_embodied_research():
-    """Run the embodied AI research scenario using the AG2 framework."""
+    """Run the embodied AI research scenario."""
     # Create the research team with the config.toml in the same directory
     team = ResearchTeam()
     
@@ -58,8 +50,19 @@ def run_embodied_research():
     print("\n" + "="*80)
     print("RESEARCH SCENARIO COMPLETED")
     print("="*80)
-    print(f"Conversation had {len(result['conversation'])} turns")
-    print(f"Research report has been saved to the reports/ directory")
+    if "error" in result:
+        print(f"Error: {result['error']}")
+        # Show more detailed error if available
+        if 'traceback' in result:
+            print("\nDetailed error:")
+            print(result['traceback'])
+    else:
+        agents = result.get("agents", [])
+        conversations = result.get("conversation", {})
+        
+        message_count = sum(len(msgs) for msgs in conversations.values())
+        print(f"Conversation had {message_count} total messages across {len(agents)} agents")
+        print(f"Research report has been saved to the reports/ directory")
     print("="*80)
 
 if __name__ == "__main__":

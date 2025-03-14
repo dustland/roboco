@@ -7,8 +7,8 @@ This module defines the base Agent class that extends AG2's AssistantAgent.
 from typing import Dict, Any, List, Optional, Callable, Union
 from loguru import logger
 
-# Import directly from AG2 integration module
-from roboco.core.ag2_integration import AssistantAgent, ConversableAgent
+# Import directly from autogen
+from autogen import AssistantAgent, ConversableAgent
 
 class Agent(AssistantAgent):
     """Base class for all roboco agents, extending AG2's AssistantAgent."""
@@ -49,8 +49,9 @@ class Agent(AssistantAgent):
         Args:
             tool: The tool to register
         """
-        # Extract tool functions and add them to function_map
-        for func_name, func in tool.get_functions().items():
-            self.register_function(function_map={func_name: func})
-            
-        logger.info(f"Registered tool {tool.__class__.__name__} with agent {self.name}")
+        if hasattr(tool, "get_functions"):
+            functions = tool.get_functions()
+            self.register_function(function_map=functions)
+            logger.info(f"Registered {len(functions)} functions from tool {tool.__class__.__name__}")
+        else:
+            logger.warning(f"Tool {tool.__class__.__name__} does not have a get_functions method")

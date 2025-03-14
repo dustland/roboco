@@ -7,7 +7,7 @@ readme = "README.md"
 packages = [{include = "roboco", from = "src"}, {include = "examples"}]
 
 [tool.poetry.dependencies]
-python = ">=3.10,<3.14"
+python = ">=3.11,<3.14"
 fastapi = "^0.115.8"
 uvicorn = "^0.34.0"
 pydantic = "^2.10.6"
@@ -15,8 +15,12 @@ python-dotenv = "^1.0.1"
 loguru = "^0.7.3"
 pyautogen = {extras = ["openai"], version = "^0.8.1"}
 requests = "^2.32.3"
-anthropic = "^0.23.1"
+anthropic = ">=0.41.0,<1"
 tomli = "^2.0.1"
+browser-use = "^0.1.40"
+playwright = "^1.40.0"
+langchain-openai = "0.3.1"
+tavily-python = "^0.5.1"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.0.0"

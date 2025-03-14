@@ -1,5 +1,5 @@
 """
-Base Tool Module
+Tool Module
 
 This module defines the base Tool class that all specialized tools inherit from.
 Tools are designed to be compatible with AG2's function calling mechanism.

@@ -1,16 +1,15 @@
-from .team import Team, TeamManager
-from .roles import Executive, ProductManager, UserProxy
-from .research_team import EmbodiedResearchTeam, CEOAgent, ProductManagerAgent
-from .base import Agent
+"""
+Roboco Agents Package
+
+This package provides agent implementations for the Roboco system.
+"""
+
+from roboco.core.agent import Agent
+from .executive import Executive
+from .product_manager import ProductManager
 
 __all__ = [
-    "Team",
-    "TeamManager",
+    "Agent",
     "Executive",
-    "ProductManager",
-    "UserProxy",
-    "EmbodiedResearchTeam",
-    "CEOAgent",
-    "ProductManagerAgent",
-    "Agent"
-] 
+    "ProductManager"
+]
