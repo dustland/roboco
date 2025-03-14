@@ -1,11 +1,11 @@
 import autogen
 from typing import Dict, Any, Optional
-from autogen import SwarmAgent, SwarmResult
+from autogen import UserProxyAgent, SwarmResult
 
 def record_vision(vision: str, context_variables: Dict[str, Any]) -> SwarmResult:
     """Record the product vision in the shared context."""
     context_variables["vision"] = vision
-    context_variables["current_timestamp"] = "now"  # In a real implementation, use actual timestamp
+    context_variables["current_timestamp"] = "now"  # In real implementation, use actual timestamp
     
     # Initialize or reset product context
     context_variables["product_spec"] = {}
@@ -13,24 +13,14 @@ def record_vision(vision: str, context_variables: Dict[str, Any]) -> SwarmResult
     context_variables["spec_history"] = []
     context_variables["reviews_left"] = 2  # Reset review counter
     
-    # Always go to executive first for vision analysis
-    return SwarmResult(
-        context_variables=context_variables,
-        next_agent="executive"
-    )
+    # Return SwarmResult with updated context
+    return SwarmResult(context_variables=context_variables)
 
 def get_final_result(context_variables: Dict[str, Any]) -> Dict[str, Any]:
-    """Get the final result including vision, analysis, and specifications."""
-    # Ensure we're really done
-    if context_variables.get("reviews_left", 0) > 0:
-        return SwarmResult(
-            context_variables=context_variables,
-            next_agent="executive"  # Continue the review cycle
-        )
-        
+    """Get the final result including vision, analyses, and specifications."""
     return {
         "vision": context_variables.get("vision", ""),
-        "analysis": context_variables.get("current_analysis", {}),
+        "analyses": context_variables.get("analyses", []),
         "specification": context_variables.get("product_spec", {}),
         "history": {
             "analyses": context_variables.get("analyses", []),
@@ -38,12 +28,8 @@ def get_final_result(context_variables: Dict[str, Any]) -> Dict[str, Any]:
         }
     }
 
-class UserProxy(SwarmAgent):
-    """User proxy agent that acts as a bridge between human users and other agents.
-    
-    This agent facilitates communication between human users and the agent system,
-    handling input/output and maintaining conversation context.
-    """
+class UserProxy(UserProxyAgent):
+    """User proxy agent that interfaces with the human user."""
 
     DEFAULT_SYSTEM_MESSAGE = """You are a user proxy responsible for:
     1. Facilitating communication between humans and the agent system

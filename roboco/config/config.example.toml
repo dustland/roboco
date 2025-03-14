@@ -1,0 +1,135 @@
+###################### Roboco Configuration Example ######################
+#
+# This file serves as a template for configuring the Roboco system.
+# Copy this file to config.toml and modify the settings as needed.
+#
+# cp config/config.example.toml config/config.toml
+#
+##############################################################################
+
+################################# Core Settings #################################
+
+# Core configuration for the Roboco system
+[core]
+# Base directory for workspace files
+workspace_base = "./workspace"
+# Enable debug mode for additional logging
+debug = false
+# Directory for storing cache data
+cache_dir = "./cache"
+# Directory for research outputs
+research_output_dir = "./research_output"
+
+################################# LLM Settings #################################
+
+# Global LLM configuration (default for all agents)
+[llm]
+# Model to use (Claude, GPT-4, etc.)
+model = "claude-3-opus-20240229"
+# API base URL
+base_url = "https://api.anthropic.com/v1"
+# Your API key (replace with actual key or use environment variable)
+api_key = "${ANTHROPIC_API_KEY}"
+# Maximum tokens to generate in responses
+max_tokens = 4000
+# Temperature setting (0.0-1.0) - lower is more deterministic
+temperature = 0.7
+
+# Optional: Configuration for vision-capable models
+[llm.vision]
+model = "claude-3-opus-20240229"
+base_url = "https://api.anthropic.com/v1"
+api_key = "${ANTHROPIC_API_KEY}"
+max_tokens = 4000
+temperature = 0.7
+
+# Optional: Configuration for OpenAI models
+[llm.openai]
+model = "gpt-4o"
+base_url = "https://api.openai.com/v1"
+api_key = "${OPENAI_API_KEY}"
+max_tokens = 4096
+temperature = 0.7
+
+# Optional: Configuration for DeepSeek models
+[llm.deepseek]
+model = "deepseek-coder"
+base_url = "https://api.deepseek.com/v1"
+api_key = "${DEEPSEEK_API_KEY}"
+max_tokens = 8192
+temperature = 0.7
+
+# Optional: Configuration for local models via Ollama
+# [llm.ollama]
+# model = "llama3" # Must be a model with tool use capabilities
+# base_url = "http://localhost:11434/v1"
+# api_key = "ollama" # This is a placeholder for compatibility
+# max_tokens = 4096
+# temperature = 0.7
+
+################################# Agent Settings #################################
+
+# Configuration for the research team
+[agents.research_team]
+# Enable or disable the research team
+enabled = true
+# Default LLM to use (references a section from above)
+llm = "llm"  # Uses the default LLM configuration
+# Number of conversation turns to include in the final report
+max_conversation_turns = 5
+
+# Configuration for the robot brain team
+[agents.robot_brain_team]
+enabled = true
+llm = "llm"
+max_iterations = 3
+design_output_dir = "./design_output"
+
+# Configuration for the embodied app team
+[agents.embodied_app_team]
+enabled = true
+llm = "llm"
+max_iterations = 3
+design_output_dir = "./design_output"
+
+################################# Tool Settings #################################
+
+# Configuration for embodied tools
+[tools.embodied]
+# Enable or disable embodied tools
+enabled = true
+# Default visualization settings
+visualize = true
+# Default noise level for simulations (0.0-1.0)
+default_noise_level = 0.05
+
+# Configuration for web research tools
+[tools.web_research]
+enabled = true
+# Maximum number of search results to process
+max_results = 5
+# Default search engine to use
+search_engine = "google"
+# User agent string for web requests
+user_agent = "Roboco Research Agent/1.0"
+
+# Configuration for terminal tools
+[tools.terminal]
+enabled = true
+# Whether to allow potentially destructive commands
+allow_destructive_commands = false
+# Maximum execution time in seconds
+max_execution_time = 30
+
+################################# UI Settings #################################
+
+# Configuration for the web UI
+[ui]
+# Enable or disable the web UI
+enabled = false
+# Port to run the web UI on
+port = 8000
+# Host to bind the web UI to
+host = "127.0.0.1"
+# Theme for the web UI (light, dark, system)
+theme = "system"
