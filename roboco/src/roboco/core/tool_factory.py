@@ -31,32 +31,39 @@ class ToolFactory:
         Returns:
             Dictionary mapping tool names to tool classes
         """
-        from roboco import tools
-        
         tool_classes = {}
         
-        # Get the path to the tools package
-        tools_path = os.path.dirname(tools.__file__)
-        
-        # Iterate through all modules in the tools package
-        for _, module_name, is_pkg in pkgutil.iter_modules([tools_path]):
-            # Skip __init__.py and this factory itself
-            if module_name == '__init__' or module_name == 'tool_factory':
-                continue
-                
-            try:
-                # Import the module
-                module = importlib.import_module(f'roboco.tools.{module_name}')
-                
-                # Find all classes in the module
-                for name, obj in inspect.getmembers(module, inspect.isclass):
-                    # Look for classes that appear to be tools (have public methods)
-                    if cls._is_tool_class(obj):
-                        # Use the class name as the tool name
-                        tool_classes[name] = obj
-                        logger.debug(f"Discovered tool class: {name}")
-            except Exception as e:
-                logger.warning(f"Error importing tool module '{module_name}': {e}")
+        try:
+            # Find the tools directory relative to this file
+            current_dir = os.path.dirname(os.path.abspath(__file__))  # core directory
+            parent_dir = os.path.dirname(current_dir)  # roboco directory
+            tools_path = os.path.join(parent_dir, 'tools')
+            
+            if not os.path.isdir(tools_path):
+                logger.warning(f"Tools directory not found at {tools_path}")
+                return tool_classes
+            
+            # Iterate through all modules in the tools package
+            for _, module_name, is_pkg in pkgutil.iter_modules([tools_path]):
+                # Skip __init__.py and this factory itself
+                if module_name == '__init__' or module_name == 'tool_factory':
+                    continue
+                    
+                try:
+                    # Import the module
+                    module = importlib.import_module(f'roboco.tools.{module_name}')
+                    
+                    # Find all classes in the module
+                    for name, obj in inspect.getmembers(module, inspect.isclass):
+                        # Look for classes that inherit from Tool
+                        if issubclass(obj, Tool) and obj != Tool:
+                            # Use the class name as the tool name
+                            tool_classes[name] = obj
+                            logger.debug(f"Discovered tool class: {name}")
+                except Exception as e:
+                    logger.warning(f"Error importing tool module '{module_name}': {e}")
+        except Exception as e:
+            logger.error(f"Error in tool discovery process: {e}")
         
         logger.info(f"Discovered {len(tool_classes)} tool classes")
         return tool_classes

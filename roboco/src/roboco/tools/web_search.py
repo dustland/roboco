@@ -17,7 +17,7 @@ except ImportError:
     logger.warning("Tavily SDK not installed. Install with: pip install tavily-python")
     TAVILY_AVAILABLE = False
 
-from roboco.tools.base import Tool
+from roboco.core.tool import Tool
 
 
 class WebSearchTool(Tool):

@@ -16,11 +16,11 @@ loguru = "^0.7.3"
 pyautogen = {extras = ["openai"], version = "^0.8.1"}
 requests = "^2.32.3"
 anthropic = ">=0.41.0,<1"
-tomli = "^2.0.1"
 browser-use = "^0.1.40"
 playwright = "^1.40.0"
 langchain-openai = "0.3.1"
 tavily-python = "^0.5.1"
+tomli = "^2.0.1"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.0.0"
@@ -33,3 +33,4 @@ build-backend = "poetry.core.masonry.api"
 start = "roboco.api.app:start"
 dev = "roboco.server:run"
 research = "examples.market_research.main:run_embodied_research"
+verify-tools = "roboco.cli.verify_tools:main"
