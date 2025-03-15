@@ -11,21 +11,26 @@ from loguru import logger
 from browser_use import Agent as BrowserAgent
 from langchain_openai import ChatOpenAI
 
-from roboco.core.config import load_config
+from roboco.core.config import load_config_from_file
 from roboco.core.tool import Tool
 
 class BrowserUseTool(Tool):
     """Tool for browsing web pages and interacting with their content using browser-use package."""
     
-    def __init__(self):
+    def __init__(self, config_path: Optional[str] = None):
         """
         Initialize the browser tool with browser-use package.
+        
+        Args:
+            config_path: Optional path to configuration file
         """
         super().__init__(name="browser", description="Browse websites and interact with web content")
         
         # Load config for LLM
-        config = load_config()
-        self.config = config
+        if config_path:
+            self.config = load_config_from_file(config_path)
+        else:
+            self.config = {}
         
         logger.info("Initialized BrowserUseTool using browser-use package")
     

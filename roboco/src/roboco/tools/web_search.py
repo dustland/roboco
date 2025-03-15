@@ -43,43 +43,52 @@ class WebSearchTool(Tool):
         
         # Initialize Tavily client if available
         if TAVILY_AVAILABLE and self.api_key:
-            self.client = TavilyClient(api_key=self.api_key)
+            try:
+                self.client = TavilyClient(api_key=self.api_key)
+                logger.info("Successfully initialized Tavily client")
+            except Exception as e:
+                logger.error(f"Failed to initialize Tavily client: {e}")
+        elif not TAVILY_AVAILABLE:
+            logger.error("Tavily SDK not installed. Install with: pip install tavily-python")
+        elif not self.api_key:
+            logger.error("TAVILY_API_KEY not set. Please set it in your environment variables.")
     
     def search(self, query: str, num_results: int = 5, include_domains: Optional[List[str]] = None, 
-               exclude_domains: Optional[List[str]] = None) -> List[Dict[str, Any]]:
+               exclude_domains: Optional[List[str]] = None) -> List[Dict[str, str]]:
         """
-        Search the web for information.
+        Search the web for information on a specific topic.
         
         Args:
-            query: Search query
-            num_results: Maximum number of results to return
+            query: The search query to find information about
+            num_results: Number of results to return (default: 5)
             include_domains: Optional list of domains to include in search
             exclude_domains: Optional list of domains to exclude from search
             
         Returns:
-            List of search results with title, snippet, and URL
+            List of search results, each containing title, snippet, and URL
         """
-        if not self.api_key:
-            return [{"error": "No API key provided for web search"}]
-        
         if not TAVILY_AVAILABLE:
             return [{"error": "Tavily SDK not installed. Install with: pip install tavily-python"}]
         
+        if not self.client:
+            return [{"error": "Tavily client not initialized. Check your API key."}]
+        
         try:
-            # Use Tavily SDK for web search
-            if include_domains is None:
-                include_domains = []
-            if exclude_domains is None:
-                exclude_domains = []
-                
+            # Prepare search parameters
             search_params = {
                 "query": query,
-                "max_results": num_results,
                 "search_depth": self.search_depth,
-                "include_domains": include_domains,
-                "exclude_domains": exclude_domains
+                "max_results": num_results
             }
             
+            # Add optional parameters if provided
+            if include_domains:
+                search_params["include_domains"] = include_domains
+            if exclude_domains:
+                search_params["exclude_domains"] = exclude_domains
+                
+            # Execute search
+            logger.info(f"Performing web search for: {query}")
             response = self.client.search(**search_params)
             
             # Process search results
@@ -91,20 +100,26 @@ class WebSearchTool(Tool):
                         "snippet": result.get("content", ""),
                         "url": result.get("url", "")
                     })
+                logger.info(f"Web search returned {len(results)} results")
+            else:
+                logger.warning(f"Web search returned no results. Raw response: {response}")
             
             return results
         
         except Exception as e:
-            logger.error(f"Error performing web search: {e}")
-            return [{"error": str(e)}]
+            error_msg = f"Error performing web search: {e}"
+            logger.error(error_msg)
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
+            return [{"error": error_msg}]
     
     def search_and_summarize(self, query: str, num_results: int = 5) -> str:
         """
         Search the web and provide a summarized response.
         
         Args:
-            query: Search query
-            num_results: Number of results to include
+            query: The search query to find information about
+            num_results: Number of results to include in the summary (default: 5)
             
         Returns:
             A formatted string with search results
@@ -124,133 +139,67 @@ class WebSearchTool(Tool):
         
         return summary
         
-    def answer_question(self, question: str, search_depth: Optional[str] = None) -> Dict[str, Any]:
+    def answer_question(self, question: str, search_depth: Optional[str] = None) -> Dict[str, str]:
         """
-        Ask Tavily to answer a question with web search-backed evidence.
+        Ask a question and get an answer with sources from the web.
         
         Args:
             question: The question to answer
-            search_depth: Override the default search depth
+            search_depth: Optional search depth override (basic or comprehensive)
             
         Returns:
-            Dictionary containing the answer and sources
+            Dictionary with answer and sources
         """
-        if not self.api_key:
-            return {"error": "No API key provided for web search"}
-        
         if not TAVILY_AVAILABLE:
             return {"error": "Tavily SDK not installed. Install with: pip install tavily-python"}
-            
+        
+        if not self.client:
+            return {"error": "Tavily client not initialized. Check your API key."}
+        
         try:
-            # Use the Tavily question-answering endpoint
+            # Use the provided search_depth or fall back to the instance default
             depth = search_depth or self.search_depth
             
-            response = self.client.qna(
-                query=question,
-                search_depth=depth,
-                include_answer=True,
-                include_raw_content=False
-            )
+            # Use Tavily's question answering endpoint
+            logger.info(f"Asking question: {question}")
+            response = self.client.qna(query=question, search_depth=depth)
             
-            # Return a structured result with the answer and sources
+            # Format the response
+            answer = response.get("answer", "No answer found")
+            sources = []
+            
+            if "sources" in response:
+                for source in response["sources"]:
+                    sources.append({
+                        "title": source.get("title", ""),
+                        "url": source.get("url", "")
+                    })
+            
             return {
-                "answer": response.get("answer", "No answer found"),
-                "sources": [
-                    {"title": source.get("title", ""), "url": source.get("url", "")} 
-                    for source in response.get("sources", [])
-                ]
+                "answer": answer,
+                "sources": sources
             }
             
         except Exception as e:
-            logger.error(f"Error answering question: {e}")
-            return {"error": str(e)}
+            error_msg = f"Error answering question: {e}"
+            logger.error(error_msg)
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
+            return {"error": error_msg}
     
-    def get_function_definitions(self) -> List[Dict[str, Any]]:
-        """
-        Get the function definitions for this tool.
-        
-        Returns:
-            List of function definitions compatible with AG2
-        """
-        return [
-            {
-                "name": "web_search",
-                "description": "Search the web for information on a specific topic",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "query": {
-                            "type": "string",
-                            "description": "The search query to find information about"
-                        },
-                        "num_results": {
-                            "type": "integer",
-                            "description": "Number of results to return (default: 5)"
-                        },
-                        "include_domains": {
-                            "type": "array",
-                            "items": {"type": "string"},
-                            "description": "Optional list of domains to include in search"
-                        },
-                        "exclude_domains": {
-                            "type": "array",
-                            "items": {"type": "string"},
-                            "description": "Optional list of domains to exclude from search"
-                        }
-                    },
-                    "required": ["query"]
-                }
-            },
-            {
-                "name": "web_search_summarize",
-                "description": "Search the web and get a formatted summary of results",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "query": {
-                            "type": "string",
-                            "description": "The search query to find information about"
-                        },
-                        "num_results": {
-                            "type": "integer",
-                            "description": "Number of results to include in the summary (default: 5)"
-                        }
-                    },
-                    "required": ["query"]
-                }
-            },
-            {
-                "name": "answer_question",
-                "description": "Ask a question and get an answer with sources from the web",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "question": {
-                            "type": "string",
-                            "description": "The question to answer using web search"
-                        },
-                        "search_depth": {
-                            "type": "string",
-                            "description": "Search depth: 'basic' (faster) or 'advanced' (more thorough)",
-                            "enum": ["basic", "advanced"]
-                        }
-                    },
-                    "required": ["question"]
-                }
-            }
-        ]
-        
     def execute_function(self, function_name: str, arguments: Dict[str, Any]) -> Any:
         """
         Execute a specific function with the given arguments.
         
         Args:
             function_name: Name of the function to execute
-            arguments: Arguments to pass to the function
+            arguments: Dictionary of arguments to pass to the function
             
         Returns:
             Result of the function execution
         """
+        # This method is only needed for backward compatibility
+        # with tools that still use the old AG2 approach
         if function_name == "web_search":
             return self.search(**arguments)
         elif function_name == "web_search_summarize":
@@ -258,4 +207,6 @@ class WebSearchTool(Tool):
         elif function_name == "answer_question":
             return self.answer_question(**arguments)
         else:
-            return {"error": f"Unknown function: {function_name}"}
+            error_msg = f"Unknown function: {function_name}"
+            logger.error(error_msg)
+            return {"error": error_msg}

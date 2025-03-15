@@ -10,7 +10,12 @@ from pathlib import Path
 from typing import Dict, Any, List, Optional
 from loguru import logger
 
-from autogen import config_list_from_json, config_list_from_dotenv
+try:
+    # Try importing from ag2 first (preferred package name)
+    from ag2 import config_list_from_json, config_list_from_dotenv
+except ImportError:
+    # Fall back to autogen if ag2 is not available
+    from autogen import config_list_from_json, config_list_from_dotenv
 
 
 def load_config_from_file(config_path: str) -> Dict[str, Any]:

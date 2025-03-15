@@ -11,6 +11,8 @@ import json
 from typing import Dict, Any, Callable
 import inspect
 import textwrap
+import os
+import traceback
 
 # Configure logging
 logging.basicConfig(
@@ -22,98 +24,141 @@ logger = logging.getLogger("verify_tools")
 
 
 def main():
-    """Verify all tools in the Roboco project."""
-    print("\n=== ROBOCO TOOL VERIFICATION ===\n")
-    
-    # Import tool factory
+    """Main entry point for the tool verification script."""
     from roboco.core.tool_factory import ToolFactory
     from roboco.core.tool import Tool
     
-    # Discover all tools
+    print("\n=== ROBOCO TOOL VERIFICATION ===\n")
+    
+    # Step 1: Discover tools
     print("Step 1: Discovering tools...")
-    tools = ToolFactory.discover_tools()
+    tool_classes = ToolFactory.discover_tools()
     
-    if not tools:
-        print("❌ No tools were discovered.")
-        return
-    
-    print(f"\nDiscovered {len(tools)} tools:")
-    for i, (name, tool_class) in enumerate(tools.items(), 1):
+    # Print discovered tools
+    print(f"\nDiscovered {len(tool_classes)} tools:")
+    for i, (tool_name, tool_class) in enumerate(tool_classes.items(), 1):
         module_name = tool_class.__module__
-        print(f"{i}. {name:<25} | {module_name}")
+        print(f"{i}. {tool_name:<25} | {module_name}")
     
-    # Initialize tools
+    # Step 2: Initialize tools
     print("\nStep 2: Initializing tools...")
-    tool_instances = {}
-    for name, tool_class in tools.items():
+    tools = {}
+    for tool_name, tool_class in tool_classes.items():
         try:
-            tool_instances[name] = tool_class()
-            print(f"✅ {name:<25} | Successfully initialized")
+            # Try to initialize the tool
+            tool = tool_class()
+            tools[tool_name] = tool
+            print(f"✅ {tool_name:<25} | Successfully initialized")
         except Exception as e:
-            print(f"❌ {name:<25} | Failed to initialize: {e}")
+            # Log initialization errors
+            print(f"❌ {tool_name:<25} | Error initializing: {e}")
+            print(f"   Traceback: {traceback.format_exc().splitlines()[-3:]}")  # Show last 3 lines of traceback
     
-    # Extract functions from tools
+    # Step 3: Extract functions
     print("\nStep 3: Extracting functions...")
-    all_functions = {}
+    print()
     
-    for name, tool in tool_instances.items():
+    all_functions = []
+    
+    # For each tool, extract and print functions
+    for tool_name, tool in tools.items():
+        # Get function definitions
         try:
-            functions = tool.get_functions()
-            print(f"\n📦 Tool: {name}")
+            functions = tool.get_function_definitions()
+            
+            # Print tool information
+            print(f"📦 Tool: {tool_name}")
             print(f"   Description: {tool.description}")
             print(f"   Functions ({len(functions)}):")
             
-            # Get function descriptions with parameters
-            function_descriptions = tool.get_function_descriptions()
+            # Extract and print function details
+            for function in functions:
+                name = function.get("name", "No name")
+                description = function.get("description", "No description")
+                
+                # Print function name and description
+                print(f"   - {name:<20} | {description}")
+                
+                # Print full description if available
+                print(f"     Full Description: {description}")
+                
+                # Print parameters if available
+                parameters = function.get("parameters", {}).get("properties", {})
+                if parameters:
+                    print(f"     Parameters:")
+                    
+                    # Calculate the maximum length of parameter names for alignment
+                    max_param_length = max([len(param) for param in parameters.keys()], default=10)
+                    
+                    for param_name, param_info in parameters.items():
+                        param_type = param_info.get("type", "unknown")
+                        param_desc = param_info.get("description", "No description")
+                        
+                        # Format the parameter description to wrap at 80 characters
+                        wrapped_desc = textwrap.fill(
+                            param_desc, 
+                            width=40, 
+                            initial_indent="",
+                            subsequent_indent=" " * (max_param_length + 15)
+                        )
+                        
+                        # Print parameter information
+                        print(f"     • {param_name:<{max_param_length}} | {param_type:<10} | {wrapped_desc}")
+                        
+                        # If there's an enum, print allowed values
+                        if "enum" in param_info:
+                            enum_values = param_info["enum"]
+                            enum_str = ", ".join([f"'{val}'" for val in enum_values])
+                            print(f"       Allowed values: {enum_str}")
+                
+                # Add function to the list of all functions
+                all_functions.append(name)
             
-            for func_name, func in functions.items():
-                # Get description from function docstring
-                doc = func.__doc__ or "No description"
-                short_doc = doc.strip().split('\n')[0]
-                print(f"   - {func_name:<20} | {short_doc}")
-                
-                # Print parameters if available in function descriptions
-                if func_name in function_descriptions:
-                    func_desc = function_descriptions[func_name]
-                    if "parameters" in func_desc and "properties" in func_desc["parameters"]:
-                        params = func_desc["parameters"]["properties"]
-                        if params:
-                            print(f"     Parameters:")
-                            for param_name, param_info in params.items():
-                                param_type = param_info.get("type", "any")
-                                param_desc = param_info.get("description", "No description")
-                                
-                                # Wrap long descriptions
-                                wrapped_desc = textwrap.fill(
-                                    param_desc, 
-                                    width=70, 
-                                    initial_indent="     • " + f"{param_name:<15} | {param_type:<10} | ",
-                                    subsequent_indent="       " + " " * 28
-                                )
-                                print(wrapped_desc)
-                
-                # Add to all functions
-                all_functions[f"{name}.{func_name}"] = func
+            print()
+            
         except Exception as e:
-            print(f"❌ Error extracting functions from {name}: {e}")
+            print(f"❌ Error extracting functions from {tool_name}: {e}")
+            print(f"   Traceback: {traceback.format_exc().splitlines()[-3:]}")
     
-    # Create function map
-    print(f"\nStep 4: Creating function map...")
-    function_map = ToolFactory.create_function_map(
-        tool_names=list(tool_instances.keys()),
-        tool_instances=tool_instances
-    )
+    # Step 4: Create function map
+    print("Step 4: Creating function map...")
+    function_map = ToolFactory.create_function_map(tools)
     
+    # Print function map
     print(f"Created function map with {len(function_map)} functions:")
-    for i, func_name in enumerate(sorted(function_map.keys()), 1):
-        print(f"{i}. {func_name}")
+    for i, function_name in enumerate(sorted(function_map.keys()), 1):
+        print(f"{i}. {function_name}")
     
-    # Summary
+    # Print diagnostic information about environment variables
+    print("\nStep 5: Environment Diagnostics...")
+    
+    # Check for important environment variables
+    env_vars = {
+        "OPENAI_API_KEY": "Required for LLM functionality",
+        "TAVILY_API_KEY": "Required for WebSearchTool",
+        "PYTHONPATH": "Python module search path"
+    }
+    
+    for var_name, description in env_vars.items():
+        value = os.environ.get(var_name)
+        if value:
+            # Mask API keys for security
+            if "API_KEY" in var_name:
+                masked_value = value[:4] + "*" * (len(value) - 8) + value[-4:] if len(value) > 8 else "****"
+                print(f"✅ {var_name:<20} | Set ({masked_value}) - {description}")
+            else:
+                print(f"✅ {var_name:<20} | Set - {description}")
+        else:
+            if "API_KEY" in var_name:
+                print(f"❌ {var_name:<20} | Not set - {description}")
+            else:
+                print(f"ℹ️ {var_name:<20} | Not set - {description}")
+    
+    # Print summary
     print("\n=== SUMMARY ===")
-    print(f"✓ Discovered {len(tools)} tools")
-    print(f"✓ Successfully initialized {len(tool_instances)} tools")
-    total_functions = sum(len(tool.get_functions()) for tool in tool_instances.values())
-    print(f"✓ Extracted {total_functions} functions")
+    print(f"✓ Discovered {len(tool_classes)} tools")
+    print(f"✓ Successfully initialized {len(tools)} tools")
+    print(f"✓ Extracted {len(all_functions)} functions")
     print(f"✓ Created function map with {len(function_map)} functions")
     
     print("\n=== VERIFICATION COMPLETE ===")
