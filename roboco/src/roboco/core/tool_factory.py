@@ -136,18 +136,18 @@ class ToolFactory:
     
     @classmethod
     def create_function_map(cls, tool_names: Optional[List[str]] = None, 
-                          tool_instances: Optional[Dict[str, Any]] = None) -> Dict[str, Callable]:
+                           tool_instances: Optional[Dict[str, Any]] = None) -> Dict[str, Callable]:
         """
-        Create a function map suitable for autogen's ConversableAgent.
+        Create a mapping of function names to method callables.
         
         Args:
             tool_names: List of tool names to include in the function map.
-                      If None and tool_instances is None, include all discovered tools.
+                      If None, include all tools.
             tool_instances: Dictionary of pre-created tool instances.
                           If provided, tool_names is ignored.
-                       
+                          
         Returns:
-            A dictionary mapping function names to callable functions
+            Dictionary mapping function names to callable methods
         """
         function_map = {}
         
@@ -171,37 +171,70 @@ class ToolFactory:
                     except Exception as e:
                         logger.warning(f"Error creating tool '{name}': {e}")
         
-        # Extract methods from all tools
+        # Extract functions from all tools using the get_functions method
         for tool_name, tool in tools_to_process.items():
-            # Get all public methods from the tool
-            for method_name, method in inspect.getmembers(tool, predicate=inspect.ismethod):
-                if not method_name.startswith('_'):
-                    # Create a function map entry with a descriptive name
-                    function_key = f"{tool_name}_{method_name}"
-                    function_map[function_key] = method
-                    logger.debug(f"Added function to map: {function_key}")
+            try:
+                # Use the tool's get_functions method to get a map of function names to callables
+                tool_functions = tool.get_functions()
+                for func_name, func in tool_functions.items():
+                    function_map[func_name] = func
+                    logger.debug(f"Added function to map: {func_name}")
+            except Exception as e:
+                logger.warning(f"Error getting functions from tool '{tool_name}': {e}")
         
         logger.info(f"Created function map with {len(function_map)} functions")
         return function_map
     
     @classmethod
     def register_tools_with_agent(cls, agent: ConversableAgent, 
-                               tool_names: Optional[List[str]] = None) -> None:
+                              tool_names: Optional[List[str]] = None) -> None:
         """
         Register tools with an autogen agent.
         
         Args:
             agent: The agent to register tools with
             tool_names: List of tool names to register.
-                      If None, register all discovered tools.
+                     If None, register all discovered tools.
         """
+        # Create function map
         function_map = cls.create_function_map(tool_names=tool_names)
         
-        # Register the function map with the agent
-        for func_name, func in function_map.items():
-            agent.register_function(
-                function_map={func_name: func}
-            )
+        # Get tools for function descriptions
+        tool_instances = {}
+        if tool_names is None:
+            tool_classes = cls.discover_tools()
+            tool_names = list(tool_classes.keys())
+        
+        for name in tool_names:
+            try:
+                tool_instances[name] = cls.create_tool(name)
+            except Exception as e:
+                logger.warning(f"Error creating tool '{name}': {e}")
+        
+        # Register functions with descriptions when available
+        for tool_name, tool in tool_instances.items():
+            if hasattr(tool, 'get_function_descriptions') and callable(getattr(tool, 'get_function_descriptions')):
+                descriptions = tool.get_function_descriptions()
+                
+                # Register each function with its description
+                for func_name, desc in descriptions.items():
+                    if func_name in function_map:
+                        # Register with AG2's function calling mechanism
+                        agent.register_function(
+                            function_map={func_name: function_map[func_name]},
+                            name=func_name,
+                            description=desc.get('description', ''),
+                            parameters=desc.get('parameters', {})
+                        )
+                        logger.debug(f"Registered function {func_name} with description")
+            else:
+                # Fallback for tools that don't provide descriptions
+                for func_name, func in function_map.items():
+                    if func.__self__ == tool:  # Check if this function belongs to this tool
+                        agent.register_function(
+                            function_map={func_name: func}
+                        )
+                        logger.debug(f"Registered function {func_name} without description")
         
         logger.info(f"Registered {len(function_map)} functions with agent {agent.name}")
     
