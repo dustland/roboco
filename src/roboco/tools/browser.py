@@ -47,50 +47,6 @@ class BrowserTool(Tool):
         self._browser = Browser()
         logger.info("Initialized BrowserTool")
     
-    def get_functions(self) -> Dict[str, Any]:
-        """Get the functions provided by this tool with their schemas."""
-        return {
-            "web_search": {
-                "name": "web_search",
-                "description": "Search the web for information",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "query": {
-                            "type": "string",
-                            "description": "The search query"
-                        },
-                        "num_results": {
-                            "type": "integer",
-                            "description": "Number of results to return (optional)",
-                            "default": 5
-                        }
-                    },
-                    "required": ["query"]
-                },
-                "function": self.search
-            },
-            "browse": {
-                "name": "browse",
-                "description": "Browse a webpage and extract its content",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "url": {
-                            "type": "string",
-                            "description": "The URL to browse"
-                        },
-                        "instructions": {
-                            "type": "string",
-                            "description": "Optional instructions for what information to extract"
-                        }
-                    },
-                    "required": ["url"]
-                },
-                "function": self.browse
-            }
-        }
-    
     def browse(self, url: str, instructions: Optional[str] = None) -> Dict[str, Any]:
         """
         Browse a webpage and extract information based on instructions.

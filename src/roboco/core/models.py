@@ -67,7 +67,18 @@ class ToolsConfig(BaseModel):
 
 
 class RobocoConfig(BaseModel):
-    """Root configuration model for roboco."""
+    """Root configuration model for roboco.
+    
+    This model defines the configuration structure for the roboco framework,
+    including LLM settings, tool configurations, and agent behavior settings.
+    
+    The configuration can be loaded from a TOML file using the load_config function.
+    Default locations searched for config files include:
+    - ./config.toml
+    - config/config.toml
+    - ~/.config/roboco/config.toml
+    - /etc/roboco/config.toml
+    """
     
     llm: LLMConfig = Field(
         default_factory=LLMConfig,
@@ -76,6 +87,10 @@ class RobocoConfig(BaseModel):
     tools: ToolsConfig = Field(
         default_factory=ToolsConfig,
         description="Tool configurations"
+    )
+    terminate_msg: str = Field(
+        default="TERMINATE",
+        description="Default termination message for agents to signal completion of their response. This message is used by agents to indicate they have finished their task, following AG2's conversation termination pattern."
     )
     
     class Config:

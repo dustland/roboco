@@ -42,8 +42,8 @@ class ProductManager(Agent):
         self,
         name: str = "ProductManager",
         system_message: Optional[str] = None,
-        _tools: Optional[List[Any]] = None,
         config_path: Optional[str] = None,
+        terminate_msg: Optional[str] = None,
         **kwargs
     ):
         """Initialize the ProductManager agent.
@@ -51,8 +51,8 @@ class ProductManager(Agent):
         Args:
             name: Name of the agent
             system_message: Custom system message for the agent
-            _tools: Optional list of tools available to the agent
             config_path: Optional path to agent configuration file
+            terminate_msg: Optional message to include at the end of responses to signal completion
             **kwargs: Additional arguments passed to Agent
         """
         if system_message is None:
@@ -67,39 +67,23 @@ class ProductManager(Agent):
         super().__init__(
             name=name,
             system_message=system_message,
-            _tools=_tools,
             config_path=config_path,
+            terminate_msg=terminate_msg,
             **kwargs
         )
-    
+        
     def analyze_strategy(self, content: str) -> Dict[str, Any]:
-        """Analyze strategic content and generate product specifications.
+        """Analyze a product strategy document.
         
         Args:
-            content: The strategic content to analyze
+            content: The strategy document content
             
         Returns:
-            A dictionary containing the product specification
+            Analysis results
         """
-        spec = {
-            "features": [
-                "Core functionality for embodied AI integration",
-                "Data collection and processing pipelines", 
-                "User interface for monitoring and control",
-                "API for third-party extensions"
-            ],
-            "technical_requirements": [
-                "Real-time processing capabilities",
-                "Scalable architecture",
-                "Secure communication protocols",
-                "Cross-platform compatibility"
-            ],
-            "priorities": [
-                "Establish core framework",
-                "Develop basic sensor integration",
-                "Implement control mechanisms",
-                "Add advanced AI capabilities"
-            ]
+        # Placeholder for strategy analysis
+        return {
+            "key_points": [],
+            "market_analysis": {},
+            "recommendations": []
         }
-        
-        return spec

@@ -1,5 +1,5 @@
 import autogen
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 from autogen import SwarmResult
 
 # Import the Agent class from our core module
@@ -44,22 +44,47 @@ class Executive(Agent):
     
     Always output your analysis in a clear, structured JSON format."""
 
-    def __init__(self, name="executive", **kwargs):
-        """Initialize the executive agent with default settings."""
+    def __init__(
+        self,
+        name: str = "Executive",
+        system_message: Optional[str] = None,
+        tools: Optional[List[Any]] = None,
+        config_path: Optional[str] = None,
+        terminate_msg: Optional[str] = None,
+        **kwargs
+    ):
+        """
+        Initialize the Executive agent.
+        
+        Args:
+            name: Name of the agent (default: "Executive")
+            system_message: Custom system message for the agent
+            tools: Optional list of tools available to the agent
+            config_path: Optional path to agent configuration file
+            terminate_msg: Optional message to include at the end of responses to signal completion
+            **kwargs: Additional arguments to pass to the base Agent class
+        """
+        # Set default system message if not provided
+        if system_message is None:
+            system_message = self.DEFAULT_SYSTEM_MESSAGE
+            
         # Create function map for record_analysis
         function_map = {
             "record_analysis": record_analysis
         }
         
+        # Initialize the base agent
         super().__init__(
-            name=name,  # Use the provided name parameter
-            system_message=self.DEFAULT_SYSTEM_MESSAGE,
+            name=name,
+            system_message=system_message,
+            tools=tools,
+            config_path=config_path,
+            terminate_msg=terminate_msg,
             function_map=function_map,
             **kwargs
         )
         
         # Register custom reply for vision-related messages
-        # The trigger parameter should receive an agent, not a message
         self.register_reply(
             trigger="vision",  # Trigger based on the message containing "vision"
             reply_func=self._reply_to_vision_request,

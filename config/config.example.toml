@@ -51,6 +51,13 @@ api_key = "${OPENAI_API_KEY}"
 max_tokens = 4096
 temperature = 0.7
 
+# Default termination message for agents
+# This message is used by agents to signal they have completed their response.
+# When an agent includes this message at the end of its response, other agents
+# will recognize it as a signal to end the conversation.
+# This follows AG2's conversation termination pattern.
+terminate_msg = "TERMINATE"
+
 # Optional: Configuration for DeepSeek models
 [llm.deepseek]
 model = "deepseek-coder"

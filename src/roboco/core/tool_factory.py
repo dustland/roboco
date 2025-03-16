@@ -9,12 +9,11 @@ import importlib
 import inspect
 import os
 import pkgutil
-from typing import Dict, Any, List, Optional, Callable, Type, Union
+import functools
+from typing import Dict, Any, List, Optional, Callable, Type
 from loguru import logger
 
 from roboco.core.tool import Tool
-
-from autogen import ConversableAgent
 
 class ToolFactory:
     """Factory for creating and managing autogen-compatible tools through automatic discovery."""
@@ -55,7 +54,6 @@ class ToolFactory:
                         if issubclass(obj, Tool) and obj != Tool:
                             # Use the class name as the tool name
                             tool_classes[name] = obj
-                            # logger.debug(f"Discovered tool class: {name}")
                 except Exception as e:
                     logger.warning(f"Error importing tool module '{module_name}': {e}")
         except Exception as e:
@@ -63,28 +61,6 @@ class ToolFactory:
         
         logger.info(f"Discovered {len(tool_classes)} tool classes")
         return tool_classes
-    
-    @staticmethod
-    def _is_tool_class(cls: Type) -> bool:
-        """
-        Check if a class appears to be a tool (has public methods).
-        
-        Args:
-            cls: Class to check
-            
-        Returns:
-            True if the class is a tool, False otherwise
-        """
-        # Check if the class inherits from Tool
-        if hasattr(cls, '__mro__'):
-            for base in cls.__mro__:
-                if base.__name__ == 'Tool' and base.__module__ == 'roboco.core.tool':
-                    return True
-        
-        # As a fallback, check if the class has the methods we expect from a tool
-        return (hasattr(cls, 'name') and 
-                hasattr(cls, 'description') and 
-                hasattr(cls, 'get_functions'))
     
     @classmethod
     def create_tool(cls, tool_name: str, **kwargs: Any) -> Any:
@@ -114,132 +90,69 @@ class ToolFactory:
         return tool
     
     @classmethod
-    def create_all_tools(cls, **kwargs: Any) -> Dict[str, Any]:
+    def register_tool(cls, caller_agent: Any, executor_agent: Any, 
+                      tool_name: str, **kwargs) -> None:
         """
-        Create instances of all available tools.
+        Register a tool with a caller agent and an executor agent.
+        
+        This follows AG2's pattern of having a caller agent (that suggests the tool)
+        and an executor agent (that executes the tool).
         
         Args:
+            caller_agent: The agent that will suggest using the tool
+            executor_agent: The agent that will execute the tool
+            tool_name: Name of the tool to register
             **kwargs: Additional parameters for tool initialization
-            
-        Returns:
-            Dictionary mapping tool names to tool instances
         """
-        tool_classes = cls.discover_tools()
-        tools = {}
+        # Create the tool instance
+        tool = cls.create_tool(tool_name, **kwargs)
         
-        for name, tool_class in tool_classes.items():
-            try:
-                tools[name] = tool_class(**kwargs)
-                logger.debug(f"Created tool instance: {name}")
-            except Exception as e:
-                logger.warning(f"Error creating tool '{name}': {e}")
+        # Register each public method of the tool with both agents
+        for method_name in dir(tool):
+            # Skip private methods and attributes
+            if method_name.startswith('_') or method_name in ['name', 'description', 'get_function_definitions']:
+                continue
                 
-        logger.info(f"Created {len(tools)} tool instances")
-        return tools
-    
-    @classmethod
-    def create_function_map(cls, tool_names: Optional[List[str]] = None, 
-                           tool_instances: Optional[Dict[str, Any]] = None) -> Dict[str, Callable]:
-        """
-        Create a mapping of function names to method callables.
-        
-        Args:
-            tool_names: List of tool names to include in the function map.
-                      If None, include all tools.
-            tool_instances: Dictionary of pre-created tool instances.
-                          If provided, tool_names is ignored.
-                          
-        Returns:
-            Dictionary mapping function names to callable methods
-        """
-        function_map = {}
-        
-        # If tool instances are provided, use them
-        if tool_instances is not None:
-            tools_to_process = tool_instances
-        # Otherwise create the specified tools or discover all tools
-        else:
-            tool_classes = cls.discover_tools()
-            
-            # If no specific tools requested, use all discovered tools
-            if tool_names is None:
-                tool_names = list(tool_classes.keys())
+            method = getattr(tool, method_name)
+            if callable(method):
+                # Get the method's docstring for description
+                description = method.__doc__ or f"Method {method_name} from {tool_name}"
                 
-            # Create the requested tools
-            tools_to_process = {}
-            for name in tool_names:
-                if name in tool_classes:
-                    try:
-                        tools_to_process[name] = cls.create_tool(name)
-                    except Exception as e:
-                        logger.warning(f"Error creating tool '{name}': {e}")
-        
-        # Extract functions from all tools using the get_functions method
-        for tool_name, tool in tools_to_process.items():
-            try:
-                # Use the tool's get_functions method to get a map of function names to callables
-                tool_functions = tool.get_functions()
-                for func_name, func in tool_functions.items():
-                    function_map[func_name] = func
-                    logger.debug(f"Added function to map: {func_name}")
-            except Exception as e:
-                logger.warning(f"Error getting functions from tool '{tool_name}': {e}")
-        
-        logger.info(f"Created function map with {len(function_map)} functions")
-        return function_map
-    
-    @classmethod
-    def register_tools_with_agent(cls, agent: ConversableAgent, 
-                              tool_names: Optional[List[str]] = None) -> None:
-        """
-        Register tools with an autogen agent.
-        
-        Args:
-            agent: The agent to register tools with
-            tool_names: List of tool names to register.
-                     If None, register all discovered tools.
-        """
-        # Create function map
-        function_map = cls.create_function_map(tool_names=tool_names)
-        
-        # Get tools for function descriptions
-        tool_instances = {}
-        if tool_names is None:
-            tool_classes = cls.discover_tools()
-            tool_names = list(tool_classes.keys())
-        
-        for name in tool_names:
-            try:
-                tool_instances[name] = cls.create_tool(name)
-            except Exception as e:
-                logger.warning(f"Error creating tool '{name}': {e}")
-        
-        # Register functions with descriptions when available
-        for tool_name, tool in tool_instances.items():
-            if hasattr(tool, 'get_function_descriptions') and callable(getattr(tool, 'get_function_descriptions')):
-                descriptions = tool.get_function_descriptions()
+                # Create a standalone function that calls the method
+                def make_function(tool_instance, method_name):
+                    method_ref = getattr(tool_instance, method_name)
+                    
+                    def function(*args, **kwargs):
+                        result = method_ref(*args, **kwargs)
+                        # Convert result to string to ensure compatibility
+                        return str(result) if result is not None else None
+                    
+                    # Set function metadata
+                    function.__name__ = method_name
+                    function.__doc__ = description
+                    
+                    return function
                 
-                # Register each function with its description
-                for func_name, desc in descriptions.items():
-                    if func_name in function_map:
-                        # Register with AG2's function calling mechanism
-                        agent.register_function(
-                            function_map={func_name: function_map[func_name]},
-                            name=func_name,
-                            description=desc.get('description', ''),
-                            parameters=desc.get('parameters', {})
-                        )
-                        logger.debug(f"Registered function {func_name} with description")
-            else:
-                # Fallback for tools that don't provide descriptions
-                for func_name, func in function_map.items():
-                    if func.__self__ == tool:  # Check if this function belongs to this tool
-                        agent.register_function(
-                            function_map={func_name: func}
-                        )
-                        logger.debug(f"Registered function {func_name} without description")
+                # Create the standalone function
+                function = make_function(tool, method_name)
+                
+                # Register the function with both agents
+                try:
+                    # Register with caller agent
+                    caller_agent.register_function(
+                        {method_name: function}
+                    )
+                    
+                    # Register with executor agent
+                    executor_agent.register_function(
+                        {method_name: function}
+                    )
+                    
+                    logger.debug(f"Registered method {method_name} from tool {tool_name}")
+                except Exception as e:
+                    logger.error(f"Error registering method {method_name}: {e}")
         
-        logger.info(f"Registered {len(function_map)} functions with agent {agent.name}")
+        logger.info(f"Registered methods from tool {tool_name}")
     
     @classmethod
     def get_available_tools(cls) -> List[str]:

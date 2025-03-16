@@ -30,6 +30,43 @@ The agents are designed to work together in a collaborative workflow:
 
 This collaboration can be orchestrated using AG2's Swarm pattern or through direct agent interactions.
 
+## Termination Messages
+
+All Roboco agents support termination messages, following AG2's conversation termination pattern. A termination message is a specific string that an agent includes at the end of its response to signal that it has completed its task.
+
+### Configuration
+
+The default termination message is "TERMINATE" and can be configured in the `config.toml` file:
+
+```toml
+# Default termination message for agents
+terminate_msg = "TERMINATE"
+```
+
+### Usage
+
+Termination messages are automatically handled by the agent system:
+
+1. The base `Agent` class appends termination instructions to the system message
+2. The `HumanProxy` agent checks for termination messages in responses
+3. When initiating a chat, the termination message is propagated to the recipient agent
+
+```python
+from roboco.agents import ProductManager, HumanProxy
+
+# Create agents with custom termination message
+researcher = ProductManager(terminate_msg="DONE")
+user = HumanProxy(terminate_msg="DONE")
+
+# Initiate a chat - termination message is automatically propagated
+user.initiate_chat(
+    researcher,
+    message="What are the latest developments in humanoid robotics?"
+)
+```
+
+If no termination message is specified, the default from the configuration is used.
+
 ## Web Browsing Capabilities
 
 Web browsing capabilities are provided through the `BrowserTool` in the tools package. This tool can be attached to any agent to provide web browsing and interaction capabilities.

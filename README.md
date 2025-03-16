@@ -17,7 +17,7 @@ RoboCo (Robot Company) is a comprehensive platform designed to develop and adapt
 
 ## System Components
 
-### Backend (roboco)
+### Core Framework
 
 The core multi-agent system that powers robot adaptation:
 
@@ -27,9 +27,9 @@ The core multi-agent system that powers robot adaptation:
 - 🔄 Asynchronous communication between agents
 - ⚙️ Flexible configuration system
 
-### Frontend (Studio)
+### Future UI Plans
 
-A modern web interface for robot development and monitoring:
+A Streamlit-based user interface is planned for future development:
 
 - 🎯 Intuitive robot task configuration
 - 📈 Real-time monitoring and analytics
@@ -52,32 +52,45 @@ pip install -e .
 
 ## Quick Start
 
-1. Set up the backend:
+1. Set up the environment:
 
 ```bash
+# Clone the repository
+git clone https://github.com/yourusername/roboco.git
 cd roboco
+
+# Install dependencies using Poetry
 poetry install
-uvicorn roboco.service:app --reload
 ```
 
-2. Set up the frontend:
+2. Configure your API keys:
 
 ```bash
-cd ../studio
-pnpm install
-pnpm dev
+# Copy the example .env file
+cp .env.example .env
+
+# Edit the .env file with your API keys
+nano .env
 ```
 
 3. Run a simple example:
 
 ```python
-from roboco.examples.market_research import ResearchTeam
+# Run the web research example
+poetry run python examples/web_surf.py
+
+# Or import and use in your own script
+from roboco.agents import ProductManager, HumanProxy
 
 # Create a research team
-team = ResearchTeam()
+researcher = ProductManager()
+user = HumanProxy()
 
-# Run market research with physical interaction capabilities
-result = team.run_research("What are the latest trends in humanoid robotics?")
+# Run market research
+user.initiate_chat(
+    researcher,
+    message="What are the latest trends in humanoid robotics?"
+)
 ```
 
 ## Project Structure
@@ -86,28 +99,38 @@ result = team.run_research("What are the latest trends in humanoid robotics?")
 roboco/
 ├── src/
 │   └── roboco/
-│       ├── agents/         # Agent implementations for embodied AI
-│       ├── core/           # Core functionality for physical interaction
-│       ├── tools/          # Tool implementations for robot control
-│       └── api/            # API endpoints for robot interfaces
-├── examples/              # All example code MUST be placed here, not in src/roboco/examples
-│   └── market_research/   # Market research example with physical interaction
-├── tests/                # Test suite
-└── docs/                 # Documentation
+│       ├── agents/         # Agent implementations
+│       ├── core/           # Core functionality and base classes
+│       ├── tools/          # Tool implementations
+│       └── models/         # Data models and schemas
+├── examples/               # Example scripts and use cases
+├── config/                 # Configuration files
+├── tests/                  # Test suite
+└── docs/                   # Documentation
 ```
 
-**Note**: All example code must be placed in the root `examples/` directory, not in `src/roboco/examples/`. This ensures consistency and makes examples easily discoverable.
+**Note**: All example code should be placed in the root `examples/` directory to ensure consistency and make examples easily discoverable.
 
 ## Available Agents
 
-- **ProductManager**: Defines research scope and delegates tasks for physical interaction
-- **Researcher**: Analyzes data and extracts insights from physical interactions
+RoboCo provides several specialized agents for different aspects of robot development:
+
+- **ProductManager**: Defines research scope and delegates tasks to other agents
+- **Researcher**: Analyzes data and extracts insights from various sources
 - **ReportWriter**: Compiles findings into comprehensive reports
-- **ToolUser**: Executes tools and functions for robot control
-- **Executive**: Provides high-level vision and strategy for embodied tasks
+- **HumanProxy**: Acts as a proxy for human users, enabling natural interaction
 - **PhysicalInteractionAgent**: Specialized agent for handling physical interactions
 - **SensorProcessingAgent**: Processes and interprets sensor data
-- **RobotController**: Manages robot movements and actions
+
+All agents support termination messages, following AG2's conversation termination pattern. This allows agents to signal when they have completed their task, enabling more efficient conversations. The termination message is configurable through the `config.toml` file.
+
+## Agent Communication
+
+RoboCo extends AG2's agent communication patterns with additional features:
+
+1. **Termination Messages**: Agents can signal completion of tasks with configurable termination messages
+2. **Automatic Propagation**: Termination messages are automatically propagated between agents
+3. **Configuration-Driven**: Communication patterns can be configured through the config file
 
 ## Available Tools
 
@@ -125,12 +148,10 @@ roboco/
 
 ## Requirements
 
-- Python >= 3.10, < 3.13
+- Python >= 3.10
 - Poetry for dependency management
-- Node.js >= 18
-- PNPM package manager
-- CUDA-enabled GPU (recommended)
-- Ubuntu 24.04 LTS (recommended)
+- OpenAI API key or other LLM provider API key
+- Internet connection for web research capabilities
 
 ## Development
 
@@ -151,23 +172,27 @@ poetry run flake8
 
 1. Create a new agent class in `src/roboco/agents/`
 2. Inherit from the base `Agent` class
-3. Implement required methods and customize behavior for embodied AI tasks
+3. Implement required methods and customize behavior
 4. Add the agent to `src/roboco/agents/__init__.py`
 
 ### Adding New Tools
 
 1. Create a new tool class in `src/roboco/tools/`
 2. Inherit from the base `Tool` class
-3. Implement required methods and customize behavior for physical interaction
+3. Implement required methods and customize behavior
 4. Add the tool to `src/roboco/tools/__init__.py`
 
 ## Documentation
 
-Documentation is currently under development. Please refer to the following resources:
+Documentation is available in the `docs/` directory:
+
+- [Agent Communication Patterns](docs/agents/communication.md) - How agents communicate, including termination messages
+- [Tool Design](docs/tool_design.md) - How tools are designed and used in the system
+
+For additional resources, please refer to:
 
 - [AG2 Documentation](https://docs.ag2.ai) - The underlying framework documentation
 - [Examples](examples/) - Code examples and usage patterns
-- [API Reference](src/roboco/api/) - Core API documentation
 
 ## Contributing
 
