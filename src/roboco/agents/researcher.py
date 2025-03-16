@@ -73,7 +73,6 @@ class Researcher(Agent):
         self,
         name: str = "Researcher",
         system_message: Optional[str] = None,
-        tools: Optional[List[Any]] = None,
         config_path: Optional[str] = None,
         terminate_msg: Optional[str] = None,
         **kwargs
@@ -84,7 +83,6 @@ class Researcher(Agent):
         Args:
             name: Name of the agent (default: "Researcher")
             system_message: Custom system message for the agent
-            tools: Optional list of tools available to the agent
             config_path: Optional path to agent configuration file
             terminate_msg: Optional message to include at the end of responses to signal completion
             **kwargs: Additional arguments to pass to the base Agent class
@@ -97,7 +95,6 @@ class Researcher(Agent):
         super().__init__(
             name=name,
             system_message=system_message,
-            tools=tools,
             config_path=config_path,
             terminate_msg=terminate_msg,
             **kwargs

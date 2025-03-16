@@ -56,8 +56,8 @@ class Agent(ConversableAgent):
         logger.debug(f"LLM config for {name}: {llm_config}")
         
         # Use termination message from config if none is provided
-        if terminate_msg is None:
-            terminate_msg = config.terminate_msg
+        # if terminate_msg is None:
+        #     terminate_msg = config.terminate_msg
         
         # Store termination message
         self.terminate_msg = terminate_msg

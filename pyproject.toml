@@ -33,5 +33,5 @@ build-backend = "poetry.core.masonry.api"
 [tool.poetry.scripts]
 start = "roboco.api.app:start"
 dev = "roboco.server:run"
-research = "examples.market_research.main:run_embodied_research"
+research = "examples.market_research.main:main"
 verify-tools = "roboco.cli.verify_tools:main"
