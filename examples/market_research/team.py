@@ -222,7 +222,7 @@ class ResearchTeam(Team):
 
     def run_research(self, query: str) -> Dict[str, Any]:
         """
-        Run a research scenario using the team's agents.
+        Run a research scenario with the given query.
         
         Args:
             query: The research query to investigate
@@ -238,6 +238,11 @@ class ResearchTeam(Team):
         # Check if the report was extracted
         if "context" in result and "report_content" in result["context"] and result["context"]["report_content"]:
             logger.info("Report found in context")
+            # Save the report to a file if not already saved
+            if "report_path" not in result:
+                report_path = self.save_report(result["context"]["report_content"])
+                result["report_path"] = report_path
+                logger.info(f"Research report saved to {report_path}")
             return result
         
         # Try to extract the report from the chat history
@@ -246,23 +251,120 @@ class ResearchTeam(Team):
             logger.info("Report extracted from chat history")
             if "context" in result:
                 result["context"]["report_content"] = report_content
+            # Save the report to a file
+            report_path = self.save_report(report_content)
+            result["report_path"] = report_path
+            logger.info(f"Research report saved to {report_path}")
             return result
         
-        # If no report was found, check the chat history directly
-        if "chat_history" in result and result["chat_history"]:
-            logger.debug("Checking chat history directly for report")
-            for message in result["chat_history"]:
-                if isinstance(message, dict) and message.get("name") == "ReportWriter":
-                    content = message.get("content", "")
-                    if isinstance(content, str) and "#" in content:
-                        # Check if content contains a markdown heading
-                        lines = content.strip().split("\n")
-                        for line in lines:
-                            if line.strip().startswith("#"):
-                                logger.info("Found report in chat history during direct check")
-                                if "context" in result:
-                                    result["context"]["report_content"] = content
-                                return result
+        # If no report was found, check the raw chat result
+        if hasattr(self, "_last_chat_result"):
+            logger.debug("Checking raw chat result for report")
+            chat_result = self._last_chat_result
+            
+            # Try to extract report directly from the chat result
+            try:
+                # First, try to iterate through the chat_result as a list
+                logger.debug("Trying to iterate through chat_result as a list")
+                try:
+                    # Get the length of chat_result
+                    chat_result_length = len(chat_result)
+                    logger.debug(f"Chat result length: {chat_result_length}")
+                    
+                    # Iterate through the chat_result directly
+                    for i in range(chat_result_length):
+                        try:
+                            message = chat_result[i]
+                            logger.debug(f"Examining message {i}: {type(message)}")
+                            
+                            # Check if this is a message from ReportWriter
+                            sender = getattr(message, "sender", None)
+                            if sender == "ReportWriter":
+                                logger.debug(f"Found message from ReportWriter at index {i}")
+                                content = getattr(message, "content", "")
+                                if isinstance(content, str):
+                                    logger.debug(f"Message content length: {len(content)}")
+                                    # Check if content contains a markdown heading or looks like a report
+                                    if "#" in content or "Trends in AI Assistants" in content:
+                                        logger.info(f"Found report in chat_result[{i}] from ReportWriter")
+                                        report_content = content
+                                        if "context" in result:
+                                            result["context"]["report_content"] = report_content
+                                        # Save the report
+                                        report_path = self.save_report(report_content)
+                                        result["report_path"] = report_path
+                                        logger.info(f"Research report saved to {report_path}")
+                                        return result
+                        except (IndexError, AttributeError) as e:
+                            logger.debug(f"Error accessing chat_result[{i}]: {e}")
+                except Exception as e:
+                    logger.error(f"Error iterating through chat_result as a list: {e}")
+                    import traceback
+                    logger.error(traceback.format_exc())
+                
+                # If that didn't work, try to convert chat_result to a list
+                logger.debug("Trying to convert chat_result to a list")
+                try:
+                    # Convert chat_result to a list if it's not already
+                    if not isinstance(chat_result, list):
+                        chat_result_list = list(chat_result)
+                        logger.debug(f"Converted chat_result to list with {len(chat_result_list)} items")
+                    else:
+                        chat_result_list = chat_result
+                        logger.debug(f"Chat result is already a list with {len(chat_result_list)} items")
+                    
+                    # Look for ReportWriter's message
+                    for i, message in enumerate(chat_result_list):
+                        if hasattr(message, 'content') and hasattr(message, 'sender'):
+                            if message.sender == "ReportWriter" and isinstance(message.content, str):
+                                content = message.content
+                                logger.debug(f"Found message from ReportWriter at index {i}")
+                                # Check if content contains a markdown heading or looks like a report
+                                if "#" in content or "Trends in AI Assistants" in content:
+                                    logger.info(f"Found report in chat_result_list[{i}] from ReportWriter")
+                                    report_content = content
+                                    if "context" in result:
+                                        result["context"]["report_content"] = report_content
+                                    # Save the report
+                                    report_path = self.save_report(report_content)
+                                    result["report_path"] = report_path
+                                    logger.info(f"Research report saved to {report_path}")
+                                    return result
+                except Exception as e:
+                    logger.error(f"Error converting chat_result to list: {e}")
+                    import traceback
+                    logger.error(traceback.format_exc())
+                
+                # If still no report, try to access the chat_result's attributes
+                logger.debug("Trying to access chat_result's attributes")
+                try:
+                    # Check if chat_result has a messages attribute
+                    if hasattr(chat_result, 'messages'):
+                        logger.debug(f"Found messages attribute with {len(chat_result.messages)} items")
+                        for i, message in enumerate(chat_result.messages):
+                            if hasattr(message, 'content') and hasattr(message, 'sender'):
+                                if message.sender == "ReportWriter" and isinstance(message.content, str):
+                                    content = message.content
+                                    logger.debug(f"Found message from ReportWriter at index {i}")
+                                    # Check if content contains a markdown heading or looks like a report
+                                    if "#" in content or "Trends in AI Assistants" in content:
+                                        logger.info(f"Found report in chat_result.messages[{i}] from ReportWriter")
+                                        report_content = content
+                                        if "context" in result:
+                                            result["context"]["report_content"] = report_content
+                                        # Save the report
+                                        report_path = self.save_report(report_content)
+                                        result["report_path"] = report_path
+                                        logger.info(f"Research report saved to {report_path}")
+                                        return result
+                except Exception as e:
+                    logger.error(f"Error accessing chat_result's attributes: {e}")
+                    import traceback
+                    logger.error(traceback.format_exc())
+            except Exception as e:
+                logger.error(f"Error extracting report from raw chat result: {e}")
+                import traceback
+                logger.error(traceback.format_exc())
         
         # If still no report, log a warning
         logger.warning("No report found in research results")
@@ -367,9 +469,9 @@ class ResearchTeam(Team):
         logger.warning("No report found in chat history")
         return None
 
-    def run_swarm(self, query: str, max_rounds: int = 30) -> Dict[str, Any]:
+    def run_swarm(self, query: str, max_rounds: int = 10) -> Dict[str, Any]:
         """
-        Run a research scenario using AG2's Swarm orchestration.
+        Run the swarm with the given query.
         
         Args:
             query: The research query to investigate
@@ -403,6 +505,23 @@ class ResearchTeam(Team):
         # Log the agents that will be included in the swarm
         agent_names = [agent.name for agent in agents]
         logger.debug(f"Agents in swarm: {agent_names}")
+        
+        # Add a message handler to capture the ReportWriter's message
+        report_content = [None]  # Use a list to allow modification in the inner function
+        
+        def message_handler(sender, recipient, message):
+            logger.debug(f"Message from {sender} to {recipient}: {message[:100]}...")
+            if sender == "ReportWriter" and isinstance(message, str) and "#" in message:
+                logger.info(f"Captured report from ReportWriter: {message[:100]}...")
+                report_content[0] = message
+                # Store the report in context variables
+                context_variables["report_content"] = message
+        
+        # Register the message handler with each agent
+        for agent in agents:
+            if hasattr(agent, "register_message_handler"):
+                agent.register_message_handler(message_handler)
+                logger.debug(f"Registered message handler with {agent.name}")
         
         # Run the swarm
         try:
@@ -451,7 +570,11 @@ class ResearchTeam(Team):
                 
                 # Extract chat history
                 chat_history = []
-                report_content = None
+                
+                # Check if we captured a report from the message handler
+                if report_content[0]:
+                    logger.info("Using report captured by message handler")
+                    context_variables["report_content"] = report_content[0]
                 
                 # Try to get chat history from chat manager first
                 if chat_manager and hasattr(chat_manager, "messages"):
@@ -473,7 +596,6 @@ class ResearchTeam(Team):
                                 for line in lines:
                                     if line.strip().startswith("#"):
                                         logger.info(f"Found report with heading: {line.strip()}")
-                                        report_content = message.content
                                         context_variables["report_content"] = message.content
                                         break
                 
@@ -499,7 +621,6 @@ class ResearchTeam(Team):
                             for line in lines:
                                 if line.strip().startswith("#"):
                                     logger.info(f"Found report with heading: {line.strip()}")
-                                    report_content = content
                                     context_variables["report_content"] = content
                                     break
                 
@@ -526,11 +647,42 @@ class ResearchTeam(Team):
                                     for line in lines:
                                         if line.strip().startswith("#"):
                                             logger.info(f"Found report with heading: {line.strip()}")
-                                            report_content = content
                                             context_variables["report_content"] = content
                                             break
                     except Exception as e:
                         logger.error(f"Error getting chat history from swarm manager: {e}")
+                
+                # If still no report, try to directly iterate through the chat_result as a list
+                if not context_variables["report_content"]:
+                    logger.debug("Trying to directly iterate through chat_result as a list")
+                    try:
+                        # Iterate through the chat_result directly
+                        for i in range(len(chat_result)):
+                            try:
+                                message = chat_result[i]
+                                # Check if this is a message from ReportWriter
+                                sender = getattr(message, "sender", None)
+                                if sender == "ReportWriter":
+                                    content = getattr(message, "content", "")
+                                    if isinstance(content, str) and "#" in content:
+                                        logger.info(f"Found report in chat_result[{i}] from ReportWriter")
+                                        context_variables["report_content"] = content
+                                        break
+                            except (IndexError, AttributeError) as e:
+                                logger.debug(f"Error accessing chat_result[{i}]: {e}")
+                    except Exception as e:
+                        logger.error(f"Error iterating through chat_result: {e}")
+                
+                # If still no report, try to extract it from the log file
+                if not context_variables["report_content"]:
+                    logger.debug("Trying to extract report from log file")
+                    try:
+                        report = self.extract_report_from_log()
+                        if report:
+                            logger.info("Found report in log file")
+                            context_variables["report_content"] = report
+                    except Exception as e:
+                        logger.error(f"Error extracting report from log file: {e}")
                 
                 # Extract context variables
                 updated_context = context_variables
@@ -556,9 +708,8 @@ class ResearchTeam(Team):
                 updated_context["status"] = "completed"
                 
                 # If we found a report, save it to a file
-                if report_content:
-                    updated_context["report_content"] = report_content
-                    report_path = self.save_report(report_content)
+                if updated_context["report_content"]:
+                    report_path = self.save_report(updated_context["report_content"])
                     result_dict["report_path"] = report_path
                     logger.info(f"Research report saved to {report_path}")
                 else:
@@ -590,6 +741,48 @@ class ResearchTeam(Team):
             logger.error(traceback.format_exc())
             context_variables["status"] = "error"
             raise
+            
+    def extract_report_from_log(self) -> Optional[str]:
+        """
+        Extract the report from the log file.
+        
+        Returns:
+            The report content if found, None otherwise
+        """
+        logger.debug("Extracting report from log file")
+        try:
+            # Check if there's a log file in the current directory
+            log_files = ["research_output.log", "research_output_new.log"]
+            for log_file in log_files:
+                if os.path.exists(log_file):
+                    logger.debug(f"Found log file: {log_file}")
+                    with open(log_file, "r") as f:
+                        log_content = f.read()
+                    
+                    # Look for the ReportWriter's message
+                    report_start = log_content.find("ReportWriter (to chat_manager):")
+                    if report_start != -1:
+                        logger.debug(f"Found ReportWriter message at position {report_start}")
+                        # Find the start of the report (# Trends in AI Assistants)
+                        report_content_start = log_content.find("# Trends in AI Assistants", report_start)
+                        if report_content_start != -1:
+                            logger.debug(f"Found report content at position {report_content_start}")
+                            # Find the end of the report (I will now transfer this report)
+                            report_content_end = log_content.find("I will now transfer this report", report_content_start)
+                            if report_content_end != -1:
+                                logger.debug(f"Found report end at position {report_content_end}")
+                                # Extract the report content
+                                report_content = log_content[report_content_start:report_content_end].strip()
+                                logger.info(f"Extracted report from log file: {report_content[:100]}...")
+                                return report_content
+            
+            logger.warning("No report found in log files")
+            return None
+        except Exception as e:
+            logger.error(f"Error extracting report from log file: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+            return None
 
     def create_agent(self, agent_class: Type, name: str, **kwargs) -> Any:
         """
