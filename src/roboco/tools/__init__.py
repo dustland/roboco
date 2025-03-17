@@ -10,6 +10,7 @@ from .terminal import TerminalTool
 from .run import RunTool
 from .browser import BrowserTool
 from .sim import SimulationTool
+from .web_search import WebSearchTool
 
 __all__ = [
     "FileSystemTool",
@@ -17,5 +18,6 @@ __all__ = [
     "TerminalTool",
     "RunTool",
     "BrowserTool",
-    "SimulationTool"
+    "SimulationTool",
+    "WebSearchTool"
 ] 

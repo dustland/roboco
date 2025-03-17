@@ -1,68 +1,99 @@
 """
-Tool Module
+Tool Base Class for Roboco
 
-This module defines the base Tool class that all specialized tools inherit from.
-Tools are designed to be compatible with AG2's function calling mechanism.
+This module provides a base class for tools in the Roboco system.
+It wraps autogen.tools.Tool to provide a consistent interface for all Roboco tools.
 """
 
-from typing import Dict, Any, Callable, Optional, List
+from typing import Any, Callable, Dict, Optional
 from loguru import logger
 
-class Tool:
-    """Base class for all tools that can be used by agents."""
+from autogen.tools import Tool as AutogenTool
+
+
+class Tool(AutogenTool):
+    """
+    Base class for all Roboco tools.
     
-    def __init__(self, name: str, description: str):
+    This is a thin wrapper around autogen.tools.Tool that provides a consistent
+    interface for all Roboco tools and adds Roboco-specific functionality.
+    
+    Example:
+        ```python
+        class MyTool(Tool):
+            def __init__(self, param1: str = "default"):
+                # Define the function to be called when the tool is invoked
+                def my_function(query: str) -> str:
+                    '''
+                    Process a query.
+                    
+                    Args:
+                        query: The query to process
+                        
+                    Returns:
+                        The processed result
+                    '''
+                    # Implementation using self.param1
+                    return f"Processed {query} with {self.param1}"
+                
+                # Initialize instance variables
+                self.param1 = param1
+                
+                # Initialize the Tool parent class with the function
+                super().__init__(
+                    name="my_function",
+                    description="Process a query with MyTool",
+                    func_or_tool=my_function
+                )
+        ```
+    """
+    
+    def __init__(
+        self,
+        name: str,
+        description: str,
+        func_or_tool: Callable,
+        **kwargs
+    ):
         """
-        Initialize the tool.
+        Initialize the Tool.
         
         Args:
-            name: Name of the tool
-            description: Description of what the tool does
+            name: The name of the tool
+            description: A description of what the tool does
+            func_or_tool: The function to be called when the tool is invoked
+            **kwargs: Additional arguments to pass to the parent class
         """
-        self.name = name
-        self.description = description
+        super().__init__(
+            name=name,
+            description=description,
+            func_or_tool=func_or_tool,
+            **kwargs
+        )
+        logger.debug(f"Initialized {self.__class__.__name__} tool")
     
-    def get_function_definitions(self) -> List[Dict[str, Any]]:
+    def register_with_agents(self, caller_agent: Any, executor_agent: Any) -> None:
         """
-        Get definitions for all functions provided by this tool.
+        Register this tool with a caller agent and an executor agent.
         
-        Override this method in subclasses to provide custom function definitions.
+        This follows AG2's pattern of having a caller agent (that suggests the tool)
+        and an executor agent (that executes the tool).
         
-        Returns:
-            List of function definitions, each containing:
-            - name: Function name
-            - function: The callable function
-            - description: Function description
-            - parameters: Function parameters schema
+        Args:
+            caller_agent: The agent that will suggest using the tool
+            executor_agent: The agent that will execute the tool
         """
-        # Default implementation: extract public methods
-        definitions = []
-        
-        for attr_name in dir(self):
-            # Skip special methods, private methods, and known non-function attributes
-            if (attr_name.startswith('_') or 
-                attr_name in ['name', 'description', 'get_function_definitions']):
-                continue
+        try:
+            # Register the tool with both agents
+            self.register_for_llm(caller_agent)
+            self.register_for_execution(executor_agent)
+            
+            # Check if the function was registered correctly
+            if hasattr(executor_agent, "_function_map") and self.name in executor_agent._function_map:
+                logger.debug(f"{self.name} function successfully registered with executor agent")
+            else:
+                logger.warning(f"{self.name} function not found in executor_agent._function_map after registration")
                 
-            attr = getattr(self, attr_name)
-            if callable(attr):
-                # Extract description from docstring
-                docstring = attr.__doc__ or f"Function {attr_name} from {self.name} tool"
-                description = docstring.strip().split('\n')[0]  # First line of docstring
-                
-                # Create a simple parameters schema
-                # Tools should override this method to provide proper schemas
-                parameters = {
-                    'type': 'object',
-                    'properties': {},
-                    'required': []
-                }
-                
-                definitions.append({
-                    'name': attr_name,
-                    'function': attr,
-                    'description': description,
-                    'parameters': parameters
-                })
-                
-        return definitions
+            logger.info(f"Registered {self.name} from {self.__class__.__name__}")
+        except Exception as e:
+            logger.error(f"Error registering {self.name}: {e}")

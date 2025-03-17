@@ -20,44 +20,37 @@ class TerminalTool(Tool):
     
     def __init__(self):
         """Initialize the terminal tool."""
-        super().__init__(name="terminal", description="Execute terminal commands with directory tracking")
+        # Initialize instance variables
         self.current_path = os.getcwd()
         self._process = None
         self._running = False
-        logger.info(f"Initialized TerminalTool in {self.current_path}")
-    
-    def execute(self, command: str, working_dir: str = None) -> Dict[str, Any]:
-        """
-        Execute a terminal command and track directory changes.
         
-        Args:
-            command: The terminal command to execute
-            working_dir: Optional override for the current working directory
+        # Define the execute function
+        def execute(command: str, working_dir: str = None) -> Dict[str, Any]:
+            """
+            Execute a terminal command and track directory changes.
             
-        Returns:
-            Dictionary with command output and execution info
-        """
-        # Use tracked path if working_dir not specified
-        if working_dir is None:
-            working_dir = self.current_path
-        
-        try:
-            # Handle 'cd' command specially to track directory changes
-            if command.lstrip().startswith("cd "):
-                return self._handle_cd_command(command)
+            Args:
+                command: The terminal command to execute
+                working_dir: Optional override for the current working directory
+                
+            Returns:
+                Dictionary with command output and execution info
+            """
+            # Use tracked path if working_dir not specified
+            if working_dir is None:
+                working_dir = self.current_path
             
-            # Handle commands with chained execution
-            if "&" in command or ";" in command or "&&" in command or "||" in command:
-                # For chained commands, wrap in a subshell to maintain context
-                wrapped_command = f"cd {shlex.quote(working_dir)} && {command}"
-                process = subprocess.run(
-                    wrapped_command,
-                    shell=True,
-                    capture_output=True,
-                    text=True
-                )
-            else:
-                # For simple commands, use the specified working directory
+            try:
+                # Handle 'cd' command specially to track directory changes
+                if command.lstrip().startswith("cd "):
+                    return self._handle_cd_command(command)
+                
+                # Handle commands with chained execution
+                if "&" in command or ";" in command or "&&" in command or "||" in command:
+                    return self._handle_complex_command(command, working_dir)
+                
+                # Execute the command
                 process = subprocess.run(
                     command,
                     shell=True,
@@ -65,78 +58,193 @@ class TerminalTool(Tool):
                     text=True,
                     cwd=working_dir
                 )
+                
+                logger.info(f"Executed command: {command}")
+                return {
+                    "success": process.returncode == 0,
+                    "command": command,
+                    "output": process.stdout,
+                    "error": process.stderr,
+                    "return_code": process.returncode,
+                    "working_dir": working_dir
+                }
+            except Exception as e:
+                logger.error(f"Error executing command '{command}': {e}")
+                return {
+                    "success": False,
+                    "command": command,
+                    "output": "",
+                    "error": str(e),
+                    "return_code": -1,
+                    "working_dir": working_dir
+                }
+        
+        # Define the get_current_directory function
+        def get_current_directory() -> Dict[str, Any]:
+            """
+            Get the current working directory tracked by the terminal tool.
             
-            logger.info(f"Executed command: {command}")
+            Returns:
+                Dictionary with current directory info
+            """
+            return {
+                "success": True,
+                "current_directory": self.current_path
+            }
+        
+        # Initialize the Tool parent class with the execute function
+        super().__init__(
+            name="execute",
+            description="Execute terminal commands with directory tracking",
+            func_or_tool=execute
+        )
+        
+        # Register the functions
+        self.register_function(get_current_directory)
+        
+        logger.info(f"Initialized TerminalTool in {self.current_path}")
+    
+    def _handle_cd_command(self, command: str) -> Dict[str, Any]:
+        """
+        Handle 'cd' command to track directory changes.
+        
+        Args:
+            command: The cd command to execute
+            
+        Returns:
+            Dictionary with command execution info
+        """
+        try:
+            # Extract the target directory
+            parts = command.split(maxsplit=1)
+            if len(parts) < 2:
+                # 'cd' without arguments goes to home directory
+                target_dir = os.path.expanduser("~")
+            else:
+                target_dir = parts[1].strip()
+            
+            # Handle relative paths
+            if not os.path.isabs(target_dir):
+                target_dir = os.path.normpath(os.path.join(self.current_path, target_dir))
+            
+            # Check if directory exists
+            if not os.path.exists(target_dir):
+                return {
+                    "success": False,
+                    "command": command,
+                    "output": "",
+                    "error": f"Directory not found: {target_dir}",
+                    "return_code": 1,
+                    "working_dir": self.current_path
+                }
+            
+            if not os.path.isdir(target_dir):
+                return {
+                    "success": False,
+                    "command": command,
+                    "output": "",
+                    "error": f"Not a directory: {target_dir}",
+                    "return_code": 1,
+                    "working_dir": self.current_path
+                }
+            
+            # Update the current path
+            old_path = self.current_path
+            self.current_path = target_dir
+            
+            logger.info(f"Changed directory from {old_path} to {target_dir}")
+            return {
+                "success": True,
+                "command": command,
+                "output": f"Changed directory to {target_dir}",
+                "error": "",
+                "return_code": 0,
+                "working_dir": target_dir
+            }
+        except Exception as e:
+            logger.error(f"Error handling cd command '{command}': {e}")
+            return {
+                "success": False,
+                "command": command,
+                "output": "",
+                "error": str(e),
+                "return_code": 1,
+                "working_dir": self.current_path
+            }
+    
+    def _handle_complex_command(self, command: str, working_dir: str) -> Dict[str, Any]:
+        """
+        Handle complex commands with chained execution.
+        
+        Args:
+            command: The complex command to execute
+            working_dir: The working directory for the command
+            
+        Returns:
+            Dictionary with command execution info
+        """
+        try:
+            # Execute the command
+            process = subprocess.run(
+                command,
+                shell=True,
+                capture_output=True,
+                text=True,
+                cwd=working_dir
+            )
+            
+            # Check if the command contains a cd command that we need to track
+            if "cd " in command:
+                # This is a best-effort approach - we'll try to extract the final directory
+                # For complex commands, this might not always work perfectly
+                self._update_directory_after_complex_command(command, working_dir)
+            
+            logger.info(f"Executed complex command: {command}")
             return {
                 "success": process.returncode == 0,
                 "command": command,
                 "output": process.stdout,
                 "error": process.stderr,
                 "return_code": process.returncode,
-                "current_directory": self.current_path
+                "working_dir": self.current_path  # Use the potentially updated path
             }
         except Exception as e:
-            logger.error(f"Error executing command '{command}': {str(e)}")
+            logger.error(f"Error executing complex command '{command}': {e}")
             return {
                 "success": False,
                 "command": command,
+                "output": "",
                 "error": str(e),
-                "current_directory": self.current_path
+                "return_code": -1,
+                "working_dir": working_dir
             }
     
-    def _handle_cd_command(self, command: str) -> Dict[str, Any]:
+    def _update_directory_after_complex_command(self, command: str, working_dir: str) -> None:
         """
-        Handle 'cd' command to change the current working directory.
+        Update the current directory after executing a complex command.
         
         Args:
-            command: The 'cd' command to process
-            
-        Returns:
-            Dictionary with operation result
+            command: The complex command that was executed
+            working_dir: The working directory for the command
         """
         try:
-            # Extract the target directory
-            parts = shlex.split(command)
+            # Execute pwd to get the current directory
+            process = subprocess.run(
+                "pwd",
+                shell=True,
+                capture_output=True,
+                text=True,
+                cwd=working_dir
+            )
             
-            if len(parts) < 2:
-                # 'cd' with no arguments goes to home directory
-                new_path = os.path.expanduser("~")
-            else:
-                new_path = os.path.expanduser(parts[1])
-            
-            # Handle relative paths
-            if not os.path.isabs(new_path):
-                new_path = os.path.join(self.current_path, new_path)
-            
-            # Normalize the path
-            new_path = os.path.abspath(new_path)
-            
-            # Verify the directory exists
-            if os.path.isdir(new_path):
-                self.current_path = new_path
-                logger.info(f"Changed directory to {new_path}")
-                return {
-                    "success": True,
-                    "command": command,
-                    "output": f"Changed directory to {new_path}",
-                    "current_directory": self.current_path
-                }
-            else:
-                logger.warning(f"Directory not found: {new_path}")
-                return {
-                    "success": False,
-                    "command": command,
-                    "error": f"No such directory: {new_path}",
-                    "current_directory": self.current_path
-                }
+            if process.returncode == 0:
+                new_dir = process.stdout.strip()
+                if os.path.exists(new_dir) and os.path.isdir(new_dir):
+                    self.current_path = new_dir
+                    logger.info(f"Updated current directory to {new_dir} after complex command")
         except Exception as e:
-            logger.error(f"Error handling cd command: {str(e)}")
-            return {
-                "success": False,
-                "command": command,
-                "error": str(e),
-                "current_directory": self.current_path
-            }
+            logger.warning(f"Failed to update directory after complex command: {e}")
+            # Continue without updating the directory
     
     async def execute_async(self, command: str, working_dir: str = None, timeout: int = 60) -> Dict[str, Any]:
         """
@@ -257,15 +365,3 @@ class TerminalTool(Tool):
                 "error": str(e),
                 "current_directory": self.current_path
             }
-    
-    def get_current_directory(self) -> Dict[str, Any]:
-        """
-        Get the current working directory.
-        
-        Returns:
-            Dictionary with current directory info
-        """
-        return {
-            "success": True,
-            "current_directory": self.current_path
-        }

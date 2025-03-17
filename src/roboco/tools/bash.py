@@ -19,104 +19,123 @@ class BashTool(Tool):
     
     def __init__(self):
         """Initialize the bash tool."""
-        super().__init__(name="bash", description="Execute bash commands in the terminal")
+        # Initialize instance variables
         self._process = None
         self._running = False
-        logger.info("Initialized BashTool")
-    
-    def execute_command(self, command: str, working_dir: str = None, timeout: int = 30) -> Dict[str, Any]:
-        """
-        Execute a bash command in the terminal.
         
-        Args:
-            command: The bash command to execute
-            working_dir: The working directory for the command (optional)
-            timeout: Maximum execution time in seconds (default: 30)
+        # Define the execute_command function
+        def execute_command(command: str, working_dir: str = None, timeout: int = 30) -> Dict[str, Any]:
+            """
+            Execute a bash command in the terminal.
             
-        Returns:
-            Dictionary with command output and execution info
-        """
-        try:
-            # For long-running commands that should run in background
-            if command.strip().endswith("&"):
-                return self._execute_background_command(command, working_dir)
-            
-            # For normal commands with timeout
-            env = os.environ.copy()
-            process = subprocess.run(
-                command,
-                shell=True,
-                capture_output=True,
-                text=True,
-                cwd=working_dir,
-                env=env,
-                timeout=timeout
-            )
-            
-            logger.info(f"Executed command: {command}")
-            return {
-                "success": process.returncode == 0,
-                "command": command,
-                "output": process.stdout,
-                "error": process.stderr,
-                "return_code": process.returncode
-            }
-        except subprocess.TimeoutExpired:
-            logger.warning(f"Command timed out: {command}")
-            return {
-                "success": False,
-                "command": command,
-                "output": "",
-                "error": f"Command timed out after {timeout} seconds",
-                "return_code": -1
-            }
-        except Exception as e:
-            logger.error(f"Error executing command '{command}': {str(e)}")
-            return {
-                "success": False,
-                "command": command,
-                "output": "",
-                "error": str(e),
-                "return_code": -1
-            }
+            Args:
+                command: The bash command to execute
+                working_dir: The working directory for the command (optional)
+                timeout: Maximum execution time in seconds (default: 30)
+                
+            Returns:
+                Dictionary with command output and execution info
+            """
+            try:
+                # For long-running commands that should run in background
+                if command.strip().endswith("&"):
+                    return self._execute_background_command(command, working_dir)
+                
+                # For normal commands with timeout
+                env = os.environ.copy()
+                process = subprocess.run(
+                    command,
+                    shell=True,
+                    capture_output=True,
+                    text=True,
+                    cwd=working_dir,
+                    timeout=timeout,
+                    env=env
+                )
+                
+                logger.info(f"Executed command: {command}")
+                return {
+                    "success": True,
+                    "command": command,
+                    "exit_code": process.returncode,
+                    "stdout": process.stdout,
+                    "stderr": process.stderr,
+                    "working_dir": working_dir or os.getcwd()
+                }
+            except subprocess.TimeoutExpired:
+                logger.warning(f"Command timed out after {timeout}s: {command}")
+                return {
+                    "success": False,
+                    "command": command,
+                    "error": f"Command timed out after {timeout} seconds",
+                    "working_dir": working_dir or os.getcwd()
+                }
+            except Exception as e:
+                logger.error(f"Error executing command '{command}': {e}")
+                return {
+                    "success": False,
+                    "command": command,
+                    "error": str(e),
+                    "working_dir": working_dir or os.getcwd()
+                }
+        
+        # Initialize the Tool parent class with the execute_command function
+        super().__init__(
+            name="execute_command",
+            description="Execute bash commands in the terminal",
+            func_or_tool=execute_command
+        )
+        
+        logger.info("Initialized BashTool")
     
     def _execute_background_command(self, command: str, working_dir: str = None) -> Dict[str, Any]:
         """
         Execute a command in the background.
         
         Args:
-            command: The bash command to execute (should end with &)
-            working_dir: The working directory for the command (optional)
+            command: The command to execute
+            working_dir: The working directory for the command
             
         Returns:
-            Dictionary with basic execution info
+            Dictionary with execution info
         """
         try:
-            # For background processes, don't capture output (it will be redirected)
+            # Remove the trailing & if present
+            if command.strip().endswith("&"):
+                command = command.strip()[:-1].strip()
+            
+            # Start the process
             env = os.environ.copy()
             process = subprocess.Popen(
                 command,
                 shell=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
                 cwd=working_dir,
-                env=env,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL
+                env=env
             )
             
-            # Just return immediately since it's a background process
+            # Store the process
+            self._process = process
+            self._running = True
+            
             logger.info(f"Started background command: {command}")
             return {
                 "success": True,
                 "command": command,
-                "message": f"Command started in background with PID {process.pid}",
-                "pid": process.pid
+                "pid": process.pid,
+                "running": True,
+                "working_dir": working_dir or os.getcwd(),
+                "message": f"Command started in background with PID {process.pid}"
             }
         except Exception as e:
-            logger.error(f"Error starting background command '{command}': {str(e)}")
+            logger.error(f"Error starting background command '{command}': {e}")
             return {
                 "success": False,
                 "command": command,
-                "error": str(e)
+                "error": str(e),
+                "working_dir": working_dir or os.getcwd()
             }
     
     async def execute_interactive(self, command: str, working_dir: str = None, timeout: int = 120) -> Dict[str, Any]:

@@ -139,12 +139,6 @@ RoboCo extends AG2's agent communication patterns with additional features:
 - **BashTool**: Bash command execution
 - **TerminalTool**: Terminal command execution
 - **RunTool**: Code execution
-- **SimulationTool**: Simulation capabilities for embodied AI
-- **RobotControlTool**: Interface for controlling robot movements
-- **SensorTool**: Processing and interpreting sensor data
-- **VisionTool**: Computer vision and image processing
-- **AudioTool**: Audio processing and speech recognition
-- **TactileTool**: Processing tactile sensor data
 
 ## Requirements
 

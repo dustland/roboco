@@ -36,6 +36,7 @@ class Agent(ConversableAgent):
         system_message: str,
         config_path: Optional[str] = None,
         terminate_msg: Optional[str] = None,
+        llm_config: Optional[Dict[str, Any]] = None,
         **kwargs
     ):
         """Initialize an agent.
@@ -46,18 +47,16 @@ class Agent(ConversableAgent):
             config_path: Optional path to agent configuration file
             terminate_msg: Optional message to include at the end of responses to signal completion.
                            If None, uses the value from config.
+            llm_config: Optional LLM configuration. If None, loads from config_path.
             **kwargs: Additional arguments passed to ConversableAgent
         """
-        # Load configuration
-        config = load_config(config_path)
-        llm_config = get_llm_config(config)
-        
-        # Log LLM configuration for debugging
-        logger.debug(f"LLM config for {name}: {llm_config}")
-        
-        # Use termination message from config if none is provided
-        # if terminate_msg is None:
-        #     terminate_msg = config.terminate_msg
+        # Use provided llm_config or load from config if None
+        if llm_config is None and 'llm_config' not in kwargs:
+            config = load_config(config_path)
+            llm_config = get_llm_config(config)
+            logger.debug(f"Loaded llm_config for {name}: {llm_config}")
+        else:
+            logger.debug(f"Using provided llm_config for {name}")
         
         # Store termination message
         self.terminate_msg = terminate_msg

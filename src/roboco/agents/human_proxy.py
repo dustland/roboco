@@ -1,8 +1,15 @@
-"""Human proxy agent implementation."""
+"""
+Human Proxy Agent
+
+This module provides a proxy for human users, enabling natural interaction
+with other agents in the system.
+"""
 
 from typing import Dict, Any, List, Optional
+from loguru import logger
 from autogen import UserProxyAgent
 from roboco.core.config import load_config
+import logging
 
 class HumanProxy(UserProxyAgent):
     """Agent that acts as a proxy for human users, enabling natural interaction with other agents.
@@ -19,7 +26,7 @@ class HumanProxy(UserProxyAgent):
 
     def __init__(
         self,
-        name: str = "Human",
+        name: str = "HumanProxy",
         system_message: Optional[str] = None,
         config_path: Optional[str] = None,
         human_input_mode: str = "NEVER",
@@ -61,4 +68,4 @@ class HumanProxy(UserProxyAgent):
             code_execution_config={"use_docker": False},  # Disable Docker for code execution
             is_termination_msg=lambda x: terminate_msg in (x.get("content", "") or ""),
             **kwargs
-        ) 
+        )

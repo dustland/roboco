@@ -1,31 +1,47 @@
 """
-Tool Factory for Roboco
+Tool Factory for Roboco (DEPRECATED)
 
 This module provides a factory for creating and managing tools through automatic discovery.
 It simplifies the process of registering tools with autogen's ConversableAgent instances.
+
+DEPRECATED: Please use the Tool.register_with_agents method instead.
 """
 
 import importlib
 import inspect
 import os
 import pkgutil
-import functools
-from typing import Dict, Any, List, Optional, Callable, Type
+import warnings
+from typing import Dict, Any, List, Callable, Type
 from loguru import logger
 
 from roboco.core.tool import Tool
 
+
 class ToolFactory:
-    """Factory for creating and managing autogen-compatible tools through automatic discovery."""
+    """
+    Factory for creating and managing autogen-compatible tools through automatic discovery.
+    
+    DEPRECATED: Please use the Tool.register_with_agents method instead.
+    """
     
     @classmethod
     def discover_tools(cls) -> Dict[str, Type]:
         """
         Discover all tool classes in the tools package.
         
+        DEPRECATED: Please use the Tool.register_with_agents method instead.
+        
         Returns:
             Dictionary mapping tool names to tool classes
         """
+        warnings.warn(
+            "ToolFactory.discover_tools is deprecated and will be removed in a future version. "
+            "Please use the Tool.register_with_agents method instead.",
+            DeprecationWarning,
+            stacklevel=2
+        )
+        
         tool_classes = {}
         
         try:
@@ -63,9 +79,11 @@ class ToolFactory:
         return tool_classes
     
     @classmethod
-    def create_tool(cls, tool_name: str, **kwargs: Any) -> Any:
+    def create_tool(cls, tool_name: str, **kwargs: Any) -> Tool:
         """
         Create an instance of a tool by name.
+        
+        DEPRECATED: Please use the Tool.register_with_agents method instead.
         
         Args:
             tool_name: Name of the tool class to instantiate
@@ -77,6 +95,13 @@ class ToolFactory:
         Raises:
             ValueError: If the tool class is not found
         """
+        warnings.warn(
+            "ToolFactory.create_tool is deprecated and will be removed in a future version. "
+            "Please use the Tool.register_with_agents method instead.",
+            DeprecationWarning,
+            stacklevel=2
+        )
+        
         tool_classes = cls.discover_tools()
         
         if tool_name not in tool_classes:
@@ -95,6 +120,8 @@ class ToolFactory:
         """
         Register a tool with a caller agent and an executor agent.
         
+        DEPRECATED: Please use the Tool.register_with_agents method instead.
+        
         This follows AG2's pattern of having a caller agent (that suggests the tool)
         and an executor agent (that executes the tool).
         
@@ -104,63 +131,35 @@ class ToolFactory:
             tool_name: Name of the tool to register
             **kwargs: Additional parameters for tool initialization
         """
+        warnings.warn(
+            "ToolFactory.register_tool is deprecated and will be removed in a future version. "
+            "Please use the Tool.register_with_agents method instead.",
+            DeprecationWarning,
+            stacklevel=2
+        )
+        
         # Create the tool instance
         tool = cls.create_tool(tool_name, **kwargs)
         
-        # Register each public method of the tool with both agents
-        for method_name in dir(tool):
-            # Skip private methods and attributes
-            if method_name.startswith('_') or method_name in ['name', 'description', 'get_function_definitions']:
-                continue
-                
-            method = getattr(tool, method_name)
-            if callable(method):
-                # Get the method's docstring for description
-                description = method.__doc__ or f"Method {method_name} from {tool_name}"
-                
-                # Create a standalone function that calls the method
-                def make_function(tool_instance, method_name):
-                    method_ref = getattr(tool_instance, method_name)
-                    
-                    def function(*args, **kwargs):
-                        result = method_ref(*args, **kwargs)
-                        # Convert result to string to ensure compatibility
-                        return str(result) if result is not None else None
-                    
-                    # Set function metadata
-                    function.__name__ = method_name
-                    function.__doc__ = description
-                    
-                    return function
-                
-                # Create the standalone function
-                function = make_function(tool, method_name)
-                
-                # Register the function with both agents
-                try:
-                    # Register with caller agent
-                    caller_agent.register_function(
-                        {method_name: function}
-                    )
-                    
-                    # Register with executor agent
-                    executor_agent.register_function(
-                        {method_name: function}
-                    )
-                    
-                    logger.debug(f"Registered method {method_name} from tool {tool_name}")
-                except Exception as e:
-                    logger.error(f"Error registering method {method_name}: {e}")
-        
-        logger.info(f"Registered methods from tool {tool_name}")
+        # Use the tool's register_with_agents method
+        tool.register_with_agents(caller_agent, executor_agent)
     
     @classmethod
     def get_available_tools(cls) -> List[str]:
         """
         Get a list of all discovered tool names.
         
+        DEPRECATED: Please use the Tool.register_with_agents method instead.
+        
         Returns:
             List of discovered tool names
         """
+        warnings.warn(
+            "ToolFactory.get_available_tools is deprecated and will be removed in a future version. "
+            "Please use the Tool.register_with_agents method instead.",
+            DeprecationWarning,
+            stacklevel=2
+        )
+        
         tool_classes = cls.discover_tools()
         return list(tool_classes.keys())
