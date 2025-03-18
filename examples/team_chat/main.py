@@ -6,18 +6,12 @@ This example demonstrates how to use the roboco Team class to create a team of a
 and initiate a chat with automatic handoffs between them.
 """
 
-import logging
-import sys
 from typing import Dict, Any
 
-from roboco.core.team import Team
-from roboco.core.agent import Agent
+from roboco.core import Team, Agent, get_logger
 
-# Configure logging
-logging.basicConfig(level=logging.INFO, 
-                    format='%(asctime)s.%(msecs)03d | %(levelname)-8s | %(name)s:%(funcName)s:%(lineno)d - %(message)s', 
-                    datefmt='%Y-%m-%d %H:%M:%S')
-logger = logging.getLogger(__name__)
+# Get logger for this module
+logger = get_logger("team_chat")
 
 def main():
     """
@@ -29,6 +23,7 @@ def main():
     team = Team(name="ChatTeam", agents={})
     
     # Create agents with specific roles using create_agent
+    # The Agent class will load default configs automatically from config.toml
     team.create_agent(
         agent_class=Agent,
         name="Planner",

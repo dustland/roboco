@@ -62,32 +62,41 @@ def load_config(config_path: Optional[str] = None) -> RobocoConfig:
     return RobocoConfig()
 
 
-def get_llm_config(config: RobocoConfig) -> Dict[str, Any]:
+def get_llm_config(config: Optional[RobocoConfig] = None) -> Dict[str, Any]:
     """
-    Create an autogen-compatible LLM configuration from a RobocoConfig instance.
+    Create an LLM configuration dictionary suitable for autogen/AG2 agents.
+    
+    This function extracts LLM configuration from the config.toml file and 
+    formats it for use with autogen agents.
     
     Args:
-        config: RobocoConfig instance
+        config: RobocoConfig instance (if None, will call load_config)
         
     Returns:
-        Dictionary containing the LLM configuration for autogen
+        Dictionary containing the LLM configuration for agents
     """
-    # Extract LLM configuration
-    llm_config = config.llm
+    if config is None:
+        config = load_config()
     
-    # Create an autogen-compatible configuration
-    autogen_config = {
-        "config_list": [
-            {
-                "model": llm_config.model,
-                "api_key": os.environ.get("OPENAI_API_KEY", ""),
-            }
-        ],
-        "temperature": llm_config.temperature,
-        "max_tokens": llm_config.max_tokens,
+    # Extract LLM configuration from the toml config
+    llm_section = config.llm
+    
+    # Create a direct config dictionary for agents
+    agent_llm_config = {
+        "model": llm_section.model,
+        "api_key": llm_section.api_key,  # Use API key directly from config
+        "temperature": llm_section.temperature,
     }
     
-    return autogen_config
+    # Add base_url if provided in config
+    if hasattr(llm_section, 'base_url') and llm_section.base_url:
+        agent_llm_config["base_url"] = llm_section.base_url
+    
+    # Add max_tokens if provided in config
+    if hasattr(llm_section, 'max_tokens') and llm_section.max_tokens:
+        agent_llm_config["max_tokens"] = llm_section.max_tokens
+    
+    return agent_llm_config
 
 
 def load_env_variables(project_root: Optional[Path] = None) -> None:

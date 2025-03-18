@@ -14,6 +14,7 @@ RoboCo (Robot Company) is a comprehensive platform designed to develop and adapt
 - **Sensor Integration**: Support for processing various sensor inputs (vision, audio, tactile)
 - **Built-in Monitoring**: Comprehensive logging and monitoring system
 - **Asynchronous Communication**: Efficient agent interaction patterns
+- **Fallback Mechanisms**: Graceful degradation for browser tools when dependencies are unavailable
 
 ## System Components
 
@@ -38,59 +39,39 @@ A Streamlit-based user interface is planned for future development:
 
 ## Installation
 
+Ensure you have Python 3.10 or later and [Node.js](https://nodejs.org/) v20.x installed.
+
 ```bash
-# Clone the repository
-git clone https://github.com/yourusername/roboco.git
-cd roboco
-
-# Install dependencies using Poetry (recommended)
-poetry install
-
-# Or install using pip
-pip install -e .
+# Install dependencies using uv (recommended)
+pip install uv
+uv venv
+source .venv/bin/activate  # On Unix/macOS
+# or
+.venv\Scripts\activate  # On Windows
+uv pip install -e .
 ```
 
 ## Quick Start
 
-1. Set up the environment:
-
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/roboco.git
+git clone https://github.com/roboco-ai/roboco.git
 cd roboco
 
-# Install dependencies using Poetry
-poetry install
-```
+# Install dependencies using uv
+pip install uv
+uv venv
+source .venv/bin/activate  # On Unix/macOS
+# or
+.venv\Scripts\activate  # On Windows
+uv pip install -e .
 
-2. Configure your API keys:
+# Set up OpenAI API keys (or other providers)
+cp config/config.example.toml config/config.toml
+# Edit config/config.toml with your API keys
 
-```bash
-# Copy the example .env file
-cp .env.example .env
-
-# Edit the .env file with your API keys
-nano .env
-```
-
-3. Run a simple example:
-
-```python
-# Run the web research example
-poetry run python examples/web_surf.py
-
-# Or import and use in your own script
-from roboco.agents import ProductManager, HumanProxy
-
-# Create a research team
-researcher = ProductManager()
-user = HumanProxy()
-
-# Run market research
-user.initiate_chat(
-    researcher,
-    message="What are the latest trends in humanoid robotics?"
-)
+# Run an example
+python examples/web_surf.py
 ```
 
 ## Project Structure
@@ -134,32 +115,45 @@ RoboCo extends AG2's agent communication patterns with additional features:
 
 ## Available Tools
 
-- **BrowserTool**: Web browsing and interaction capabilities
+- **BrowserTool**: Web browsing and interaction capabilities with fallback mechanism
+- **BrowserUseTool**: High-level browser automation with fallback to requests/BeautifulSoup
 - **FileSystemTool**: File system operations
 - **BashTool**: Bash command execution
 - **TerminalTool**: Terminal command execution
 - **RunTool**: Code execution
 
+### Browser Tools Fallback Mechanism
+
+The browser tools (`BrowserTool` and `BrowserUseTool`) include a fallback mechanism that allows them to function even when the required dependencies (`browser-use` and `playwright`) are unavailable or incompatible with the current Python version. This ensures your applications can continue to operate in various environments.
+
+The fallback implementation:
+
+- Uses `requests` and `BeautifulSoup` for basic web browsing
+- Automatically activates when browser automation fails
+- Provides seamless degradation of functionality
+- Works with Python 3.13+ where `playwright` may have compatibility issues
+
+See the [web_surf examples](examples/web_surf/) for demonstrations of both standard and fallback usage.
+
 ## Requirements
 
 - Python >= 3.10
-- Poetry for dependency management
+- uv for dependency management
 - OpenAI API key or other LLM provider API key
 - Internet connection for web research capabilities
+- For browser tools: `requests` and `beautifulsoup4` (fallback mode) or `browser-use` and `playwright` (full mode)
 
 ## Development
 
-### Setting Up Development Environment
-
 ```bash
 # Install development dependencies
-poetry install --with dev
+uv pip install -e ".[dev]"
 
 # Run tests
-poetry run pytest
+pytest
 
 # Run linting
-poetry run flake8
+flake8
 ```
 
 ### Adding New Agents

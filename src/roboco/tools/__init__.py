@@ -8,7 +8,6 @@ from .fs import FileSystemTool
 from .bash import BashTool
 from .terminal import TerminalTool
 from .run import RunTool
-from .browser import BrowserTool
 from .sim import SimulationTool
 from .web_search import WebSearchTool
 

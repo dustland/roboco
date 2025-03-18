@@ -22,7 +22,7 @@ The `team_chat` directory contains an example of how to use the Roboco system to
 
 ```bash
 # Run the team chat example
-poetry run python examples/team_chat/main.py
+python examples/team_chat/main.py
 ```
 
 ### Web Surf
@@ -31,7 +31,7 @@ The `web_surf` directory contains an example of how to use the Roboco system to 
 
 ```bash
 # Run the web surf example
-poetry run python examples/web_surf/main.py
+python examples/web_surf/main.py
 ```
 
 ### Market Research
@@ -40,39 +40,41 @@ The `market_research` directory contains examples of how to use the Roboco syste
 
 ```bash
 # Run market research with swarm orchestration
-poetry run python examples/market_research/main.py --query "Your research query here"
+python examples/market_research/main.py --query "Your research query here"
 
 # Run market research with direct research approach
-poetry run python examples/market_research/main.py --query "Your research query here" --direct
+python examples/market_research/main.py --query "Your research query here" --direct
 
 # Run market research with browser capabilities
-poetry run python examples/market_research/main.py --query "Your research query here" --direct --browser-type browser-use
+python examples/market_research/main.py --query "Your research query here" --direct --browser-type browser-use
 ```
 
 ## Requirements
 
 Different examples may have different requirements. Please refer to the README.md file in each example directory for specific requirements.
 
-### Common Requirements
+### Browser Automation Dependencies
 
 For examples that use browser capabilities:
 
 ```bash
-# Using Poetry (recommended)
-poetry add "ag2[browser-use]"  # For browser-use
+# Install browser-use and playwright
+uv pip install "ag2[browser-use]"
+uv pip install playwright
 
-# Install Playwright
-poetry run playwright install
-# For Linux only
-poetry run playwright install-deps
+# Install browser engines
+playwright install
+
+# Install system dependencies (Linux only)
+playwright install-deps
 ```
 
-## Running Examples
+## Standard Command Format
 
-You can run any example from the project root directory using the following pattern:
+Most examples can be run using:
 
 ```bash
-poetry run python examples/<example_name>/main.py [options]
+python examples/<example_name>/main.py [options]
 ```
 
 For more detailed instructions, refer to the README.md file in each example directory.

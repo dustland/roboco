@@ -15,6 +15,14 @@ class LLMConfig(BaseModel):
         default="gpt-4",
         description="The model to use for language generation"
     )
+    api_key: str = Field(
+        default="",
+        description="API key for the language model provider"
+    )
+    base_url: str = Field(
+        default="https://api.openai.com/v1",
+        description="Base URL for the language model API"
+    )
     temperature: float = Field(
         default=0.7,
         ge=0.0,

@@ -9,6 +9,7 @@ from .team import Team
 from .tool import Tool
 from .tool_factory import ToolFactory
 from .config import load_config, get_llm_config
+from .logger import setup_logger, get_logger
 
 
 __all__ = [
@@ -17,5 +18,7 @@ __all__ = [
     "Tool",
     "ToolFactory",
     "load_config",
-    "get_llm_config"
+    "get_llm_config",
+    "setup_logger",
+    "get_logger"
 ]

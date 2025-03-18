@@ -29,7 +29,7 @@ Globs: ["**/*.py"]
 - Implement middleware to handle unexpected errors, ensuring they are logged and monitored effectively.
 
 ## Depes
-- Manage project dependencies with [Poetry](mdc:https:/python-poetry.org) for consistent environments.
+- Manage project dependencies with [uv](mdc:https:/github.com/astral-sh/uv) for consistent environments.
 - Use asynchronous database libraries like `asyncpg` or `aiomysql` for non-blocking database operations.
 - If employing ORM features, adopt SQLAlchemy 2.0 with its async support.
 
