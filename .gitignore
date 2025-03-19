@@ -185,3 +185,6 @@ config.toml
 # uv
 .venv/
 .uv/
+
+# browser-use
+user_data/
