@@ -16,6 +16,9 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 
+from roboco.core.logger import get_logger
+logger = get_logger(__name__)
+
 try:
     # Then import roboco components
     from roboco.core import Agent, load_config
@@ -24,9 +27,6 @@ try:
     
 except ImportError as e:
     # Use standard logging if imports fail
-    import logging
-    logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-    logger = logging.getLogger(__name__)
     logger.error(f"Error importing modules: {e}")
     logger.info("Make sure roboco and playwright are installed and accessible in your Python path")
     sys.exit(1)

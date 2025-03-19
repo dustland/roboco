@@ -1,86 +1,24 @@
 """
 Browser Use Tool
 
-This module provides a tool for web browsing and task automation,
-designed to be compatible with autogen's function calling mechanism.
-
-Dependencies:
-- browser-use: For browser automation capabilities
-- openai: For some potential LLM integration (optional)
-- beautifulsoup4: For better HTML parsing (optional)
-
-Install with:
-pip install browser-use openai beautifulsoup4
+This module provides a tool for web browsing and task automation.
 """
 
 from typing import Dict, Any, List, Optional, TypeVar, Generic
-import asyncio
-import traceback
-import time
-import os
-import json
-import logging
-import tempfile
-import uuid
-import platform
-import subprocess
-from loguru import logger
 from pydantic import BaseModel, Field
 
-# Required packages
-BROWSER_USE_AVAILABLE = False
-OPENAI_AVAILABLE = False
-
-# Try to import browser-use package
-try:
-    from browser_use import Agent, Controller
-    from browser_use.browser.browser import Browser as BrowserUseBrowser, BrowserConfig
-    from browser_use.browser.context import BrowserContext, BrowserContextConfig
-    from browser_use.dom.service import DomService
-    from browser_use.controller import browser_utils
-    BROWSER_USE_AVAILABLE = True
-except ImportError:
-    logger.error(
-        "browser-use package not found. "
-        "Please install it with `pip install browser-use`"
-    )
-
-# Try to import OpenAI for potential LLM integration
-try:
-    import openai
-    from langchain_openai import ChatOpenAI
-    OPENAI_AVAILABLE = True
-except ImportError:
-    logger.warning("OpenAI package not found. Some advanced features may not work.")
-
-# Make sure browser-use is available
-if not BROWSER_USE_AVAILABLE:
-    raise ImportError(
-        "Required dependency 'browser-use' not found. "
-        "Please install missing dependencies with: pip install browser-use openai"
-    )
+import browser_use
+from browser_use import Agent
+from langchain_openai import ChatOpenAI
 
 from roboco.core.tool import Tool
-from roboco.core.config import load_config, get_llm_config
 from roboco.core.logger import get_logger
-
-# Import browser utils for Chrome detection
-try:
-    from roboco.utils.browser_utils import get_chrome_path, get_platform, is_chrome_installed
-except ImportError:
-    logger.error("roboco.utils.browser_utils not found. This is a critical dependency.")
-    raise ImportError("Required module roboco.utils.browser_utils not found. Check your installation.")
+from roboco.utils.browser_utils import get_chrome_path, is_chrome_installed
 
 logger = get_logger(__name__)
 
 # Define context type variable
 Context = TypeVar('Context')
-
-class ToolResult(BaseModel):
-    """Result of a tool operation."""
-    output: Optional[str] = None
-    error: Optional[str] = None
-    base64_image: Optional[str] = None
 
 class BrowserUseResult(BaseModel):
     """The result of using the browser to perform a task."""
@@ -88,52 +26,27 @@ class BrowserUseResult(BaseModel):
     final_result: Optional[str] = None
 
 class BrowserUseTool(Generic[Context], Tool):
-    """A tool for browser automation with robust error handling and state management."""
+    """A tool for browser automation."""
 
     def __init__(
         self,
         *,
-        llm_config: Optional[Dict[str, Any]] = None,
+        llm_config: Optional[Any] = None,
         browser_config: Optional[Dict[str, Any]] = None,
-        config_path: Optional[str] = None,
         **kwargs
     ):
-        """Initialize the BrowserUseTool.
-        
-        Args:
-            llm_config: LLM configuration dictionary.
-            browser_config: Browser configuration dictionary.
-            config_path: Path to configuration file.
-            **kwargs: Additional keyword arguments.
-        """
-        if not BROWSER_USE_AVAILABLE:
-            logger.error("browser-use package not available. Please install it with `pip install browser-use`")
-            return
-
-        # Initialize state variables
-        self.tool_context = None  # Will store the generic context
-        
-        # Load LLM config from config file if not provided
-        if llm_config is None and config_path:
-            config = load_config(config_path)
-            llm_config = get_llm_config(config)
-            logger.debug(f"Loaded llm_config for BrowserUseTool: {llm_config}")
-        
+        """Initialize the BrowserUseTool."""
+        self.tool_context = None
         self.llm_config = llm_config or {}
         self.browser_config = browser_config or {}
         
-        # Try to detect Chrome browser path if not provided
-        if "chrome_instance_path" not in self.browser_config:
-            if is_chrome_installed():
-                chrome_path = get_chrome_path()
-                if chrome_path:
-                    self.browser_config["chrome_instance_path"] = chrome_path
-                    logger.info(f"Using detected Chrome at: {chrome_path}")
-                    logger.info(f"Platform detected: {get_platform()}")
-            else:
-                logger.warning("Chrome browser not detected. Will use default browser.")
+        # Auto-detect Chrome path if not provided
+        if "chrome_instance_path" not in self.browser_config and is_chrome_installed():
+            chrome_path = get_chrome_path()
+            if chrome_path:
+                self.browser_config["chrome_instance_path"] = chrome_path
+                logger.info(f"Using Chrome at: {chrome_path}")
         
-        # Initialize the browser when needed (lazy initialization)
         super().__init__(
             name="browser_use",
             description="Use the browser to perform web tasks like navigation, interaction, data extraction, and more.",
@@ -141,61 +54,56 @@ class BrowserUseTool(Generic[Context], Tool):
             **kwargs
         )
         
-        logger.info("Initialized BrowserUseTool")
-
     async def browser_use(self, task: str) -> BrowserUseResult:
-        """Use the browser to perform a task.
-        
-        Args:
-            task: Description of the task to perform.
-            
-        Returns:
-            BrowserUseResult: Result of the browser operation.
-        """
+        """Use the browser to perform a task."""
         try:
-            # Get OpenAI model from config
-            llm = None
-            if OPENAI_AVAILABLE and "model" in self.llm_config:
-                model_name = self.llm_config.get("model", "gpt-3.5-turbo")
-                llm = ChatOpenAI(model=model_name)
-                logger.info(f"Using ChatOpenAI with model: {model_name}")
-            
-            if not llm:
-                # We can't continue without an LLM
-                logger.error("No LLM configuration available for browser-use Agent")
-                return BrowserUseResult(
-                    final_result=f"Error: No LLM configuration available for browser-use. Please configure an LLM."
+            # Create LLM from config
+            if hasattr(self.llm_config, 'model'):
+                # Pydantic model config
+                llm = ChatOpenAI(
+                    model=self.llm_config.model,
+                    temperature=getattr(self.llm_config, 'temperature', 0.7),
+                    max_tokens=getattr(self.llm_config, 'max_tokens', 500),
+                    api_key=getattr(self.llm_config, 'api_key', None),
+                    base_url=getattr(self.llm_config, 'base_url', None)
                 )
+            else:
+                # Dictionary config
+                llm = ChatOpenAI(**self.llm_config)
             
-            # Log chrome path if available (as information only)
-            if "chrome_instance_path" in self.browser_config:
-                chrome_path = self.browser_config.get("chrome_instance_path")
-                logger.info(f"Chrome path hint (not directly used): {chrome_path}")
+            # Import necessary classes for browser creation
+            from browser_use.browser.browser import Browser, BrowserConfig
             
-            # Create an Agent with the task
-            logger.info(f"Creating browser agent for task: {task}")
+            # Create browser with Chrome configuration
+            browser_options = BrowserConfig(
+                headless=self.browser_config.get("headless", False),
+                chrome_instance_path=self.browser_config.get("chrome_instance_path"),
+                disable_security=self.browser_config.get("disable_security", True),
+                extra_chromium_args=["--no-sandbox", "--disable-dev-shm-usage", "--user-data-dir=./user_data"]
+            )
             
-            # Agent requires task and llm as required parameters
+            # Initialize browser
+            browser = Browser(config=browser_options)
+            
+            # Create agent with browser
             agent = Agent(
                 task=task,
                 llm=llm,
+                browser=browser
             )
             
-            # Run the agent to perform the task
-            logger.info("Running browser agent")
+            # Run agent
+            logger.info(f"Running browser agent for task: {task}")
             result = await agent.run()
-            logger.info("Browser agent completed task")
             
             # Process the result
             if isinstance(result, dict):
-                # Extract any content and format the result
                 extracted = result.get("content", [])
                 if isinstance(extracted, str):
                     extracted = [extracted]
                 elif not isinstance(extracted, list):
                     extracted = []
-                
-                # Format the final result
+                    
                 final_result = result.get("result", str(result))
                 
                 return BrowserUseResult(
@@ -203,31 +111,15 @@ class BrowserUseTool(Generic[Context], Tool):
                     final_result=final_result
                 )
             else:
-                # Simple string result
-                return BrowserUseResult(
-                    final_result=str(result)
-                )
+                return BrowserUseResult(final_result=str(result))
             
         except Exception as e:
-            tb = traceback.format_exc()
-            logger.error(f"Error in browser_use: {e}\n{tb}")
-            return BrowserUseResult(
-                final_result=f"Error: {str(e)}"
-            )
-    
-    async def cleanup(self):
-        """Clean up browser resources."""
-        # Nothing to clean up since we don't keep any browser instances
-        pass
-    
-    def __del__(self):
-        """Ensure cleanup when object is destroyed."""
-        # Nothing to clean up since we don't keep any browser instances
-        pass
+            logger.error(f"Browser use error: {e}")
+            return BrowserUseResult(final_result=f"Error: {str(e)}")
     
     @classmethod
     def create_with_context(cls, context: Context) -> "BrowserUseTool[Context]":
-        """Factory method to create a BrowserUseTool with a specific context."""
+        """Create a BrowserUseTool with a specific context."""
         tool = cls()
         tool.tool_context = context
         return tool 
