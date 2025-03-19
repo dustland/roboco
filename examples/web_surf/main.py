@@ -68,7 +68,7 @@ def main():
         user_proxy = HumanProxy(
             name="User",
             terminate_msg="TERMINATE",
-            human_input_mode="TERMINATE",  # Only ask for human input when terminating the conversation
+            human_input_mode="NEVER",  # Only ask for human input when terminating the conversation
             system_message="You can interact with the assistant and execute functions on its behalf."
         )
         

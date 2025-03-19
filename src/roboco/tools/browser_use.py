@@ -9,11 +9,12 @@ from pydantic import BaseModel, Field
 
 import browser_use
 from browser_use import Agent
+from browser_use.browser.browser import Browser, BrowserConfig
 from langchain_openai import ChatOpenAI
 
 from roboco.core.tool import Tool
 from roboco.core.logger import get_logger
-from roboco.utils.browser_utils import get_chrome_path, is_chrome_installed
+from roboco.utils.browser_utils import get_chrome_path, get_platform, is_chrome_installed
 
 logger = get_logger(__name__)
 
@@ -39,12 +40,20 @@ class BrowserUseTool(Generic[Context], Tool):
         self.tool_context = None
         self.llm_config = llm_config or {}
         self.browser_config = browser_config or {}
+        self.browser = None
+        self.agent = None
         
-        # Auto-detect Chrome path if not provided
+        # Standard browser setup
+        if not is_chrome_installed():
+            logger.warning("Google Chrome is not installed on this system.")
+            logger.warning("Browser automation may not work properly.")
+        
+        # Get Chrome path based on platform if not provided
         if "chrome_instance_path" not in self.browser_config and is_chrome_installed():
             chrome_path = get_chrome_path()
             if chrome_path:
                 self.browser_config["chrome_instance_path"] = chrome_path
+                logger.info(f"Detected platform: {get_platform()}")
                 logger.info(f"Using Chrome at: {chrome_path}")
         
         super().__init__(
@@ -53,6 +62,21 @@ class BrowserUseTool(Generic[Context], Tool):
             func_or_tool=self.browser_use,
             **kwargs
         )
+    
+    async def _initialize_browser(self):
+        """Initialize the browser if not already done."""
+        if self.browser is None:
+            # Create browser configuration
+            browser_options = BrowserConfig(
+                headless=self.browser_config.get("headless", False),
+                chrome_instance_path=self.browser_config.get("chrome_instance_path"),
+                disable_security=self.browser_config.get("disable_security", True),
+                extra_chromium_args=["--no-sandbox", "--disable-dev-shm-usage", "--user-data-dir=./user_data"]
+            )
+            
+            # Create and store the browser instance
+            self.browser = Browser(config=browser_options)
+            logger.info("Browser initialized")
         
     async def browser_use(self, task: str) -> BrowserUseResult:
         """Use the browser to perform a task."""
@@ -71,30 +95,19 @@ class BrowserUseTool(Generic[Context], Tool):
                 # Dictionary config
                 llm = ChatOpenAI(**self.llm_config)
             
-            # Import necessary classes for browser creation
-            from browser_use.browser.browser import Browser, BrowserConfig
+            # Initialize browser if needed
+            await self._initialize_browser()
             
-            # Create browser with Chrome configuration
-            browser_options = BrowserConfig(
-                headless=self.browser_config.get("headless", False),
-                chrome_instance_path=self.browser_config.get("chrome_instance_path"),
-                disable_security=self.browser_config.get("disable_security", True),
-                extra_chromium_args=["--no-sandbox", "--disable-dev-shm-usage", "--user-data-dir=./user_data"]
-            )
-            
-            # Initialize browser
-            browser = Browser(config=browser_options)
-            
-            # Create agent with browser
-            agent = Agent(
+            # Create a new agent for each task with the shared browser
+            self.agent = Agent(
                 task=task,
                 llm=llm,
-                browser=browser
+                browser=self.browser
             )
             
             # Run agent
             logger.info(f"Running browser agent for task: {task}")
-            result = await agent.run()
+            result = await self.agent.run()
             
             # Process the result
             if isinstance(result, dict):
@@ -115,7 +128,26 @@ class BrowserUseTool(Generic[Context], Tool):
             
         except Exception as e:
             logger.error(f"Browser use error: {e}")
+            # Try to reinitialize browser if there was an error
+            if "Browser.new_context: Target page, context or browser has been closed" in str(e):
+                logger.info("Attempting to reinitialize browser after closure")
+                self.browser = None
+                await self._initialize_browser()
+                return BrowserUseResult(
+                    final_result=f"Browser was reset due to error: {str(e)}. Please try your task again."
+                )
             return BrowserUseResult(final_result=f"Error: {str(e)}")
+    
+    async def cleanup(self):
+        """Close the browser and release resources."""
+        try:
+            if self.browser:
+                await self.browser.close()
+                self.browser = None
+                self.agent = None
+                logger.info("Browser closed successfully")
+        except Exception as e:
+            logger.error(f"Error closing browser: {e}")
     
     @classmethod
     def create_with_context(cls, context: Context) -> "BrowserUseTool[Context]":
