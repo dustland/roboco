@@ -188,3 +188,13 @@ config.toml
 
 # browser-use
 user_data/
+
+# Roboco workspace
+workspace/
+workspace/*
+!workspace/.gitkeep
+
+# User data
+user_data/
+user_data/*
+!user_data/.gitkeep

@@ -203,3 +203,31 @@ Apache 2.0
 - Built on top of [AG2](https://github.com/microsoft/autogen) (AutoGen 2.0)
 - Inspired by the need for better embodied AI and humanoid robotics development
 - Special thanks to the robotics and AI communities for their contributions to the field
+
+## Configuration
+
+Roboco can be configured using a TOML configuration file. The default location for the configuration file is `config/config.toml`.
+
+### Configuration Options
+
+#### Workspace Configuration
+
+The workspace is where Roboco stores all work artifacts, including research reports, code, and documentation.
+
+```toml
+# In config.toml
+workspace_root = "workspace"  # Relative to project root
+# OR
+workspace_root = "/absolute/path/to/workspace"  # Absolute path
+# OR
+workspace_root = "~/roboco_workspace"  # Home directory
+```
+
+By default, Roboco uses the `workspace` directory in the project root. The workspace is organized into the following subdirectories:
+
+- `research`: Contains research reports and materials
+- `code`: Contains source code for projects
+- `docs`: Contains documentation
+- `data`: Contains data files
+
+#### LLM Configuration

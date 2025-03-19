@@ -1,22 +1,17 @@
 """
-Roboco Tools Package
+Tools Module
 
-This package provides tools that can be attached to agents in the Roboco system.
+This module contains various tools that can be used by roboco agents.
 """
 
-from .fs import FileSystemTool
-from .bash import BashTool
-from .terminal import TerminalTool
-from .run import RunTool
-from .sim import SimulationTool
-from .web_search import WebSearchTool
+from roboco.tools.web_search import WebSearchTool
+from roboco.tools.browser_use import BrowserUseTool
+from roboco.tools.arxiv import ArxivTool
+from roboco.tools.github import GitHubTool
 
 __all__ = [
-    "FileSystemTool",
-    "BashTool",
-    "TerminalTool",
-    "RunTool",
-    "BrowserTool",
-    "SimulationTool",
-    "WebSearchTool"
+    "WebSearchTool",
+    "BrowserUseTool",
+    "ArxivTool",
+    "GitHubTool",
 ] 

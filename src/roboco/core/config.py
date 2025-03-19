@@ -1,73 +1,137 @@
 """
-Configuration Management Module
+Configuration management for Roboco.
 
-This module provides utilities for loading and managing configuration for roboco agents.
+This module handles loading and managing configuration from various sources:
+- Environment variables
+- .env files
+- YAML configuration files
 """
 
 import os
-import tomli
 from pathlib import Path
-from typing import Dict, Any, List, Optional
-from loguru import logger
+from typing import Optional, Dict, Any
 from dotenv import load_dotenv
-
-# ag2 and autogen are identical packages
-from autogen import config_list_from_json, config_list_from_dotenv
-
-from roboco.core.models import RobocoConfig, LLMConfig
+import yaml
+from .models import RobocoConfig
 
 
-def load_config(config_path: Optional[str] = None) -> RobocoConfig:
+def load_env_vars() -> None:
+    """Load environment variables from .env file if it exists."""
+    load_dotenv()  # Loads .env from current directory
+
+
+def get_config_path() -> Path:
+    """Get the path to the configuration file."""
+    config_paths = [
+        Path.cwd() / 'config.yaml',
+        Path.cwd() / 'config' / 'config.yaml',
+        Path.home() / '.config' / 'roboco' / 'config.yaml',
+        Path('/etc/roboco/config.yaml')
+    ]
+    
+    for path in config_paths:
+        if path.exists():
+            return path
+            
+    # If no config file exists, return the default location
+    return Path.cwd() / 'config.yaml'
+
+
+def process_env_vars(config_data: Dict[str, Any]) -> Dict[str, Any]:
     """
-    Load configuration from environment variables and TOML file.
+    Process environment variable placeholders in configuration.
+    Replaces ${VAR} with the value of the environment variable VAR.
     
     Args:
-        config_path: Optional path to the configuration file
+        config_data: Dictionary containing configuration data
         
     Returns:
-        Validated RobocoConfig instance
+        Dictionary with environment variables processed
+    """
+    if not config_data:
+        return config_data
+        
+    result = {}
+    for key, value in config_data.items():
+        if isinstance(value, dict):
+            result[key] = process_env_vars(value)
+        elif isinstance(value, str) and "${" in value and "}" in value:
+            # Process environment variable
+            env_var = value.split("${")[1].split("}")[0]
+            env_value = os.environ.get(env_var)
+            if env_value:
+                result[key] = env_value
+            else:
+                result[key] = value  # Keep original if not found
+        else:
+            result[key] = value
+    return result
+
+
+def load_config(config_path: Optional[Path] = None) -> RobocoConfig:
+    """
+    Load configuration from YAML file and environment variables.
+    
+    Args:
+        config_path: Optional path to config file. If not provided,
+                    will search in standard locations.
+                    
+    Returns:
+        RobocoConfig: Loaded configuration object
     """
     # Load environment variables first
-    load_dotenv()
+    load_env_vars()
     
+    # Get config file path
     if config_path is None:
-        # Try to find a config file in standard locations
-        search_paths = [
-            Path("./config.toml"),         # Current directory
-            Path("config/config.toml"),    # Project config directory
-            Path(os.path.expanduser("~/.config/roboco/config.toml")),  # User config
-            Path("/etc/roboco/config.toml"),  # System config
-        ]
-        
-        for path in search_paths:
-            if path.exists():
-                config_path = str(path)
-                break
+        config_path = get_config_path()
     
-    if config_path and Path(config_path).exists():
-        try:
-            with open(config_path, "rb") as f:
-                config_dict = tomli.load(f)
+    # Load YAML config if it exists
+    config_data: Dict[str, Any] = {}
+    if config_path.exists():
+        with open(config_path, 'r') as f:
+            config_data = yaml.safe_load(f)
             
-            # Validate configuration using Pydantic model
-            config = RobocoConfig(**config_dict)
-            logger.info(f"Loaded configuration from {config_path}")
-            return config
-        except Exception as e:
-            logger.error(f"Error loading configuration from {config_path}: {e}")
-    else:
-        logger.warning("No configuration file found, using default configuration")
+    # Process environment variables in config
+    config_data = process_env_vars(config_data)
     
-    # Return default configuration
-    return RobocoConfig()
+    # Create config object
+    config = RobocoConfig(**config_data)
+    
+    return config
+
+
+def save_config(config: RobocoConfig, config_path: Optional[Path] = None) -> None:
+    """
+    Save configuration to YAML file.
+    
+    Args:
+        config: Configuration object to save
+        config_path: Optional path to save config to. If not provided,
+                    will use the default location.
+    """
+    if config_path is None:
+        config_path = get_config_path()
+    
+    # Ensure parent directory exists
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    
+    # Convert config to dict and save as YAML
+    config_dict = config.model_dump(exclude_none=True)
+    with open(config_path, 'w') as f:
+        yaml.dump(config_dict, f, default_flow_style=False)
+
+
+def create_default_config() -> RobocoConfig:
+    """Create and save a default configuration."""
+    config = RobocoConfig()
+    save_config(config)
+    return config
 
 
 def get_llm_config(config: Optional[RobocoConfig] = None) -> Dict[str, Any]:
     """
-    Create an LLM configuration dictionary suitable for autogen/AG2 agents.
-    
-    This function extracts LLM configuration from the config.toml file and 
-    formats it for use with autogen agents.
+    Create an LLM configuration dictionary suitable for agent use.
     
     Args:
         config: RobocoConfig instance (if None, will call load_config)
@@ -78,50 +142,51 @@ def get_llm_config(config: Optional[RobocoConfig] = None) -> Dict[str, Any]:
     if config is None:
         config = load_config()
     
-    # Extract LLM configuration from the toml config
+    # Extract base LLM configuration
     llm_section = config.llm
     
-    # Create a direct config dictionary for agents
+    # Create the config dictionary with just the essential parameters
     agent_llm_config = {
         "model": llm_section.model,
-        "api_key": llm_section.api_key,  # Use API key directly from config
+        "api_key": llm_section.api_key,
         "temperature": llm_section.temperature,
+        "max_tokens": llm_section.max_tokens,
     }
     
-    # Add base_url if provided in config
-    if hasattr(llm_section, 'base_url') and llm_section.base_url:
+    # Add base_url if provided
+    if llm_section.base_url:
         agent_llm_config["base_url"] = llm_section.base_url
-    
-    # Add max_tokens if provided in config
-    if hasattr(llm_section, 'max_tokens') and llm_section.max_tokens:
-        agent_llm_config["max_tokens"] = llm_section.max_tokens
     
     return agent_llm_config
 
 
-def load_env_variables(project_root: Optional[Path] = None) -> None:
+def get_workspace(config: Optional[RobocoConfig] = None) -> Path:
     """
-    Load environment variables from a .env file.
+    Get the path to the workspace root directory.
     
     Args:
-        project_root: Root directory of the project (optional)
+        config: RobocoConfig instance (if None, will call load_config)
+        
+    Returns:
+        Path to the workspace root directory
     """
-    try:
-        from dotenv import load_dotenv
-        
-        if project_root is None:
-            # Try to determine project root
-            current_dir = Path.cwd()
-            while current_dir.name != "roboco" and current_dir.parent != current_dir:
-                current_dir = current_dir.parent
-            project_root = current_dir
-            
-        env_path = project_root / ".env"
-        
-        if env_path.exists():
-            load_dotenv(dotenv_path=env_path)
-            logger.info(f"Loaded environment variables from {env_path}")
-        else:
-            logger.warning("No .env file found, using existing environment variables")
-    except ImportError:
-        logger.warning("python-dotenv not installed, skipping .env loading")
+    if config is None:
+        config = load_config()
+    
+    workspace_path = Path(config.workspace_root)
+    
+    # If it's a relative path, make it relative to the current directory
+    if not workspace_path.is_absolute():
+        workspace_path = Path.cwd() / workspace_path
+    else:
+        # If it's an absolute path with ~ for home dir, expand it
+        workspace_path = workspace_path.expanduser()
+    
+    # Resolve to absolute path
+    workspace_path = workspace_path.resolve()
+    
+    # Ensure workspace exists
+    if not workspace_path.exists():
+        workspace_path.mkdir(parents=True, exist_ok=True)
+    
+    return workspace_path

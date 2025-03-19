@@ -1,39 +1,117 @@
 [build-system]
-requires = ["setuptools>=61.0"]
+requires = ["setuptools>=61.0.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "roboco"
-version = "0.2.1"
-description = "Robotic Co-Workers (RoboCo) framework for specialized AI workers"
-readme = "README.md"
-requires-python = ">=3.10"
-license = {text = "Apache"}
+version = "0.1.0"
+description = "Roboco Robotics Corporation - AI-Powered Robotics Development Platform"
 authors = [
-    {name = "RoboCo Team", email = "hi@dustland.ai"}
+    {name = "Roboco Team", email = "team@roboco.ai"}
+]
+readme = "README.md"
+requires-python = ">=3.9"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
 ]
 dependencies = [
-    "pyautogen[openai,browser-use]>=0.8.1",
-    "loguru>=0.7.0",
-    "tavily-python>=0.3.0",
-    "tomli>=2.0.0",
-    "pydantic>=2.0.0",
-    "requests>=2.0.0",
-    "browser-use>=0.1.37"
+    "fastapi>=0.104.0",
+    "uvicorn>=0.24.0",
+    "pydantic>=2.4.2",
+    "python-dotenv>=1.0.0",
+    "numpy>=1.24.3",
+    "requests>=2.31.0",
+    "jinja2>=3.1.2",
+    "pyyaml>=6.0.1",
+    "beautifulsoup4>=4.12.2",
+    "markdown>=3.5.1", 
+    "rich>=13.6.0",
+    "PyGithub",  # GitHub API client
+    "arxiv",     # ArXiv API client
+    "pyautogen[openai,browser-use]>=0.8.2",  # Autonomous agent framework with OpenAI and browser support
 ]
+
+[project.optional-dependencies]
+dev = [
+    "black",
+    "mypy",
+    "isort",
+    "pytest",
+    "pytest-cov",
+    "flake8",
+]
+genesis = ["genesis-embodied-ai>=0.1.0"]
+all = [
+    "genesis-embodied-ai>=0.1.0"
+]
+
+[project.urls]
+"Homepage" = "https://github.com/dustland/roboco"
+"Bug Tracker" = "https://github.com/dustland/roboco/issues"
+
+[project.scripts]
+roboco = "roboco.cli:cli"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
-packages = ["roboco"]
+package-data = {"roboco" = ["py.typed"]}
+
+[tool.setuptools.packages.find]
+where = ["src"]
 
 [tool.black]
-line-length = 100
-target-version = ["py310"]
+line-length = 88
+target-version = ["py39"]
+
+[tool.isort]
+profile = "black"
+line_length = 88
 
 [tool.mypy]
-python_version = "3.10"
-warn_redundant_casts = true
-warn_unused_ignores = true
-disallow_any_generics = true
+python_version = "3.9"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
 check_untyped_defs = true
-disallow_untyped_defs = false
+disallow_untyped_decorators = true
+no_implicit_optional = true
+strict_optional = true
+
+[[tool.mypy.overrides]]
+module = [
+    "setuptools.*",
+    "google.*",
+    "langchain.*",
+    "transformers.*",
+    "bs4.*",
+    "requests.*",
+    "feedparser.*",
+    "numpy.*",
+    "PIL.*",
+    "openai.*",
+    "qdrant_client.*",
+    "uvicorn.*",
+    "fastapi.*",
+    "markdown.*",
+    "rich.*",
+    "pymongo.*",
+    "github.*",
+    "arxiv.*",
+]
+ignore_missing_imports = true
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/roboco"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "src/roboco",
+    "config",
+    "examples",
+    "tests",
+    "README.md",
+    "LICENSE",
+]

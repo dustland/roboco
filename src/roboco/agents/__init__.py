@@ -7,15 +7,17 @@ This package provides agent implementations for the Roboco system.
 from roboco.core.agent import Agent
 from .executive import Executive
 from .product_manager import ProductManager
-from .researcher import Researcher
+from .software_engineer import SoftwareEngineer
+from .robotics_scientist import RoboticsScientist
 from .report_writer import ReportWriter
-from .human_proxy import HumanProxy
+from .human import HumanProxy
 
 __all__ = [
     "Agent",
     "Executive",
     "ProductManager",
-    "Researcher",
+    "SoftwareEngineer",
+    "RoboticsScientist",
     "ReportWriter",
     "HumanProxy"
 ]

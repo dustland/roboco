@@ -1,78 +1,33 @@
-import os
 import asyncio
-import sys
-from dotenv import load_dotenv
+import os
 
-from roboco.core import load_config
-from roboco.core.logger import get_logger
-from roboco.tools.browser_use import BrowserUseTool
-from roboco.utils.browser_utils import get_chrome_path, get_platform, is_chrome_installed
+from roboco.core.config import get_llm_config
+from roboco.tools import BrowserUseTool
 
-# Set up logger
-logger = get_logger("test_browser_use")
-
-# Load environment variables and configuration
-load_dotenv()
-config = load_config()
-
-async def test_with_browser_use_tool():
-    """Test the BrowserUseTool with a simple task."""
-    # Configure browser 
-    browser_config = {
-        "headless": False,
-        "chrome_instance_path": get_chrome_path(),
-        "disable_security": True,
-        "window_size": {"width": 1280, "height": 900}
-    }
+async def simple_browser_example():
     
-    # Create BrowserUseTool instance with configurations
+    # Set output directory
+    output_dir = "./screenshots"
+    os.makedirs(output_dir, exist_ok=True)
+    
+    # Create browser tool with output directory
     browser_tool = BrowserUseTool(
-        browser_config=browser_config,
-        llm_config=config.llm
+        llm_config=get_llm_config(),
+        output_dir=output_dir
     )
     
-    try:
-        # Use the browser to navigate to example.com
-        logger.info("Step 1: Navigating to example.com")
-        result = await browser_tool.browser_use("Go to example.com")
-        logger.info(f"Result: {result.final_result}")
-        
-        # Wait a moment to see the result
-        await asyncio.sleep(3)
-        
-        # Extract content
-        logger.info("Step 2: Extracting content from the page")
-        result = await browser_tool.browser_use("Extract and summarize content from this webpage")
-        
-        if result.extracted_content:
-            logger.info(f"Extracted content: {result.extracted_content[0][:100]}...")
-        
-        logger.info(f"Final result: {result.final_result[:100]}...")
-        
-        # Wait to see results
-        await asyncio.sleep(3)
-        
-        # Clean up resources
-        await browser_tool.cleanup()
-        
-        return "Test completed successfully"
-    except Exception as e:
-        logger.error(f"Error during execution: {e}")
-        # Make sure to clean up even if there's an error
-        try:
-            await browser_tool.cleanup()
-        except:
-            pass
-        return f"Test failed with error: {e}"
+    # Use the browser to navigate and extract content
+    print(f"Running browser task. Output will be saved to: {output_dir}")
+    result = await browser_tool.browser_use("Go to example.com and summarize the content")
+    print(f"Result: {result.final_result}")
+    
+    # Clean up
+    await browser_tool.cleanup()
+    print(f"Browser session recorded to: {os.path.join(output_dir, 'agent_history.gif')}")
+    
+    return "Done!"
 
 if __name__ == "__main__":
-    if not is_chrome_installed():
-        logger.error("Google Chrome is not installed on this system.")
-        logger.error("Please install Google Chrome and try again.")
-        sys.exit(1)
-        
-    logger.info(f"Detected platform: {get_platform()}")
-    logger.info(f"Using Chrome at: {get_chrome_path()}")
-    
-    result = asyncio.run(test_with_browser_use_tool())
-    logger.info(result)
+    print("Testing BrowserUseTool with custom output directory")
+    result = asyncio.run(simple_browser_example())
+    print(result)

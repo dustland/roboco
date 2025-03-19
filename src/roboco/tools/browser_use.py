@@ -8,13 +8,15 @@ from typing import Dict, Any, List, Optional, TypeVar, Generic
 from pydantic import BaseModel, Field
 
 import browser_use
-from browser_use import Agent
+from browser_use import Agent, BrowserContextConfig
 from browser_use.browser.browser import Browser, BrowserConfig
 from langchain_openai import ChatOpenAI
 
 from roboco.core.tool import Tool
 from roboco.core.logger import get_logger
 from roboco.utils.browser_utils import get_chrome_path, get_platform, is_chrome_installed
+
+import os
 
 logger = get_logger(__name__)
 
@@ -27,21 +29,45 @@ class BrowserUseResult(BaseModel):
     final_result: Optional[str] = None
 
 class BrowserUseTool(Generic[Context], Tool):
-    """A tool for browser automation."""
+    """Browser automation tool using the browser_use library.
+    
+    Features:
+    - Web browsing, interaction, and data extraction
+    - Chrome detection and configuration
+    - Customizable output location for session recordings
+    
+    Examples:
+        # Basic usage
+        browser_tool = BrowserUseTool(llm_config={"model": "gpt-4o"})
+        
+        # With custom output directory
+        browser_tool = BrowserUseTool(
+            llm_config={"model": "gpt-4o"},
+            output_dir="./browser_sessions"  # GIF saved as "./browser_sessions/agent_history.gif"
+        )
+    """
 
     def __init__(
         self,
         *,
         llm_config: Optional[Any] = None,
         browser_config: Optional[Dict[str, Any]] = None,
+        output_dir: Optional[str] = None,
         **kwargs
     ):
-        """Initialize the BrowserUseTool."""
+        """Initialize the BrowserUseTool.
+        
+        Args:
+            llm_config: LLM configuration
+            browser_config: Browser configuration
+            output_dir: Directory for saving agent_history.gif
+        """
         self.tool_context = None
         self.llm_config = llm_config or {}
         self.browser_config = browser_config or {}
         self.browser = None
         self.agent = None
+        self.output_dir = output_dir
         
         # Standard browser setup
         if not is_chrome_installed():
@@ -55,6 +81,17 @@ class BrowserUseTool(Generic[Context], Tool):
                 self.browser_config["chrome_instance_path"] = chrome_path
                 logger.info(f"Detected platform: {get_platform()}")
                 logger.info(f"Using Chrome at: {chrome_path}")
+                
+        if "new_context_config" not in self.browser_config:
+            new_context_config = BrowserContextConfig(
+                wait_between_actions=1,
+                browser_window_size={
+                    "width": 1280,
+                    "height": 1100
+                },
+                highlight_elements=True,
+            )
+            self.browser_config["new_context_config"] = new_context_config
         
         super().__init__(
             name="browser_use",
@@ -71,7 +108,6 @@ class BrowserUseTool(Generic[Context], Tool):
                 headless=self.browser_config.get("headless", False),
                 chrome_instance_path=self.browser_config.get("chrome_instance_path"),
                 disable_security=self.browser_config.get("disable_security", True),
-                extra_chromium_args=["--no-sandbox", "--disable-dev-shm-usage", "--user-data-dir=./user_data"]
             )
             
             # Create and store the browser instance
@@ -98,11 +134,20 @@ class BrowserUseTool(Generic[Context], Tool):
             # Initialize browser if needed
             await self._initialize_browser()
             
+            # Set up output path for GIF if directory is specified
+            if self.output_dir:
+                os.makedirs(self.output_dir, exist_ok=True)
+                gif_output = os.path.join(self.output_dir, "agent_history.gif")
+                logger.info(f"Browser session will be recorded to: {gif_output}")
+            else:
+                gif_output = True  # Just enable GIF generation with default path
+            
             # Create a new agent for each task with the shared browser
             self.agent = Agent(
                 task=task,
                 llm=llm,
-                browser=self.browser
+                browser=self.browser,
+                generate_gif=gif_output  # Pass the full path when output_dir is specified
             )
             
             # Run agent

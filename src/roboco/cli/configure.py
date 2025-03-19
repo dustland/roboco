@@ -1,59 +1,45 @@
 #!/usr/bin/env python
 """
-Roboco Configuration Utility
+Configuration Utility
 
-This script helps users create a configuration file for the Roboco system.
-It prompts for necessary configuration values and generates a config.toml file.
+This module provides a command-line utility for creating and managing Roboco configuration files.
 """
 
 import os
-import shutil
-from pathlib import Path
-import re
 import sys
+import re
+from pathlib import Path
 from typing import Dict, Any, Optional
+from loguru import logger
+
+from roboco.core.config import load_config, get_workspace
+
 
 def print_header(text: str) -> None:
-    """Print a section header."""
+    """Print a formatted header."""
     print("\n" + "=" * 80)
-    print(f" {text}")
-    print("=" * 80)
+    print(f"{text:^80}")
+    print("=" * 80 + "\n")
 
-def prompt(message: str, default: Optional[str] = None) -> str:
-    """
-    Prompt the user for input with an optional default value.
-    
-    Args:
-        message: The prompt message
-        default: Default value if the user enters nothing
-        
-    Returns:
-        The user's input or the default value
-    """
+
+def prompt(prompt_text: str, default: str = "") -> str:
+    """Prompt for user input with a default value."""
     if default:
-        result = input(f"{message} [{default}]: ").strip()
-        return result if result else default
-    else:
-        return input(f"{message}: ").strip()
+        user_input = input(f"{prompt_text} [{default}]: ").strip()
+        return user_input if user_input else default
+    return input(f"{prompt_text}: ").strip()
 
-def prompt_bool(message: str, default: bool = False) -> bool:
-    """
-    Prompt the user for a yes/no response.
-    
-    Args:
-        message: The prompt message
-        default: Default value if the user enters nothing
-        
-    Returns:
-        True for yes, False for no
-    """
-    default_str = "Y/n" if default else "y/N"
-    result = input(f"{message} [{default_str}]: ").strip().lower()
-    
-    if not result:
-        return default
-    
-    return result.startswith('y')
+
+def prompt_bool(prompt_text: str, default: bool = False) -> bool:
+    """Prompt for a boolean value."""
+    while True:
+        response = prompt(prompt_text, "Y" if default else "N").lower()
+        if response in ["y", "yes", "true", "1"]:
+            return True
+        if response in ["n", "no", "false", "0"]:
+            return False
+        print("Please enter Y or N")
+
 
 def interpolate_env_vars(config_content: str) -> str:
     """
@@ -76,18 +62,19 @@ def interpolate_env_vars(config_content: str) -> str:
     
     return env_var_pattern.sub(replace_env_var, config_content)
 
+
 def main() -> None:
     """Run the configuration utility."""
     print_header("Roboco Configuration Utility")
     print("This utility will help you create a configuration file for the Roboco system.")
     print("Press Enter to accept the default values shown in brackets.")
     
-    # Check if config.example.toml exists
-    example_config_path = Path("config/config.example.toml")
+    # Check if config.example.yaml exists
+    example_config_path = Path("config/config.example.yaml")
     if not example_config_path.exists():
-        example_config_path = Path("./config.example.toml")
+        example_config_path = Path("./config.example.yaml")
         if not example_config_path.exists():
-            print("Error: config.example.toml not found. Please run this script from the project root directory.")
+            print("Error: config.example.yaml not found. Please run this script from the project root directory.")
             sys.exit(1)
     
     # Determine the output path
@@ -95,7 +82,7 @@ def main() -> None:
     if not config_dir.exists():
         config_dir.mkdir(exist_ok=True)
     
-    output_path = config_dir / "config.toml"
+    output_path = config_dir / "config.yaml"
     
     if output_path.exists():
         overwrite = prompt_bool(f"Configuration file already exists at {output_path}. Overwrite?", False)
@@ -126,10 +113,9 @@ def main() -> None:
         
         # Update the config content
         config_content = re.sub(
-            r'\[llm\].*?model = ".*?"', 
-            f'[llm]\n# Model to use\nmodel = "{model}"', 
-            config_content, 
-            flags=re.DOTALL
+            r'  model: ".*?"', 
+            f'  model: "{model}"', 
+            config_content
         )
         
         if api_key:
@@ -141,17 +127,21 @@ def main() -> None:
         
         # Update the config content to use OpenAI as default
         config_content = re.sub(
-            r'\[llm\].*?base_url = ".*?"', 
-            f'[llm]\n# Model to use\nmodel = "{model}"\n# API base URL\nbase_url = "https://api.openai.com/v1"', 
-            config_content, 
-            flags=re.DOTALL
+            r'  model: ".*?"', 
+            f'  model: "{model}"', 
+            config_content
         )
         
         config_content = re.sub(
-            r'\[llm\].*?api_key = ".*?"', 
-            f'[llm]\n# Model to use\nmodel = "{model}"\n# API base URL\nbase_url = "https://api.openai.com/v1"\n# Your API key\napi_key = "${{"OPENAI_API_KEY"}}"', 
-            config_content, 
-            flags=re.DOTALL
+            r'  base_url: ".*?"', 
+            f'  base_url: "https://api.openai.com/v1"', 
+            config_content
+        )
+        
+        config_content = re.sub(
+            r'  api_key: ".*?"', 
+            f'  api_key: "${{"OPENAI_API_KEY"}}"', 
+            config_content
         )
         
         if api_key:
@@ -163,17 +153,21 @@ def main() -> None:
         
         # Update the config content to use DeepSeek as default
         config_content = re.sub(
-            r'\[llm\].*?base_url = ".*?"', 
-            f'[llm]\n# Model to use\nmodel = "{model}"\n# API base URL\nbase_url = "https://api.deepseek.com/v1"', 
-            config_content, 
-            flags=re.DOTALL
+            r'  model: ".*?"', 
+            f'  model: "{model}"', 
+            config_content
         )
         
         config_content = re.sub(
-            r'\[llm\].*?api_key = ".*?"', 
-            f'[llm]\n# Model to use\nmodel = "{model}"\n# API base URL\nbase_url = "https://api.deepseek.com/v1"\n# Your API key\napi_key = "${{"DEEPSEEK_API_KEY"}}"', 
-            config_content, 
-            flags=re.DOTALL
+            r'  base_url: ".*?"', 
+            f'  base_url: "https://api.deepseek.com/v1"', 
+            config_content
+        )
+        
+        config_content = re.sub(
+            r'  api_key: ".*?"', 
+            f'  api_key: "${{"DEEPSEEK_API_KEY"}}"', 
+            config_content
         )
         
         if api_key:
@@ -184,17 +178,21 @@ def main() -> None:
         
         # Update the config content to use Ollama as default
         config_content = re.sub(
-            r'\[llm\].*?base_url = ".*?"', 
-            f'[llm]\n# Model to use\nmodel = "{model}"\n# API base URL\nbase_url = "http://localhost:11434/v1"', 
-            config_content, 
-            flags=re.DOTALL
+            r'  model: ".*?"', 
+            f'  model: "{model}"', 
+            config_content
         )
         
         config_content = re.sub(
-            r'\[llm\].*?api_key = ".*?"', 
-            f'[llm]\n# Model to use\nmodel = "{model}"\n# API base URL\nbase_url = "http://localhost:11434/v1"\n# Your API key\napi_key = "ollama"', 
-            config_content, 
-            flags=re.DOTALL
+            r'  base_url: ".*?"', 
+            f'  base_url: "http://localhost:11434/v1"', 
+            config_content
+        )
+        
+        config_content = re.sub(
+            r'  api_key: ".*?"', 
+            f'  api_key: "ollama"', 
+            config_content
         )
     
     # Configure directories
@@ -202,48 +200,73 @@ def main() -> None:
     
     workspace_dir = prompt("Enter the workspace directory path", "./workspace")
     research_output_dir = prompt("Enter the research output directory path", "./research_output")
+    cache_dir = prompt("Enter the cache directory path", "./cache")
     
-    # Update directory paths in the config
+    # Update directory paths in config
     config_content = re.sub(
-        r'workspace_base = ".*?"', 
-        f'workspace_base = "{workspace_dir}"', 
+        r'  workspace_base: ".*?"',
+        f'  workspace_base: "{workspace_dir}"',
         config_content
     )
     
     config_content = re.sub(
-        r'research_output_dir = ".*?"', 
-        f'research_output_dir = "{research_output_dir}"', 
+        r'  research_output_dir: ".*?"',
+        f'  research_output_dir: "{research_output_dir}"',
+        config_content
+    )
+    
+    config_content = re.sub(
+        r'  cache_dir: ".*?"',
+        f'  cache_dir: "{cache_dir}"',
         config_content
     )
     
     # Configure UI settings
     print_header("UI Configuration")
     
-    enable_ui = prompt_bool("Enable the web UI?", False)
+    ui_enabled = prompt_bool("Enable the web UI?", False)
+    ui_port = prompt("Enter the UI port", "8000")
+    ui_host = prompt("Enter the UI host", "127.0.0.1")
+    ui_theme = prompt("Enter the UI theme (light/dark/system)", "system")
     
-    # Update UI settings in the config
+    # Update UI settings in config
     config_content = re.sub(
-        r'enabled = (true|false)', 
-        f'enabled = {"true" if enable_ui else "false"}', 
+        r'  enabled: .*?',
+        f'  enabled: {str(ui_enabled).lower()}',
         config_content
     )
     
-    if enable_ui:
-        ui_port = prompt("Enter the UI port", "8000")
-        config_content = re.sub(
-            r'port = \d+', 
-            f'port = {ui_port}', 
-            config_content
-        )
+    config_content = re.sub(
+        r'  port: .*?',
+        f'  port: {ui_port}',
+        config_content
+    )
+    
+    config_content = re.sub(
+        r'  host: ".*?"',
+        f'  host: "{ui_host}"',
+        config_content
+    )
+    
+    config_content = re.sub(
+        r'  theme: ".*?"',
+        f'  theme: "{ui_theme}"',
+        config_content
+    )
+    
+    # Interpolate environment variables
+    config_content = interpolate_env_vars(config_content)
     
     # Write the configuration file
     with open(output_path, "w") as f:
         f.write(config_content)
     
-    print_header("Configuration Complete")
-    print(f"Configuration file has been written to {output_path}")
-    print("You can edit this file directly to make further changes.")
-    print("To use the configuration, run your Roboco commands from the project root directory.")
+    print(f"\nConfiguration saved to {output_path}")
+    print("\nNext steps:")
+    print("1. Review the configuration file")
+    print("2. Set up your environment variables in a .env file")
+    print("3. Run roboco to start using the system")
+
 
 if __name__ == "__main__":
     main() 

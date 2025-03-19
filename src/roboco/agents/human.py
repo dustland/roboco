@@ -8,7 +8,7 @@ with other agents in the system.
 from typing import Dict, Any, List, Optional
 from loguru import logger
 from autogen import UserProxyAgent
-from roboco.core.config import load_config
+from roboco.core.config import get_llm_config, load_config
 import logging
 
 class HumanProxy(UserProxyAgent):
@@ -53,11 +53,11 @@ class HumanProxy(UserProxyAgent):
             5. Provide feedback and guidance to other agents"""
 
         # Load configuration
-        config = load_config(config_path)
+        llm_config = get_llm_config()
         
         # Use termination message from config if none is provided
         if terminate_msg is None:
-            terminate_msg = config.terminate_msg
+            terminate_msg = llm_config.get("terminate_msg", "TERMINATE")
             
         self.terminate_msg = terminate_msg
         
