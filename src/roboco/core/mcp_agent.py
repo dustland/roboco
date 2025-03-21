@@ -6,9 +6,9 @@ It can be used as a foundation for specialized agents that need to communicate w
 MCP-compatible services like Genesis, Simulacra, or other simulation/control systems.
 """
 
-from typing import Dict, Optional, List, Any, Union, Tuple
+from typing import Dict, Optional, List, Any
 import asyncio
-from abc import ABC, abstractmethod
+import shlex
 from loguru import logger
 
 from roboco.core import Agent
@@ -27,105 +27,11 @@ except ImportError:
     class StdioServerParameters:
         pass
 
-class MCPTransport(ABC):
-    """Abstract base class for MCP transport mechanisms."""
-    
-    @abstractmethod
-    async def connect(self) -> Tuple[asyncio.StreamReader, asyncio.StreamWriter]:
-        """Connect to the MCP server and return the input/output streams."""
-        pass
-        
-    @abstractmethod
-    async def disconnect(self) -> None:
-        """Disconnect from the MCP server."""
-        pass
-        
-    @property
-    @abstractmethod
-    def is_connected(self) -> bool:
-        """Check if connected to the MCP server."""
-        pass
-        
-class StdioTransport(MCPTransport):
-    """Transport for connecting to a local MCP server using stdio."""
-    
-    def __init__(self, command: str, args: Optional[List[str]] = None):
-        """Initialize the stdio transport.
-        
-        Args:
-            command: The command to start the MCP server
-            args: Optional arguments to pass to the command
-        """
-        self.command = command
-        self.args = args or []
-        self._process = None
-        self._reader = None
-        self._writer = None
-        
-    async def connect(self) -> Tuple[asyncio.StreamReader, asyncio.StreamWriter]:
-        """Connect to the MCP server and return the reader/writer pair."""
-        if not HAS_MCP:
-            raise ImportError("MCP package not installed")
-        self._process, self._reader, self._writer = await stdio_client(
-            StdioServerParameters(cmd=self.command, args=self.args)
-        )
-        return self._reader, self._writer
-        
-    async def disconnect(self) -> None:
-        """Disconnect from the MCP server."""
-        if self._writer:
-            self._writer.close()
-            await self._writer.wait_closed()
-        
-        if self._process and self._process.returncode is None:
-            try:
-                self._process.terminate()
-                await asyncio.wait_for(self._process.wait(), timeout=5.0)
-            except (asyncio.TimeoutError, ProcessLookupError):
-                self._process.kill()
-        
-    @property
-    def is_connected(self) -> bool:
-        """Check if connected to the MCP server."""
-        return (
-            self._process is not None and 
-            self._process.returncode is None and
-            self._writer is not None and 
-            not self._writer.is_closing()
-        )
-
-class TransportFactory:
-    """Factory for creating MCP transports."""
-    
-    @staticmethod
-    def create_transport(config: Dict[str, Any]) -> MCPTransport:
-        """Create a transport based on configuration.
-        
-        Args:
-            config: Transport configuration dictionary
-                - type: Transport type ('stdio', 'sse', etc.)
-                - Other type-specific parameters
-                
-        Returns:
-            An MCPTransport implementation
-        """
-        if not isinstance(config, dict):
-            raise ValueError("Transport configuration must be a dictionary")
-            
-        transport_type = config.get('type', 'stdio')
-        
-        if transport_type == 'stdio':
-            command = config.get('command', 'mcp-server')
-            args = config.get('args', [])
-            return StdioTransport(command, args)
-        else:
-            raise ValueError(f"Unsupported transport type: {transport_type}")
-
-class MCPAgent(Agent):
+class McpAgent(Agent):
     """Base agent class for interacting with MCP servers.
     
     This agent extends the standard Agent with the ability to:
-    - Connect to MCP servers using various transport mechanisms
+    - Connect to MCP servers using stdio transport
     - Send commands and receive responses
     - Manage session lifecycle
     
@@ -136,8 +42,7 @@ class MCPAgent(Agent):
         self,
         name: str,
         system_message: str,
-        transport_config: Optional[Dict[str, Any]] = None,
-        mcp_server_command: Optional[str] = None,
+        mcp_server_command: str = "mcp-server",
         mcp_server_args: Optional[List[str]] = None,
         **kwargs,
     ):
@@ -146,9 +51,8 @@ class MCPAgent(Agent):
         Args:
             name: Name of the agent
             system_message: System message defining agent behavior
-            transport_config: Configuration for the MCP transport
-            mcp_server_command: Command to start the MCP server (legacy support)
-            mcp_server_args: Optional arguments for the MCP server (legacy support)
+            mcp_server_command: Command to start the MCP server (e.g., "mcp-server", "mcp dev server.py")
+            mcp_server_args: Optional additional arguments for the MCP server
             **kwargs: Additional arguments passed to Agent
         """
         if not HAS_MCP:
@@ -166,31 +70,19 @@ class MCPAgent(Agent):
         # Initialize the Agent parent class with the enhanced system message
         super().__init__(name=name, system_message=enhanced_system_message, **kwargs)
         
-        # Handle backward compatibility
-        if transport_config is None and mcp_server_command is not None:
-            transport_config = {
-                "type": "stdio",
-                "command": mcp_server_command,
-                "args": mcp_server_args or []
-            }
-        elif transport_config is None:
-            # Default configuration
-            transport_config = {
-                "type": "stdio",
-                "command": "mcp-server",
-                "args": []
-            }
-            
-        # Create the transport
-        try:
-            self.transport = TransportFactory.create_transport(transport_config)
-        except (ImportError, ValueError) as e:
-            logger.error(f"Failed to create MCP transport: {e}")
-            self.transport = None
-            
+        # Parse the server command into command and arguments
+        # This handles cases like "mcp dev server.py" and splits it appropriately
+        command_parts = shlex.split(mcp_server_command)
+        self.mcp_base_command = command_parts[0]  # e.g., "mcp"
+        self.mcp_command_args = command_parts[1:] # e.g., ["dev", "server.py"]
+        
+        # Add any additional arguments
+        if mcp_server_args:
+            self.mcp_command_args.extend(mcp_server_args)
+        
+        # Session management
+        self._session_ctx = None
         self.session = None
-        self.read_stream = None
-        self.write_stream = None
         
         # Register common MCP tools
         self._register_mcp_tools()
@@ -211,24 +103,41 @@ class MCPAgent(Agent):
         if not HAS_MCP:
             logger.error("MCP package is not installed. Cannot initialize connection.")
             return False
-            
-        if self.transport is None:
-            logger.error("No valid transport configured. Cannot initialize connection.")
-            return False
-            
+        
         try:
-            logger.debug(f"Connecting to MCP server using transport: {type(self.transport).__name__}")
+            # Create server parameters with the properly split command and args
+            server_params = StdioServerParameters(
+                command=self.mcp_base_command,
+                args=self.mcp_command_args
+            )
             
-            # Connect using the transport
-            self.read_stream, self.write_stream = await self.transport.connect()
-            self.session = ClientSession(self.read_stream, self.write_stream)
+            full_command = f"{self.mcp_base_command} {' '.join(self.mcp_command_args)}"
+            logger.debug(f"Connecting to MCP server with command: {full_command}")
             
-            # Initialize the session
+            # Use the stdio_client as shown in the example
+            self._session_ctx = stdio_client(server_params)
+            read, write = await self._session_ctx.__aenter__()
+            
+            # Create and initialize the session
+            self.session = ClientSession(read, write)
             await self.session.initialize()
+            
+            # Log available tools
+            tools = self.session.list_tools()
             logger.info(f"Successfully connected to MCP server with {self.name} agent")
+            logger.debug(f"Available MCP tools: {tools}")
+            
             return True
         except Exception as e:
             logger.error(f"Error connecting to MCP server: {e}")
+            # Clean up resources if connection failed
+            if self._session_ctx is not None:
+                try:
+                    await self._session_ctx.__aexit__(None, None, None)
+                except Exception:
+                    pass
+            self._session_ctx = None
+            self.session = None
             return False
             
     async def close(self):
@@ -237,12 +146,13 @@ class MCPAgent(Agent):
             try:
                 await self.session.close()
                 self.session = None
+            except Exception as e:
+                logger.error(f"Error closing MCP session: {e}")
                 
-                if self.transport and self.transport.is_connected:
-                    await self.transport.disconnect()
-                    
-                self.read_stream = None
-                self.write_stream = None
+        if self._session_ctx is not None:
+            try:
+                await self._session_ctx.__aexit__(None, None, None)
+                self._session_ctx = None
                 logger.debug(f"Closed connection to MCP server for {self.name} agent")
             except Exception as e:
                 logger.error(f"Error closing MCP connection: {e}")
@@ -265,7 +175,7 @@ class MCPAgent(Agent):
             }
             
         try:
-            if not self.session or not self.transport or not self.transport.is_connected:
+            if not self.session:
                 logger.debug(f"No active MCP session, attempting to initialize")
                 success = await self.initialize()
                 if not success:
@@ -276,7 +186,7 @@ class MCPAgent(Agent):
                     }
                 
             logger.debug(f"Sending MCP command: {command} with args: {args or {}}")
-            result = await self.session.call_tool(command, args or {})
+            result = await self.session.call_tool(command, inputs=args or {})
             return {
                 "success": True,
                 "message": "Command executed successfully",
@@ -290,7 +200,7 @@ class MCPAgent(Agent):
                 "result": None
             }
     
-    async def get_resource(self, resource_name: str) -> Tuple[Optional[str], bool]:
+    async def get_resource(self, resource_name: str) -> tuple[Optional[str], bool]:
         """Get a resource from the MCP server.
         
         Args:
@@ -304,7 +214,7 @@ class MCPAgent(Agent):
             return None, False
             
         try:
-            if not self.session or not self.transport or not self.transport.is_connected:
+            if not self.session:
                 logger.debug(f"No active MCP session, attempting to initialize")
                 success = await self.initialize()
                 if not success:

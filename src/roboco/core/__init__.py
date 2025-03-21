@@ -5,7 +5,7 @@ This module contains the core components for creating and managing agent-based r
 """
 
 from .agent import Agent
-from .mcp_agent import MCPAgent
+from .mcp_agent import McpAgent
 from .team import Team
 from .tool import Tool
 from .config import load_config, get_llm_config, get_workspace
@@ -20,7 +20,7 @@ __all__ = [
     "Agent",
     "AgentFactory",
     "TeamBuilder",
-    "MCPAgent",
+    "McpAgent",
     "GenesisAgent",
     "Team",
     "Tool",

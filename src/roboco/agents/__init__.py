@@ -14,11 +14,9 @@ from roboco.agents.robotics_scientist import RoboticsScientist
 from roboco.agents.genesis_agent import GenesisAgent
 # Import the base classes for convenience
 from roboco.core.agent import Agent
-from roboco.core.mcp_agent import MCPAgent
 
 __all__ = [
     'Agent',             # Base class for creating custom agents
-    'MCPAgent',          # Base class for MCP-enabled agents
     'GenesisAgent',      # Genesis agent
     'RoboticsScientist'  # Remaining specialized agent
 ]

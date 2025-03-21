@@ -209,3 +209,68 @@ Add new tools by creating classes in `src/roboco/tools/` that inherit from the b
 - Inspired by the concepts of [Manus](https://manus.im/) and [OpenManus](https://github.com/mannaandpoem/OpenManus/)
 - Inspired by the need for better embodied AI and humanoid robotics development
 - Special thanks to the robotics and AI communities for their contributions to the field
+
+## Tool Registration with Executor Agents
+
+The Genesis agent can now be initialized with an `executor_agent` parameter, which simplifies tool registration. This allows tools to be automatically registered with a specified executor agent during initialization, eliminating the need for explicit calls to `register_tools_with_executor`.
+
+### Example Usage
+
+```python
+# Create a human proxy agent
+human_proxy = HumanProxy(
+    name="User",
+    system_message="You are a user who tests physics simulations.",
+    terminate_msg="=== End of conversation ===",
+    human_input_mode="NEVER"
+)
+
+# Method 1: Create an agent with executor_agent in constructor
+genesis_agent = GenesisAgent(
+    name="PhysicsAssistant",
+    system_message="You are a physics simulation expert that helps users test simulations.",
+    terminate_msg="=== End of conversation ===",
+    mcp_server_command="genesis-mcp",
+    executor_agent=human_proxy  # Set the human_proxy as the executor for tools
+)
+
+# Method 2: Create an agent and set executor later
+genesis_agent = GenesisAgent(
+    name="PhysicsAssistant",
+    system_message="You are a physics simulation expert."
+)
+# Later register tools with an executor
+genesis_agent.register_tools_with_executor(human_proxy)
+```
+
+This improvement streamlines the process of setting up tool execution between different agents, making it easier to build complex multi-agent systems with separate tool definition and execution responsibilities.
+
+### Initiating Conversations with Tool Executors
+
+When using agents with tool execution, it's recommended to have the executor agent initiate the conversation. This pattern works especially well with the `HumanProxy` as executor:
+
+```python
+# Create a human proxy agent
+human_proxy = HumanProxy(
+    name="User",
+    system_message="You are a user interested in physics simulations.",
+    human_input_mode="ALWAYS"
+)
+
+# Create the Genesis agent with the human proxy as the executor
+genesis_agent = GenesisAgent(
+    name="GenesisAssistant",
+    system_message="You are a physics simulation expert that helps users create and run simulations.",
+    mcp_server_command="genesis-mcp",
+    executor_agent=human_proxy
+)
+
+# Let the human proxy initiate the chat with the Genesis agent
+await human_proxy.initiate_chat(
+    recipient=genesis_agent,
+    message="Hello, I'd like to learn about physics simulations.",
+    max_turns=10
+)
+```
+
+This approach ensures proper handling of tool execution and conversation flow, with the human proxy managing both the conversation and the execution of tools.

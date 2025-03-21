@@ -19,5 +19,6 @@ __all__ = [
     "ArxivConfig",
     "GitHubTool",
     "GitHubConfig",
-    "GitHubConfig"
+    "TimeTool",
+    "TimeConfig"
 ] 
