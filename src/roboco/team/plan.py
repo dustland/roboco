@@ -13,6 +13,7 @@ from loguru import logger
 from roboco.core.team import Team
 from roboco.core.agent import Agent
 from roboco.agents import Executive, ProductManager, SoftwareEngineer, ReportWriter
+from roboco.agents.human import HumanProxy
 from roboco.tools.fs import FileSystemTool
 
 class PlanningTeam(Team):
@@ -23,6 +24,7 @@ class PlanningTeam(Team):
     - Product Manager: Creates detailed plans based on vision
     - Software Engineer: Reviews plans for technical feasibility
     - Report Writer: Improves document clarity and structure
+    - HumanProxy: Handles tool execution requests for file operations
     
     The team works iteratively to generate, review, and refine planning documents
     that are stored in the workspace/plan directory.
@@ -60,12 +62,19 @@ class PlanningTeam(Team):
         # Initialize team members
         self._initialize_team_members()
         
+        # Initialize human proxy agent for tool execution
+        self.human = self.create_agent(
+            agent_class=HumanProxy,
+            name="HumanProxy",
+            human_input_mode="NEVER"  # Run in automated mode without requiring human input
+        )
+        
         # Set up file system tool
         self.fs_tool = FileSystemTool()
         
         # Register the tool with all agents
         for agent in self.agents.values():
-            self.fs_tool.register_with_agent(agent)
+            self.fs_tool.register_with_agents(agent, self.human)
         
         # Register handoffs between agents for automatic swarm orchestration
         self._register_handoffs()
@@ -134,7 +143,7 @@ class PlanningTeam(Team):
     def _register_handoffs(self):
         """Register handoffs between agents for automatic swarm transitions."""
         from autogen import register_hand_off, AfterWork
-        
+
         # Define the work flow: ProductManager -> SoftwareEngineer -> ReportWriter -> Executive -> ProductManager
         handoff_chain = [
             self.get_agent("ProductManager"),
@@ -143,15 +152,15 @@ class PlanningTeam(Team):
             self.get_agent("Executive"),
         ]
         
-        # Create circular handoffs
+        # Create circular handoffs for the main workflow
         for i, agent in enumerate(handoff_chain):
             next_agent = handoff_chain[(i + 1) % len(handoff_chain)]
             register_hand_off(
                 agent=agent,
-                hand_to=[AfterWork(agent=next_agent)]
+                hand_to=AfterWork(agent=next_agent)
             )
         
-        logger.info(f"Registered handoffs between {len(handoff_chain)} agents")
+        logger.info(f"Registered basic handoff workflow between {len(handoff_chain)} agents")
     
     async def create_planning_suite(self, vision: str) -> Dict[str, Any]:
         """Create a complete planning document suite based on a high-level vision.
