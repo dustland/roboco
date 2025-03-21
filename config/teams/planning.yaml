@@ -1,0 +1,56 @@
+# Planning Team Configuration (overrides the global config)
+
+# Additional team metadata
+description: "Enhanced planning team that creates comprehensive project planning documents"
+output_dir: "workspace/enhanced_plan"
+
+# Agent-specific configurations
+agent_configs:
+  executive:
+    temperature: 0.3
+    max_tokens: 2000
+  product_manager:
+    temperature: 0.7
+    max_tokens: 4000
+  software_engineer:
+    temperature: 0.5
+    max_tokens: 3000
+  report_writer:
+    temperature: 0.6
+    max_tokens: 3500
+  human_proxy:
+    human_input_mode: "NEVER"
+
+# Task definitions
+tasks:
+  create_planning_suite:
+    description: "Creates a complete suite of planning documents"
+    initial_agent: "product_manager"
+    prompt_template: >
+      Based on this vision: "{vision}"
+
+      Please create a complete planning document suite in the workspace/enhanced_plan directory that includes:
+      1. vision.md - A clear vision statement with objectives and success criteria
+      2. technical_strategy.md - Technical approach and architecture
+      3. implementation_plan.md - Detailed implementation plan with timelines
+      4. risk_assessment.md - Assessment of risks and mitigation strategies
+      5. budget.md - Detailed budget breakdown and resource allocation
+
+      Each document should be thorough, well-structured, and follow best practices for software project planning.
+    max_rounds: 12
+
+  improve_document:
+    description: "Improves an existing planning document based on feedback"
+    initial_agent: "report_writer"
+    prompt_template: >
+      I need you to improve the {document_name} document based on this feedback:
+
+      {feedback}
+
+      The current document content is:
+
+      {document_content}
+
+      Please review the document, apply the feedback, and create an improved version that addresses all the points raised.
+      Save the improved document back to {document_path}.
+    max_rounds: 6

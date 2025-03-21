@@ -3,33 +3,41 @@
 
 # No need to load .env anymore since all configs are in config.toml
 
-# If no arguments provided, default to web browsing example
-if [ $# -eq 0 ]; then
-  # Run web browsing example
-  echo "Running web browsing example..."
-  python examples/web_surf/main.py
+# Default to running the web_surf example if no arguments are provided
+if [ -z "$1" ]; then
+  echo "Running default example (web browsing)..."
+  
+  # Check if virtual environment is active
+  if [ -z "$VIRTUAL_ENV" ]; then
+    echo "Activating virtual environment..."
+    source .venv/bin/activate
+  fi
+  
+  python examples/tool/web_surf.py
   exit 0
 fi
 
-EXAMPLE=$1
+# Otherwise run the specified example
+example="$1"
+shift
 
-case $EXAMPLE in
-  team)
-    echo "Running team chat example..."
-    python examples/team_chat/main.py
-    ;;
-  web)
-    echo "Running web browsing example..."
-    python examples/web_surf/main.py
-    ;;
-  market)
-    echo "Running market research example..."
-    python examples/market_research/main.py
-    ;;
-  *)
-    echo "Unknown example: $EXAMPLE"
-    echo "Available examples: team, web, market"
-    echo "Running default web browsing example instead..."
-    python examples/web_surf/main.py
-    ;;
-esac 
+echo "Running example: $example"
+
+# Check if virtual environment is active
+if [ -z "$VIRTUAL_ENV" ]; then
+  echo "Activating virtual environment..."
+  source .venv/bin/activate
+fi
+
+if [ -f "examples/$example/main.py" ]; then
+  python "examples/$example/main.py" "$@"
+elif [ -f "examples/$example.py" ]; then
+  python "examples/$example.py" "$@"
+elif [ -f "examples/tool/$example.py" ]; then
+  python "examples/tool/$example.py" "$@"
+else
+  echo "Error: Example not found: $example"
+  echo "Available examples:"
+  find examples -name "*.py" | grep -v "__" | sort
+  exit 1
+fi 

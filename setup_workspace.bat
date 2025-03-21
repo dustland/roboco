@@ -83,6 +83,6 @@ echo Workspace setup complete!
 echo To get started:
 echo 1. Add your API keys to the .env file
 echo 2. Activate your virtual environment
-echo 3. Run your first example with: python examples/web_surf/main.py
+echo 3. Run your first example with: python examples/tool/web_surf.py
 
 pause 

@@ -62,6 +62,26 @@ examples/
 
 ## Available Examples
 
+### Tool Examples
+
+The `tool/` directory contains various examples demonstrating how to use tools:
+
+- FileSystem tool examples for file operations
+- Web browsing with BrowserUseTool
+- GitHub and ArXiv API tools
+- And more...
+
+```bash
+# Run the file system example
+python examples/tool/fs_example.py
+
+# Run the web browsing example
+python examples/tool/web_surf.py
+
+# Run the GitHub API tool example
+python examples/tool/github_example.py
+```
+
 ### Team Chat
 
 The `team_chat` directory contains an example of how to use the Roboco system to create a team of agents and initiate a chat with automatic handoffs between them.
@@ -69,15 +89,6 @@ The `team_chat` directory contains an example of how to use the Roboco system to
 ```bash
 # Run the team chat example
 python examples/team_chat/main.py
-```
-
-### Web Surf
-
-The `web_surf` directory contains an example of how to use the Roboco system to perform web research using the BrowserTool.
-
-```bash
-# Run the web surf example
-python examples/web_surf/main.py
 ```
 
 ### Market Research

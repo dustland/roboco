@@ -5,15 +5,17 @@ This module contains the core components for creating and managing agent-based r
 """
 
 from .agent import Agent
+from .mcp_agent import MCPAgent
 from .team import Team
 from .tool import Tool
 from .config import load_config, get_llm_config, get_workspace
 from .logger import setup_logger, get_logger
 from .workspace import Workspace
-from .genesis_agent import GenesisAgent
+from ..agents.genesis_agent import GenesisAgent
 
 __all__ = [
     "Agent",
+    "MCPAgent",
     "GenesisAgent",
     "Team",
     "Tool",

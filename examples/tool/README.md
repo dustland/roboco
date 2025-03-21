@@ -30,9 +30,58 @@ This directory contains examples demonstrating how to use the enhanced Tool syst
    python examples/tool/fs_with_agent.py
    ```
 
+### Web Browsing and API Integration
+
+3. **web_surf.py** - Web browsing with BrowserUseTool
+
+   - Demonstrates how to use the BrowserUseTool for web research
+   - Shows agent-based web browsing to find information
+   - Captures screenshots of browsed pages
+
+   Run with:
+
+   ```bash
+   python examples/tool/web_surf.py
+   ```
+
+4. **test_browser_use.py** - Simple test of browser capabilities
+
+   - Tests basic browser functionality
+   - Validates configuration and dependencies
+
+   Run with:
+
+   ```bash
+   python examples/tool/test_browser_use.py
+   ```
+
+5. **github_example.py** - GitHub API integration
+
+   - Demonstrates using the GitHubTool to access GitHub repositories
+   - Searches repos, fetches issues, and accesses repository information
+   - Shows how to use API-based tools with agents
+
+   Run with:
+
+   ```bash
+   python examples/tool/github_example.py
+   ```
+
+6. **arxiv_example.py** - ArXiv API integration
+
+   - Uses the ArXivTool to search academic papers
+   - Retrieves paper abstracts and metadata
+   - Shows scientific research capabilities
+
+   Run with:
+
+   ```bash
+   python examples/tool/arxiv_example.py
+   ```
+
 ### Auto-Discovery Examples
 
-3. **auto_discover_example.py** - Demonstrates automatic function discovery
+7. **auto_discover_example.py** - Demonstrates automatic function discovery
 
    - Shows how functions defined in `__init__` are automatically discovered and registered as commands
    - Implements a `UtilityTool` with date, math, and string helper functions
@@ -54,6 +103,7 @@ These examples showcase the following key features of the enhanced Tool system:
 4. **Error Handling** - Built-in error handling for command execution with appropriate error messages
 5. **Primary Command** - Automatic selection of a primary command when none is specified
 6. **Auto-Discovery** - Automatic discovery and registration of functions defined in the tool's `__init__` method
+7. **Web Integration** - Examples of browsing the web and using external APIs
 
 ## Implementation Patterns
 
@@ -105,6 +155,23 @@ class MyTool(Tool):
 
 - **data/** - Created by fs_example.py, contains sample files
 - **agent_data/** - Created by fs_with_agent.py, contains files created by an agent
+- **workspace/screenshots/** - Created by web_surf.py, contains browser screenshots
+
+## Web Browsing Dependencies
+
+For the web browsing examples, you'll need additional dependencies:
+
+```bash
+# Install browser-use and playwright
+uv pip install "ag2[browser-use]"
+uv pip install playwright
+
+# Install browser engines
+playwright install
+
+# Install system dependencies (Linux only)
+playwright install-deps
+```
 
 ## Testing
 
@@ -113,5 +180,7 @@ To verify that all tools work correctly, run the examples:
 ```bash
 python examples/tool/fs_example.py
 python examples/tool/fs_with_agent.py
-python examples/tool/auto_discover_example.py
+python examples/tool/web_surf.py
+python examples/tool/github_example.py
+python examples/tool/arxiv_example.py
 ```

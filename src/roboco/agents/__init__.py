@@ -1,23 +1,37 @@
 """
-Roboco Agents Package
+Custom Agent Classes
 
-This package provides agent implementations for the Roboco system.
+This module provides a base for creating custom Agent subclasses with specialized behavior.
+Most standard agents have been migrated to the configuration-based system with
+prompts defined in markdown files in the config/prompts/ directory.
+
+For most use cases, using role markdown files and the configuration-based team system
+is recommended. However, creating custom Agent subclasses remains fully supported
+for specialized needs that can't be expressed through configuration alone.
 """
 
+import warnings
+
+# Inform users about the preferred approach
+warnings.warn(
+    "Most pre-configured agent classes have been moved to configuration files. "
+    "For standard agents, use the configuration-based system with role markdown files "
+    "in config/prompts/. Creating custom Agent subclasses is still supported for "
+    "specialized behavior that can't be expressed in configuration.",
+    UserWarning,
+    stacklevel=2
+)
+
+# Import the remaining specialized agent
+from roboco.agents.robotics_scientist import RoboticsScientist
+from roboco.agents.genesis_agent import GenesisAgent
+# Import the base classes for convenience
 from roboco.core.agent import Agent
-from .executive import Executive
-from .product_manager import ProductManager
-from .software_engineer import SoftwareEngineer
-from .robotics_scientist import RoboticsScientist
-from .report_writer import ReportWriter
-from .human import HumanProxy
+from roboco.core.mcp_agent import MCPAgent
 
 __all__ = [
-    "Agent",
-    "Executive",
-    "ProductManager",
-    "SoftwareEngineer",
-    "RoboticsScientist",
-    "ReportWriter",
-    "HumanProxy"
+    'Agent',             # Base class for creating custom agents
+    'MCPAgent',          # Base class for MCP-enabled agents
+    'GenesisAgent',      # Genesis agent
+    'RoboticsScientist'  # Remaining specialized agent
 ]

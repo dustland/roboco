@@ -8,6 +8,7 @@ RoboCo (Robot Company) is a comprehensive platform designed to develop and adapt
 
 - **Humanoid Robot Development**: Create and adapt robots for specific occupations
 - **Multi-Agent Teams**: Specialized agents for robotics and physical interaction
+- **Configuration-Based System**: Define teams and agents using YAML configs and markdown prompts
 - **Extensible Tools**: Web research, physics simulation, and robot control capabilities
 - **Physical Interaction**: Real-world interaction and robot control
 - **Built-in Monitoring**: Comprehensive logging and monitoring system
@@ -18,7 +19,7 @@ Ensure you have Python 3.10+ installed.
 
 ```bash
 # Clone the repository
-git clone https://github.com/roboco-ai/roboco.git
+git clone https://github.com/dustland/roboco.git
 cd roboco
 
 # Setup using shell script
@@ -42,26 +43,113 @@ python examples/test_config.py
 roboco/
 ├── src/
 │   └── roboco/
-│       ├── agents/       # Agent implementations
+│       ├── agents/       # Custom agent implementations
+│       ├── teams/        # Team implementations
 │       ├── core/         # Core functionality
 │       ├── tools/        # Tool implementations
 │       └── models/       # Data models and schemas
+├── config/
+│   ├── roles/            # Agent role definitions in markdown
+│   ├── teams/            # Team-specific configurations
+│   └── teams.yaml        # Global team definitions
 ├── examples/             # Example scripts
-├── config/               # Configuration files
 ├── tests/                # Test suite
 └── docs/                 # Documentation
 ```
 
-## Available Agents
+## Agent System
 
+RoboCo now uses a configuration-based approach for defining agents:
+
+### Role Definitions
+
+Agents are defined using markdown files in `config/roles/` directory:
+
+```markdown
+# Software Engineer
+
+You are the Software Engineer agent, responsible for implementing technical solutions...
+
+## Responsibilities
+
+- Develop software components
+- Review code for quality and security
+- ...
+```
+
+### Custom Agents
+
+For specialized needs, you can create custom Agent subclasses:
+
+```python
+from roboco.core.agent import Agent
+
+class DataAnalystAgent(Agent):
+    """Custom agent with specialized data analysis capabilities"""
+
+    def __init__(self, name, **kwargs):
+        self.data_sources = kwargs.pop("data_sources", [])
+        super().__init__(name, **kwargs)
+
+    async def generate_response(self, messages):
+        # Custom response generation logic
+        return await super().generate_response(messages)
+```
+
+## Team System
+
+Teams are defined in YAML configuration files:
+
+### Global Team Configuration
+
+```yaml
+# config/teams.yaml
+teams:
+  planning:
+    name: "PlanningTeam"
+    description: "Team for project planning"
+    roles:
+      - executive
+      - product_manager
+      - software_engineer
+    workflow:
+      - from: product_manager
+        to: software_engineer
+      # More workflow steps...
+    tools:
+      - filesystem
+```
+
+### Creating Teams
+
+Teams can be created from configuration:
+
+```python
+from roboco.core.team_loader import TeamLoader
+
+# Create team from configuration
+loader = TeamLoader()
+team = loader.create_team("planning")
+
+# Run the team
+result = await team.run_swarm(
+    initial_agent_name="ProductManager",
+    query="Create a project plan"
+)
+```
+
+## Available Roles
+
+- **Executive**: Provides strategic direction and final approval
 - **ProductManager**: Defines scope and delegates tasks
-- **Researcher**: Analyzes data from various sources
-- **ReportWriter**: Compiles findings into reports
-- **PhysicalInteractionAgent**: Handles physical interactions
-- **SensorProcessingAgent**: Processes sensor data
+- **SoftwareEngineer**: Implements technical solutions
+- **ReportWriter**: Creates and formats documentation
+- **RoboticsScientist**: Designs robotics systems and algorithms
+- **HumanProxy**: Executes tools and real-world interactions
 
 ## Available Tools
 
+- **FileSystemTool**: Read and write files and directories
 - **BrowserUseTool**: Web browsing with fallback mechanism
   - Supports custom output directories: `BrowserUseTool(output_dir="./browser_output")`
 - **WebSearchTool**: Search engine integration
@@ -74,7 +162,7 @@ roboco/
 
 ## Configuration
 
-Configuration uses YAML format in `config/config.yaml`:
+Core configuration uses YAML format in `config/config.yaml`:
 
 ```yaml
 # Core Settings
@@ -102,7 +190,11 @@ llm:
 
 ## Development
 
-Add new agents by creating classes in `src/roboco/agents/` that inherit from the base `Agent` class.
+Create new role definitions by adding markdown files to `config/roles/`.
+
+Create team configurations by adding entries to `config/teams.yaml` or team-specific files in `config/teams/`.
+
+For specialized behavior, add custom agents by creating classes in `src/roboco/agents/` that inherit from the base `Agent` class.
 
 Add new tools by creating classes in `src/roboco/tools/` that inherit from the base `Tool` class.
 
@@ -113,5 +205,6 @@ Add new tools by creating classes in `src/roboco/tools/` that inherit from the b
 ## Acknowledgments
 
 - Built on top of [AG2](https://github.com/ag2ai/ag2)
+- Inspired by the design of [Manus](https://manus.im/) and [OpenManus](https://github.com/mannaandpoem/OpenManus/)
 - Inspired by the need for better embodied AI and humanoid robotics development
 - Special thanks to the robotics and AI communities for their contributions to the field
