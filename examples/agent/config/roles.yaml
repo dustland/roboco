@@ -1,0 +1,10 @@
+roles:
+  data_analyst:
+    name: Data Analyst
+    system_prompt: You are a data analyst specializing in processing and interpreting
+      complex datasets.
+    type: agent
+  human_proxy:
+    name: Human
+    system_prompt: You are a human user.
+    type: human_proxy

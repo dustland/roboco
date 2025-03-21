@@ -11,7 +11,7 @@ import asyncio
 from abc import ABC, abstractmethod
 from loguru import logger
 
-from roboco.core.agent import Agent
+from roboco.core import Agent
 
 # Check for MCP dependencies
 try:
@@ -19,97 +19,107 @@ try:
     from mcp.client.stdio import stdio_client, StdioServerParameters
     HAS_MCP = True
 except ImportError:
-    logger.warning("MCP package not installed. MCPAgent will not be fully functional.")
+    logger.warning("MCP package not installed. MCPAgent functionality will be limited.")
     HAS_MCP = False
-    # Create mock classes for type checking
+    # Define empty classes for type checking
     class ClientSession:
         pass
     class StdioServerParameters:
         pass
 
 class MCPTransport(ABC):
-    """Base interface for MCP server transport mechanisms."""
-
+    """Abstract base class for MCP transport mechanisms."""
+    
     @abstractmethod
     async def connect(self) -> Tuple[asyncio.StreamReader, asyncio.StreamWriter]:
-        """Establish connection to the MCP server and return read/write streams."""
+        """Connect to the MCP server and return the input/output streams."""
         pass
-
+        
     @abstractmethod
-    async def disconnect(self) -> None:
-        """Close the connection to the MCP server."""
-        pass
-
-    @property
-    @abstractmethod
-    def is_connected(self) -> bool:
-        """Return True if the transport is currently connected."""
-        pass
-
-class StdioTransport(MCPTransport):
-    """Stdio-based transport for local MCP server."""
-
-    def __init__(self, command: str, args: Optional[List[str]] = None):
-        """Initialize the stdio transport.
-
-        Args:
-            command: Command to start the MCP server
-            args: Optional arguments for the MCP server
-        """
-        if not HAS_MCP:
-            raise ImportError("MCP package is required for StdioTransport")
-            
-        self.params = StdioServerParameters(command=command, args=args or [])
-        self.read_stream = None
-        self.write_stream = None
-
-    async def connect(self) -> Tuple[asyncio.StreamReader, asyncio.StreamWriter]:
-        """Connect to the MCP server using stdio."""
-        self.read_stream, self.write_stream = await stdio_client(self.params)
-        return self.read_stream, self.write_stream
-
     async def disconnect(self) -> None:
         """Disconnect from the MCP server."""
-        if self.write_stream:
-            self.write_stream.close()
-            await self.write_stream.wait_closed()
-        self.read_stream = None
-        self.write_stream = None
-
+        pass
+        
+    @property
+    @abstractmethod
+    def is_connected(self) -> bool:
+        """Check if connected to the MCP server."""
+        pass
+        
+class StdioTransport(MCPTransport):
+    """Transport for connecting to a local MCP server using stdio."""
+    
+    def __init__(self, command: str, args: Optional[List[str]] = None):
+        """Initialize the stdio transport.
+        
+        Args:
+            command: The command to start the MCP server
+            args: Optional arguments to pass to the command
+        """
+        self.command = command
+        self.args = args or []
+        self._process = None
+        self._reader = None
+        self._writer = None
+        
+    async def connect(self) -> Tuple[asyncio.StreamReader, asyncio.StreamWriter]:
+        """Connect to the MCP server and return the reader/writer pair."""
+        if not HAS_MCP:
+            raise ImportError("MCP package not installed")
+        self._process, self._reader, self._writer = await stdio_client(
+            StdioServerParameters(cmd=self.command, args=self.args)
+        )
+        return self._reader, self._writer
+        
+    async def disconnect(self) -> None:
+        """Disconnect from the MCP server."""
+        if self._writer:
+            self._writer.close()
+            await self._writer.wait_closed()
+        
+        if self._process and self._process.returncode is None:
+            try:
+                self._process.terminate()
+                await asyncio.wait_for(self._process.wait(), timeout=5.0)
+            except (asyncio.TimeoutError, ProcessLookupError):
+                self._process.kill()
+        
     @property
     def is_connected(self) -> bool:
-        """Return True if the transport is currently connected."""
-        return self.read_stream is not None and self.write_stream is not None
+        """Check if connected to the MCP server."""
+        return (
+            self._process is not None and 
+            self._process.returncode is None and
+            self._writer is not None and 
+            not self._writer.is_closing()
+        )
 
 class TransportFactory:
     """Factory for creating MCP transports."""
-
+    
     @staticmethod
     def create_transport(config: Dict[str, Any]) -> MCPTransport:
-        """Create a transport from the given configuration.
-
+        """Create a transport based on configuration.
+        
         Args:
             config: Transport configuration dictionary
-
+                - type: Transport type ('stdio', 'sse', etc.)
+                - Other type-specific parameters
+                
         Returns:
-            An instance of MCPTransport
-
-        Raises:
-            ValueError: If the transport type is unknown
-            ImportError: If required dependencies are missing
+            An MCPTransport implementation
         """
-        if not HAS_MCP:
-            raise ImportError("MCP package is required for creating MCP transports")
+        if not isinstance(config, dict):
+            raise ValueError("Transport configuration must be a dictionary")
             
-        transport_type = config.get("type", "stdio")
-
-        if transport_type == "stdio":
-            return StdioTransport(
-                command=config.get("command", "mcp-server"),
-                args=config.get("args", [])
-            )
+        transport_type = config.get('type', 'stdio')
+        
+        if transport_type == 'stdio':
+            command = config.get('command', 'mcp-server')
+            args = config.get('args', [])
+            return StdioTransport(command, args)
         else:
-            raise ValueError(f"Unknown transport type: {transport_type}")
+            raise ValueError(f"Unsupported transport type: {transport_type}")
 
 class MCPAgent(Agent):
     """Base agent class for interacting with MCP servers.
@@ -153,6 +163,7 @@ class MCPAgent(Agent):
         
         enhanced_system_message = f"{system_message}{mcp_info}"
         
+        # Initialize the Agent parent class with the enhanced system message
         super().__init__(name=name, system_message=enhanced_system_message, **kwargs)
         
         # Handle backward compatibility
@@ -214,7 +225,7 @@ class MCPAgent(Agent):
             
             # Initialize the session
             await self.session.initialize()
-            logger.info(f"Successfully connected to MCP server")
+            logger.info(f"Successfully connected to MCP server with {self.name} agent")
             return True
         except Exception as e:
             logger.error(f"Error connecting to MCP server: {e}")
@@ -224,14 +235,15 @@ class MCPAgent(Agent):
         """Close the connection to the MCP server."""
         if self.session:
             try:
+                await self.session.close()
                 self.session = None
                 
-                if self.transport:
+                if self.transport and self.transport.is_connected:
                     await self.transport.disconnect()
                     
                 self.read_stream = None
                 self.write_stream = None
-                logger.debug("Closed connection to MCP server")
+                logger.debug(f"Closed connection to MCP server for {self.name} agent")
             except Exception as e:
                 logger.error(f"Error closing MCP connection: {e}")
     
@@ -245,8 +257,16 @@ class MCPAgent(Agent):
         Returns:
             Dict: The response from the server
         """
+        if not HAS_MCP:
+            return {
+                "success": False,
+                "message": "MCP package is not installed",
+                "result": None
+            }
+            
         try:
-            if not self.session:
+            if not self.session or not self.transport or not self.transport.is_connected:
+                logger.debug(f"No active MCP session, attempting to initialize")
                 success = await self.initialize()
                 if not success:
                     return {
@@ -263,7 +283,7 @@ class MCPAgent(Agent):
                 "result": result
             }
         except Exception as e:
-            logger.error(f"Error sending MCP command: {e}")
+            logger.error(f"Error sending MCP command '{command}': {e}")
             return {
                 "success": False,
                 "message": f"Error sending command: {str(e)}",
@@ -279,8 +299,13 @@ class MCPAgent(Agent):
         Returns:
             Tuple[Optional[str], bool]: The resource content and a success flag
         """
+        if not HAS_MCP:
+            logger.error("MCP package is not installed. Cannot get resource.")
+            return None, False
+            
         try:
-            if not self.session:
+            if not self.session or not self.transport or not self.transport.is_connected:
+                logger.debug(f"No active MCP session, attempting to initialize")
                 success = await self.initialize()
                 if not success:
                     return None, False
@@ -289,12 +314,14 @@ class MCPAgent(Agent):
             content, _ = await self.session.read_resource(resource_name)
             return content, True
         except Exception as e:
-            logger.error(f"Error getting MCP resource: {e}")
+            logger.error(f"Error getting MCP resource '{resource_name}': {e}")
             return None, False
         
     async def __aenter__(self):
+        """Async context manager entry point."""
         await self.initialize()
         return self
         
     async def __aexit__(self, exc_type, exc_val, exc_tb):
+        """Async context manager exit point."""
         await self.close() 

@@ -12,9 +12,14 @@ from .config import load_config, get_llm_config, get_workspace
 from .logger import setup_logger, get_logger
 from .workspace import Workspace
 from ..agents.genesis_agent import GenesisAgent
+from .agent_factory import AgentFactory
+from .team_builder import TeamBuilder
+from .models import TeamConfig
 
 __all__ = [
     "Agent",
+    "AgentFactory",
+    "TeamBuilder",
     "MCPAgent",
     "GenesisAgent",
     "Team",
@@ -24,5 +29,6 @@ __all__ = [
     "get_workspace",
     "setup_logger",
     "get_logger",
-    "Workspace"
+    "Workspace",
+    "TeamConfig"
 ]

@@ -149,109 +149,59 @@ class AgentConfig(BaseModel):
     design_output_dir: Optional[str] = Field(None, description="Directory for design outputs")
 
 
+class TeamConfig(BaseModel):
+    """Configuration for a team of agents.
+    
+    This standardizes team configuration across different team types.
+    Tasks are implemented directly within each team class rather than
+    being configured here, to simplify the configuration structure.
+    """
+    name: str = Field(
+        default="",
+        description="Name of the team"
+    )
+    description: str = Field(
+        default="",
+        description="Description of the team's purpose"
+    )
+    roles: List[str] = Field(
+        default_factory=list,
+        description="List of roles in this team"
+    )
+    orchestrator_name: Optional[str] = Field(
+        default=None,
+        description="Name of the agent to use as orchestrator (if any)"
+    )
+    tool_executor: Optional[str] = Field(
+        default=None,
+        description="Name of the agent to use as tool executor"
+    )
+    workflow: List[Dict[str, Any]] = Field(
+        default_factory=list,
+        description="Definition of the agent workflow/handoffs"
+    )
+    tools: List[str] = Field(
+        default_factory=list,
+        description="List of tools available to the team"
+    )
+    agent_configs: Dict[str, Dict[str, Any]] = Field(
+        default_factory=dict,
+        description="Configurations for specific agents in the team"
+    )
+    output_dir: str = Field(
+        default="workspace/team_output",
+        description="Directory for team outputs"
+    )
+    
+    model_config = dict(
+        extra='allow'  # Allow extra fields for team-specific configs
+    )
+
+
+# Base ToolConfig class remains in core as it's used by multiple tools
 class ToolConfig(BaseModel):
     """Base configuration for tools."""
     enabled: bool = Field(default=True, description="Whether this tool is enabled")
-
-
-class BrowserToolConfig(ToolConfig):
-    """Configuration for BrowserTool."""
-    timeout: int = Field(
-        default=30,
-        description="Request timeout in seconds"
-    )
-    max_retries: int = Field(
-        default=3,
-        description="Maximum number of retry attempts"
-    )
-    use_cache: bool = Field(
-        default=True,
-        description="Whether to use cached results"
-    )
-    search: Dict[str, Any] = Field(
-        default_factory=lambda: {"max_results": 5, "timeout": 30},
-        description="Search-specific settings"
-    )
-    browse: Dict[str, Any] = Field(
-        default_factory=lambda: {"timeout": 30, "max_retries": 3},
-        description="Browse-specific settings"
-    )
-    headless: bool = Field(
-        default=True,
-        description="Whether to run browser in headless mode"
-    )
-
-
-class ArxivConfig(ToolConfig):
-    """Configuration for ArxivTool."""
-    max_results: int = Field(
-        default=10,
-        description="Maximum number of search results to return"
-    )
-    timeout: int = Field(
-        default=30,
-        description="Request timeout in seconds"
-    )
-    rate_limit_delay: int = Field(
-        default=3,
-        description="Delay between API requests in seconds"
-    )
-    cache_dir: Optional[str] = Field(
-        default="./cache/arxiv",
-        description="Directory for caching search results"
-    )
-    temp_dir: Optional[str] = Field(
-        default="./tmp/arxiv_papers",
-        description="Directory for temporary paper downloads"
-    )
-
-
-class GitHubConfig(ToolConfig):
-    """Configuration for GitHubTool."""
-    token: str = Field(
-        default="",
-        description="GitHub API token"
-    )
-    max_results: int = Field(
-        default=10,
-        description="Maximum number of search results to return"
-    )
-    timeout: int = Field(
-        default=30,
-        description="Request timeout in seconds"
-    )
-    rate_limit_delay: int = Field(
-        default=1,
-        description="Delay between API requests in seconds"
-    )
-    cache_dir: Optional[str] = Field(
-        default="./cache/github",
-        description="Directory for caching search results"
-    )
-
-
-class ToolsConfig(BaseModel):
-    """Configuration for all tools."""
-    embodied: ToolConfig = Field(
-        default_factory=ToolConfig,
-        description="Embodied tool configuration"
-    )
-    web_research: BrowserToolConfig = Field(
-        default_factory=BrowserToolConfig,
-        description="Web research tool configuration"
-    )
-    terminal: ToolConfig = Field(
-        default_factory=ToolConfig,
-        description="Terminal tool configuration"
-    )
-    arxiv: ArxivConfig = Field(
-        default_factory=ArxivConfig,
-        description="Arxiv tool configuration"
-    )
-    github: GitHubConfig = Field(
-        default_factory=GitHubConfig,
-        description="GitHub tool configuration"
-    )
 
 
 class ServerConfig(BaseModel):
@@ -340,8 +290,12 @@ class RobocoConfig(BaseModel):
         default_factory=dict,
         description="Agent team configurations"
     )
-    tools: ToolsConfig = Field(
-        default_factory=ToolsConfig,
+    teams: Dict[str, TeamConfig] = Field(
+        default_factory=dict,
+        description="Team configurations"
+    )
+    tools: Dict[str, Any] = Field(
+        default_factory=dict,
         description="Tool configurations"
     )
     server: ServerConfig = Field(

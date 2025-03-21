@@ -35,6 +35,7 @@ async def main():
     #     "auth_token": "your-auth-token"  # Optional
     # }
     
+    # Create the agent
     agent = GenesisAgent(
         name="GenesisAssistant",
         system_message="You are a physics simulation expert that helps users create and run simulations.",
@@ -42,31 +43,44 @@ async def main():
     )
     
     try:
+        # Initialize the connection to the MCP server
+        print("Initializing connection to Genesis MCP server...")
+        success = await agent.initialize()
+        if not success:
+            print("Failed to connect to Genesis MCP server")
+            return
+
         # Get information about Genesis World
-        print("\n----- Genesis World Overview -----")
-        overview = await agent.get_world_info("overview")
-        print(f"{overview}\n")
-        
-        print("----- Genesis World Capabilities -----")
-        capabilities = await agent.get_world_info("capabilities")
-        print(f"{capabilities}\n")
+        print("\n----- Genesis World Information -----")
+        world_info = await agent.send_command("get_world_info")
+        if world_info.get("success"):
+            print("World information retrieved successfully:")
+            pprint(world_info.get("result", {}))
+        else:
+            print(f"Failed to get world information: {world_info.get('message')}")
+        print()
         
         # Get a basic simulation template
         print("----- Basic Simulation Template -----")
-        sim_code = await agent.get_basic_simulation(world_size=20, agent_count=5)
-        print(f"{sim_code}\n")
+        content, success = await agent.get_resource("basic_simulation")
+        if success and content:
+            print(f"Template retrieved ({len(content)} characters)")
+            print(f"First 100 characters: {content[:100]}...\n")
+            sim_code = content
+        else:
+            print("Failed to get template")
+            return
         
         # Run the simulation
         print("----- Running Simulation -----")
-        result = await agent.run_simulation(sim_code)
+        result = await agent.send_command("run_simulation", {
+            "code": sim_code,
+            "parameters": {}
+        })
         
         if result.get("success"):
-            print("\nSimulation logs:")
-            for log in result.get("logs", []):
-                print(f"  {log}")
-                
-            print("\nSimulation results:")
-            pprint(result.get("results", {}))
+            print("\nSimulation executed successfully:")
+            pprint(result.get("result", {}))
         else:
             print(f"Simulation failed: {result.get('message')}")
             
@@ -74,8 +88,9 @@ async def main():
         print(f"Error in Genesis agent demo: {e}")
     finally:
         # Clean up
+        print("Closing connection to Genesis MCP server...")
         await agent.close()
         print("\nDemo completed!")
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    asyncio.run(main()) 

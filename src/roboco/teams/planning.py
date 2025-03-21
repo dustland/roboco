@@ -10,8 +10,8 @@ import asyncio
 from typing import Dict, Any, List, Optional, Union
 from loguru import logger
 
-from roboco.core.team import Team
-from roboco.core.team_loader import TeamLoader
+from roboco.core import Team, TeamBuilder
+from roboco.core.models import TeamConfig
 
 class PlanningTeam(Team):
     """Team of agents that collaborate on planning a project."""
@@ -23,7 +23,9 @@ class PlanningTeam(Team):
         tools: List[Any] = None,
         roles_config_path: str = "config/roles.yaml",
         prompts_dir: str = "config/prompts",
-        orchestrator_name: str = None
+        orchestrator_name: str = None,
+        output_dir: str = "workspace/plan",
+        team_config: Optional[TeamConfig] = None
     ):
         """Initialize the planning team.
         
@@ -34,13 +36,40 @@ class PlanningTeam(Team):
             roles_config_path: Path to the roles configuration file
             prompts_dir: Directory containing markdown files with detailed role prompts
             orchestrator_name: Name of the agent to use as orchestrator
+            output_dir: Directory to store created planning documents
+            team_config: Optional TeamConfig instance for team configuration
         """
-        super().__init__(name=name, agents=agents or {}, orchestrator_name=orchestrator_name)
+        super().__init__(name=name, agents=agents or {})
+        
+        # Store orchestrator name for later use
+        self.orchestrator_name = orchestrator_name
         
         # Initialize attributes
         self.roles_config_path = roles_config_path
         self.prompts_dir = prompts_dir
         self.tools = tools or []
+        self.output_dir = output_dir
+        
+        # Initialize team configuration
+        if team_config:
+            self.team_config = team_config
+            # Override output_dir if specified in constructor
+            if output_dir != "workspace/plan":
+                self.output_dir = output_dir
+            else:
+                self.output_dir = team_config.output_dir
+        else:
+            self.team_config = TeamConfig(
+                name=name,
+                description="Team of agents that collaborate on planning a project",
+                roles=["executive", "product_manager", "software_engineer", "report_writer"],
+                tool_executor="human_proxy",
+                output_dir=output_dir,
+                orchestrator_name=orchestrator_name
+            )
+        
+        # Ensure output directory exists
+        os.makedirs(self.output_dir, exist_ok=True)
         
         # Build the team if no agents were provided
         if not agents:
@@ -51,12 +80,8 @@ class PlanningTeam(Team):
             
     def _build_team(self):
         """Build the team using the TeamBuilder."""
-        # Create team builder with specialized agents
-        builder = TeamBuilder(
-            roles_config_path=self.roles_config_path,
-            prompts_dir=self.prompts_dir,
-            use_specialized_agents=True
-        )
+        # Get TeamBuilder singleton instance
+        builder = TeamBuilder.get_instance()
         
         # Define the roles in the team
         builder.with_roles(
@@ -70,7 +95,7 @@ class PlanningTeam(Team):
         builder.with_tool_executor("human_proxy")
         
         # Add file system tools to the human proxy
-        from roboco.tools.file_system import FileSystemTool
+        from roboco.tools.fs import FileSystemTool
         builder.with_tools("human_proxy", [FileSystemTool()])
         
         # Define the workflow as a circular sequence
@@ -116,42 +141,6 @@ class PlanningTeam(Team):
             )
             
         logger.info(f"Registered basic handoff workflow with {len(agent_names)} agents")
-            
-    def plan(self, vision_statement: str) -> Dict[str, Any]:
-        """Execute the planning process with the given vision statement.
-        
-        Args:
-            vision_statement: The vision statement to plan around
-            
-        Returns:
-            The planning outputs (plan documents)
-        """
-        # Get the starting agent (typically the product manager)
-        if "Product Manager" in self.agents:
-            starter = self.get_agent("Product Manager")
-        else:
-            starter = self.get_agent(list(self.agents.keys())[0])
-            
-        # Start the process with the vision statement
-        request = f"""
-        Create a complete planning document suite in the workspace/plan directory with the following:
-        
-        1. vision.md - Detailed vision document describing the project goals, scope, and success criteria
-        2. technical_strategy.md - Technical approach, architecture, and technology choices
-        3. implementation_plan.md - Implementation phases, tasks, and timeline
-        4. risk_assessment.md - Potential risks, mitigation strategies, and contingency plans
-        
-        Start with this vision statement as your foundation:
-        
-        {vision_statement}
-        
-        Each document should be thorough and well-structured. Use markdown format.
-        """
-        
-        # Run the planning process
-        result = self.run_swarm(starter, request)
-        
-        return result
 
     async def create_planning_suite(self, vision: str) -> Dict[str, Any]:
         """Create a complete planning document suite based on a high-level vision.
@@ -162,38 +151,38 @@ class PlanningTeam(Team):
         Returns:
             Dictionary with paths to the created planning documents
         """
-        # Get task definition from config
-        task_config = self.team_config.get("tasks", {}).get("create_planning_suite", {})
+        # Find the initial agent (product manager)
+        initial_agent_name = None
+        for agent in self.agents.values():
+            if agent.system_message.lower().startswith("you are the product_manager"):
+                initial_agent_name = agent.name
+                break
+                
+        if not initial_agent_name and self.agents:
+            initial_agent_name = list(self.agents.keys())[0]
         
-        # Get initial agent and max rounds from config or use defaults
-        initial_agent_role = task_config.get("initial_agent", "product_manager")
-        initial_agent_name = next((a.name for a in self.agents.values() 
-                                 if a.system_message.lower().startswith(f"you are the {initial_agent_role}")),
-                                self.agents.keys()[0])
-        max_rounds = task_config.get("max_rounds", 12)
-        
-        # Get prompt template from config or use default
-        prompt_template = task_config.get("prompt_template", """
-        Based on this vision: "{vision}"
+        # Create a prompt for the planning task
+        prompt_template = f"""
+        Based on this vision: "{{vision}}"
 
-        Please create a complete planning document suite in the {output_dir} directory that includes:
+        Please create a complete planning document suite in the {self.output_dir} directory that includes:
         1. vision.md - A clear vision statement with objectives and success criteria
         2. technical_strategy.md - Technical approach and architecture
         3. implementation_plan.md - Detailed implementation plan with timelines
         4. risk_assessment.md - Assessment of risks and mitigation strategies
-
-        Each document should be thorough, well-structured, and follow best practices for software project planning.
-        """)
         
-        # Format the query with the vision and output directory
-        query = prompt_template.format(vision=vision, output_dir=self.output_dir)
+        Each document should be thorough, well-structured, and follow best practices for software project planning.
+        """
+        
+        # Format the query with the vision
+        query = prompt_template.format(vision=vision)
         
         # Run the swarm with the configured initial agent
         logger.info(f"Starting planning process for vision: {vision[:50]}...")
         result = self.run_swarm(
             initial_agent_name=initial_agent_name,
             query=query,
-            max_rounds=max_rounds
+            max_rounds=12  # Default max rounds
         )
         
         # Collect information about the created files
@@ -223,15 +212,15 @@ class PlanningTeam(Team):
         Returns:
             Dictionary with information about the improved document
         """
-        # Get task definition from config
-        task_config = self.team_config.get("tasks", {}).get("improve_document", {})
-        
-        # Get initial agent and max rounds from config or use defaults
-        initial_agent_role = task_config.get("initial_agent", "report_writer")
-        initial_agent_name = next((a.name for a in self.agents.values() 
-                                 if a.system_message.lower().startswith(f"you are the {initial_agent_role}")),
-                                list(self.agents.keys())[0])
-        max_rounds = task_config.get("max_rounds", 6)
+        # Find the initial agent (report writer is good for improvements)
+        initial_agent_name = None
+        for agent in self.agents.values():
+            if agent.system_message.lower().startswith("you are the report_writer"):
+                initial_agent_name = agent.name
+                break
+                
+        if not initial_agent_name and self.agents:
+            initial_agent_name = list(self.agents.keys())[0]
         
         # Construct full path to the document
         document_path = os.path.join(self.output_dir, document_name)
@@ -262,8 +251,8 @@ class PlanningTeam(Team):
             "document_path": document_path
         })
         
-        # Get prompt template from config or use default
-        prompt_template = task_config.get("prompt_template", """
+        # Create a prompt for the improvement task
+        prompt_template = """
         I need you to improve the {document_name} document based on this feedback:
 
         {feedback}
@@ -274,7 +263,7 @@ class PlanningTeam(Team):
 
         Please review the document, apply the feedback, and create an improved version that addresses all the points raised.
         Save the improved document back to {document_path}.
-        """)
+        """
         
         # Format the query with the document details and feedback
         query = prompt_template.format(
@@ -289,7 +278,7 @@ class PlanningTeam(Team):
         result = self.run_swarm(
             initial_agent_name=initial_agent_name,
             query=query,
-            max_rounds=max_rounds
+            max_rounds=6  # Fewer rounds for improvement
         )
         
         # Check if file was modified
@@ -312,7 +301,7 @@ class PlanningTeam(Team):
                 "success": False,
                 "error": f"Failed to verify document update: {str(e)}"
             }
-        
+
 if __name__ == "__main__":
     # Example usage
     async def run_example():

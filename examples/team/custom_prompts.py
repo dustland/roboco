@@ -11,8 +11,7 @@ import asyncio
 from loguru import logger
 
 from roboco.teams.planning import PlanningTeam
-from roboco.core.agent_factory import AgentFactory
-from roboco.core.team_builder import TeamBuilder
+from roboco.core import AgentFactory, TeamBuilder
 
 async def main():
     """Run the custom prompts example."""

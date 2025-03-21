@@ -1,4 +1,4 @@
-# MCP Agent
+# MCP Agent System
 
 The Multi-Channel Protocol (MCP) Agent is a base class for creating agents that can interact with external servers and processes using the MCP protocol. This document provides an overview of the MCPAgent functionality and how to use it.
 

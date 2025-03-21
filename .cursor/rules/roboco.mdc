@@ -3,8 +3,11 @@ description:
 globs: *.py
 alwaysApply: false
 ---
-Description: Guidelines for Python Development with FastAPI, Pydantic, and AG2 Framework
-Globs: ["**/*.py"]
+---
+description: Guidelines for Python Development with FastAPI, Pydantic, and AG2 Framework
+globs: ["**/*.py"]
+alwaysApply: false
+---
 
 # Python Development Guidelines
 
@@ -12,36 +15,60 @@ Globs: ["**/*.py"]
 - Adhere to ](https://www.python.org/dev/peps/pep-0008/) for consistent code formatting.
 - Use descriptive variable and function names with lowercase and underscores (e.g., `is_active`, `has_permission`).
 - Limit line length to 79 characters.
+- Use meaningful docstrings for all modules, classes, and functions.
+
+## Import Style
+- Always prefer concise import statements that group multiple imports from the same module. For example, use `from roboco.core import Team, Agent, load_config` instead of multiple separate import lines.
+- Group imports into logical sections: standard library imports, third-party imports, and internal application imports.
+- Organize import sections in the following order: 
+  1. Standard library imports (e.g., `os`, `sys`, `typing`)
+  2. Third-party package imports (e.g., `autogen`, `loguru`)
+  3. Internal application imports (e.g., `from roboco.core import...`)
+- Within each section, imports should be alphabetized.
+- Avoid wildcard imports (`from module import *`).
+- Use absolute imports rather than relative imports when possible.
 
 ## Project Structure
 - Organize code into modules and packages reflecting their functionality.
 - Place FastAPI routers in a `routers/` directory (e.g., `routers/user.py`).
 - Store Pydantic models in a `models/` directory (e.g., `models/user.py`).
 - Keep utility functions in a `utils/` directory (e.g., `utils/helpers.py`).
+- For the Roboco framework, maintain a clear separation between core components, agents, tools, and team implementations.
 
 ## Functions and Methods
 - Use `def` for synchronous functions and `async def` for asynchronous functions.
 - Include type hints for all function signatures to enhance code clarity and tooling support.
 - Apply the Receive an Object, Return an Object (RORO) pattern for function inputs and outputs.
+- Keep functions focused on a single responsibility.
+- Provide default values for optional parameters when sensible.
 
 ## Error Handling
 - Utilize FastAPI's `HTTPException` for expected errors, specifying appropriate status codes and detail messages.
 - Implement middleware to handle unexpected errors, ensuring they are logged and monitored effectively.
+- Use specific exception types rather than generic exceptions.
+- Log detailed error information for debugging purposes.
 
-## Depes
+## Dependencies
 - Manage project dependencies with [uv](mdc:https:/github.com/astral-sh/uv) for consistent environments.
 - Use asynchronous database libraries like `asyncpg` or `aiomysql` for non-blocking database operations.
 - If employing ORM features, adopt SQLAlchemy 2.0 with its async support.
+- Specify version constraints for dependencies to ensure compatibility.
 
 ## Performance Optimization
 - Employ caching strategies using tools like Redis for frequently accessed data.
 - Optimize data serialization and deserialization with Pydantic's efficient parsing methods.
 - Implement lazy loading techniques for large datasets to improve performance.
+- Consider asynchronous programming where appropriate to improve concurrency.
 
-## AG2 Framework Ine yourselmework by reviewing the [AG2 GitHub Repository](mdc:https:/github.com/ag2ai/ag2)cs.ag2.ai).
-- Utilize AG2's multi-agent conversation framework to build LLM workflows. tps://docs.ag2.ai/docs/home/home)
-- Leverage AG2's enhanced LLM inference APIs to improve performance and reduce cosithub.io](https://ag2ai.github.io/ag2/latest/docs/home/home/)
-- Explore AG2's collection of working systems across various domains to inspire and guide application development. [oai_citation_attribution:2‡docs.ag2.ai](mdc:https:/docs.ag2.ai/docs/Use-Cases/agent_chat)
+## AG2 Framework
+- Utilize AG2's multi-agent conversation framework to build LLM workflows.
+- Leverage AG2's enhanced LLM inference APIs to improve performance and reduce costs.
+- Explore AG2's collection of working systems across various domains to inspire and guide application development.
+- Make use of handoff patterns for effective agent collaboration.
+
+## Agent Design Patterns
+- Use the singleton pattern for factories and services that shoupplor e.glempproach to agent registration and discovery.
+- Design agents to be modular and extensible.
 
 ## References
 - [FastAPI Documentation](mdc:https:/fastapi.tiangolo.com)

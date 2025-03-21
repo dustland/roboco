@@ -6,10 +6,57 @@ This module provides a tool for searching the web using the Tavily Search API.
 
 import os
 from typing import Dict, Any, Optional, List
+from pydantic import BaseModel, Field
 from loguru import logger
 
 from tavily import TavilyClient
 from roboco.core.tool import Tool
+from roboco.core.logger import get_logger
+from roboco.core.models import ToolConfig
+
+
+class WebSearchConfig(ToolConfig):
+    """Configuration for WebSearchTool."""
+    api_key: Optional[str] = Field(
+        default=None,
+        description="Tavily API key"
+    )
+    max_results: int = Field(
+        default=5,
+        description="Maximum number of search results to return"
+    )
+    search_depth: str = Field(
+        default="basic",
+        description="Search depth, one of: 'basic' or 'comprehensive'"
+    )
+    include_domains: List[str] = Field(
+        default_factory=list,
+        description="List of domains to include in search results"
+    )
+    exclude_domains: List[str] = Field(
+        default_factory=list,
+        description="List of domains to exclude from search results"
+    )
+    include_answer: bool = Field(
+        default=True,
+        description="Whether to include an AI-generated answer"
+    )
+    include_raw_content: bool = Field(
+        default=False,
+        description="Whether to include raw page content"
+    )
+    include_images: bool = Field(
+        default=False,
+        description="Whether to include images in search results"
+    )
+    max_retries: int = Field(
+        default=3,
+        description="Maximum number of retries for failed requests"
+    )
+    timeout: int = Field(
+        default=30,
+        description="Request timeout in seconds"
+    )
 
 
 class WebSearchTool(Tool):
@@ -20,147 +67,131 @@ class WebSearchTool(Tool):
     relevant information based on a query.
     """
     
-    # Default search configuration
-    default_search_config = {
-        "max_results": 5,
-        "search_depth": "basic",
-        "include_domains": [],
-        "exclude_domains": [],
-        "include_answer": True,
-        "include_raw_content": False,
-        "include_images": False,
-    }
-    
     def __init__(
         self,
-        api_key: str = None,
-        search_config: Dict[str, Any] = None,
-        max_retries: int = 3,
-        timeout: int = 30
+        config: Optional[WebSearchConfig] = None,
+        **kwargs
     ):
         """
         Initialize the WebSearchTool.
         
         Args:
-            api_key: Tavily API key (defaults to TAVILY_API_KEY environment variable)
-            search_config: Configuration for search requests
-            max_retries: Maximum number of retries for API calls
-            timeout: Timeout for API calls in seconds
+            config: Configuration for the web search tool
+            **kwargs: Additional keyword arguments
         """
+        super().__init__(config=config, **kwargs)
+        
+        # Initialize with config
+        if config is None:
+            config = WebSearchConfig()
+        elif isinstance(config, dict):
+            config = WebSearchConfig(**config)
+            
+        self.logger = get_logger(__name__)
+        
+        # Get API key from config or environment variable
+        self.api_key = config.api_key or os.environ.get("TAVILY_API_KEY", "")
+        if not self.api_key:
+            self.logger.warning("Tavily API key not provided. Web search will not work.")
+            
         # Initialize the Tavily client
-        self.api_key = api_key or os.environ.get("TAVILY_API_KEY", "")
+        self.client = TavilyClient(api_key=self.api_key) if self.api_key else None
         
-        try:
-            self.client = TavilyClient(api_key=self.api_key)
-            logger.info("Tavily client initialized successfully")
-        except Exception as e:
-            logger.error(f"Error initializing Tavily client: {e}")
-            # Create a dummy client for testing
-            self.client = None
+        # Store search configuration
+        self.search_config = {
+            "max_results": config.max_results,
+            "search_depth": config.search_depth,
+            "include_domains": config.include_domains,
+            "exclude_domains": config.exclude_domains,
+            "include_answer": config.include_answer,
+            "include_raw_content": config.include_raw_content,
+            "include_images": config.include_images
+        }
         
-        # Set configuration
-        self.search_config = {**self.default_search_config, **(search_config or {})}
-        self.max_retries = max_retries
-        self.timeout = timeout
+        # Store retry and timeout configuration
+        self.max_retries = config.max_retries
+        self.timeout = config.timeout
+        
+        self.logger.info("Initialized WebSearchTool")
         
         # Define the search function
-        def search(query: str, max_results: Optional[int] = None) -> Dict[str, Any]:
+        async def search(query: str, max_results: Optional[int] = None) -> Dict[str, Any]:
             """
-            Search the web for information based on a query.
+            Search the web for information on a topic.
             
             Args:
                 query: The search query
-                max_results: Maximum number of results to return (overrides search_config)
+                max_results: Maximum number of results to return, overrides config setting
                 
             Returns:
-                A dictionary containing search results
+                Search results as a dictionary with query, results, and if enabled, an answer
             """
-            if not query:
-                return {
-                    "success": False,
-                    "error": "Query cannot be empty",
-                    "results": [],
-                    "answer": None,
-                    "num_results": 0
-                }
-            
-            # If the client is not initialized, return mock results
             if not self.client:
-                logger.warning("Tavily client not initialized, returning mock results")
+                self.logger.error("Tavily client not initialized. Cannot perform search.")
                 return {
-                    "success": True,
+                    "error": "Search client not available. Please check your API key.",
                     "query": query,
-                    "results": [
-                        {
-                            "title": "Mock Result 1",
-                            "url": "https://example.com/1",
-                            "content": f"This is a mock result for the query: {query}",
-                            "score": 0.95,
-                            "raw_content": None
-                        },
-                        {
-                            "title": "Mock Result 2",
-                            "url": "https://example.com/2",
-                            "content": f"Another mock result for: {query}",
-                            "score": 0.85,
-                            "raw_content": None
-                        }
-                    ],
-                    "answer": f"This is a mock answer for the query: {query}",
-                    "num_results": 2
+                    "results": []
                 }
-            
-            # Create a copy of the search config
-            config = dict(self.search_config)
-            
-            # Override max_results if provided
+                
+            # Configure the search parameters
+            search_params = self.search_config.copy()
             if max_results is not None:
-                config["max_results"] = max_results
+                search_params["max_results"] = max_results
+                
+            self.logger.info(f"Searching for: {query}")
             
             # Perform the search with retries
             for attempt in range(self.max_retries):
                 try:
+                    # Perform the search
                     response = self.client.search(
                         query=query,
-                        search_depth=config.get("search_depth", "basic"),
-                        max_results=config.get("max_results", 5),
-                        include_domains=config.get("include_domains", []),
-                        exclude_domains=config.get("exclude_domains", []),
-                        include_answer=config.get("include_answer", True),
-                        include_raw_content=config.get("include_raw_content", False),
-                        include_images=config.get("include_images", False),
+                        **search_params
                     )
                     
-                    # Format the response
-                    result = {
-                        "success": True,
-                        "query": query,
-                        "results": response.get("results", []),
-                        "answer": response.get("answer", ""),
-                        "num_results": len(response.get("results", []))
-                    }
-                    
-                    logger.info(f"Successfully searched for '{query}'")
-                    return result
+                    self.logger.info(f"Found {len(response.get('results', []))} results for query: {query}")
+                    return response
                     
                 except Exception as e:
-                    logger.warning(f"Search attempt {attempt + 1}/{self.max_retries} failed: {e}")
+                    self.logger.warning(f"Search attempt {attempt + 1}/{self.max_retries} failed: {e}")
                     if attempt == self.max_retries - 1:
                         # Return error on last attempt
+                        self.logger.error(f"All retry attempts failed for query: {query}")
                         return {
-                            "success": False,
                             "error": str(e),
                             "query": query,
-                            "results": [],
-                            "answer": None,
-                            "num_results": 0
+                            "results": []
                         }
         
-        # Initialize the Tool parent class with the search function
-        super().__init__(
-            name="search",
-            description="Search the web for information using the Tavily Search API",
+        # Register the search function
+        self.register_function(
+            name="web_search",
+            description="Search the web for information on a topic",
+            parameters={
+                "query": {
+                    "type": "string",
+                    "description": "The search query"
+                },
+                "max_results": {
+                    "type": "integer",
+                    "description": "Maximum number of results to return",
+                    "default": None
+                }
+            },
             func_or_tool=search
         )
+
+    @classmethod
+    def create_with_config(cls, config: Optional[Dict[str, Any]] = None) -> "WebSearchTool":
+        """Create a new instance of the WebSearchTool with the given configuration.
         
-        logger.info("Initialized WebSearchTool") 
+        Args:
+            config: Configuration for the tool.
+            
+        Returns:
+            A new WebSearchTool instance.
+        """
+        if config is None:
+            config = {}
+        return cls(config=WebSearchConfig(**config)) 

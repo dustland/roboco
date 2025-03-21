@@ -9,7 +9,7 @@ This module handles loading and managing configuration from various sources:
 
 import os
 from pathlib import Path
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Union
 from dotenv import load_dotenv
 import yaml
 from .models import RobocoConfig
@@ -68,37 +68,57 @@ def process_env_vars(config_data: Dict[str, Any]) -> Dict[str, Any]:
     return result
 
 
-def load_config(config_path: Optional[Path] = None) -> RobocoConfig:
+def load_config(config_path: Optional[Union[str, Path]] = None) -> RobocoConfig:
     """
-    Load configuration from YAML file and environment variables.
+    Load configuration from a YAML file.
     
     Args:
-        config_path: Optional path to config file. If not provided,
-                    will search in standard locations.
-                    
+        config_path: Optional path to config file. If not provided, will search for config.
+        
     Returns:
-        RobocoConfig: Loaded configuration object
+        A RobocoConfig object that provides direct access to nested config properties
     """
     # Load environment variables first
     load_env_vars()
     
-    # Get config file path
+    # Determine config path
     if config_path is None:
-        config_path = get_config_path()
+        path = get_config_path()
+    elif isinstance(config_path, str):
+        path = Path(config_path)
+    else:
+        path = config_path
     
-    # Load YAML config if it exists
-    config_data: Dict[str, Any] = {}
-    if config_path.exists():
-        with open(config_path, 'r') as f:
-            config_data = yaml.safe_load(f)
-            
-    # Process environment variables in config
-    config_data = process_env_vars(config_data)
+    # If config file does not exist, create default
+    if not path.exists():
+        return create_default_config()
     
-    # Create config object
-    config = RobocoConfig(**config_data)
+    # Load and parse the config file
+    with open(path, 'r') as f:
+        raw_config = yaml.safe_load(f)
     
-    return config
+    if not raw_config:
+        raw_config = {}
+    
+    # Replace environment variables
+    raw_config = process_env_vars(raw_config)
+    
+    # Create a validated configuration object for standard fields
+    # using RobocoConfig, which validates the schema
+    validated_fields = {}
+    extra_fields = {}
+    
+    # Separate standard fields from extra fields
+    for key, value in raw_config.items():
+        if key in RobocoConfig.model_fields:
+            validated_fields[key] = value
+        else:
+            extra_fields[key] = value
+    
+    # Create the standard config
+    standard_config = RobocoConfig(**validated_fields)
+    
+    return standard_config
 
 
 def save_config(config: RobocoConfig, config_path: Optional[Path] = None) -> None:
@@ -116,10 +136,9 @@ def save_config(config: RobocoConfig, config_path: Optional[Path] = None) -> Non
     # Ensure parent directory exists
     config_path.parent.mkdir(parents=True, exist_ok=True)
     
-    # Convert config to dict and save as YAML
-    config_dict = config.model_dump(exclude_none=True)
+    # Save as YAML
     with open(config_path, 'w') as f:
-        yaml.dump(config_dict, f, default_flow_style=False)
+        yaml.dump(config.model_dump(exclude_none=True), f, default_flow_style=False)
 
 
 def create_default_config() -> RobocoConfig:
@@ -154,7 +173,7 @@ def get_llm_config(config: Optional[RobocoConfig] = None) -> Dict[str, Any]:
     }
     
     # Add base_url if provided
-    if llm_section.base_url:
+    if hasattr(llm_section, 'base_url') and llm_section.base_url:
         agent_llm_config["base_url"] = llm_section.base_url
     
     return agent_llm_config
@@ -173,6 +192,7 @@ def get_workspace(config: Optional[RobocoConfig] = None) -> Path:
     if config is None:
         config = load_config()
     
+    # Get workspace path
     workspace_path = Path(config.workspace_root)
     
     # If it's a relative path, make it relative to the current directory

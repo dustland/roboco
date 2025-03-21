@@ -129,22 +129,22 @@ tasks:
 
 ## Using the Configuration-Based System
 
-### Creating a Team with TeamLoader
+### Creating a Team with TeamBuilder
 
-You can create a team directly using the `TeamLoader`:
+You can create a team directly using the `TeamBuilder`:
 
 ```python
-from roboco.core.team_loader import TeamLoader
+from roboco.core import TeamBuilder
 
-# Initialize the loader
-loader = TeamLoader()
+# Get the TeamBuilder singleton instance
+builder = TeamBuilder.get_instance()
 
 # List available team configurations
-available_teams = loader.list_available_teams()
+available_teams = builder.list_available_teams()
 print(f"Available teams: {available_teams}")
 
 # Create a team
-planning_team = loader.create_team("planning")
+planning_team = TeamBuilder.create_team("planning")
 
 # Use the team
 result = await planning_team.run_swarm(
@@ -204,10 +204,9 @@ teams:
 4. Create and use your team:
 
 ```python
-from roboco.core.team_loader import TeamLoader
+from roboco.core import TeamBuilder
 
-loader = TeamLoader()
-my_team = loader.create_team("my_custom_team")
+my_team = TeamBuilder.create_team("my_custom_team")
 ```
 
 ## Advanced Configuration

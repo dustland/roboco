@@ -1,6 +1,7 @@
 # RoboCo
 
-> An advanced multi-agent system for humanoid robot development
+> [!Warning]
+> This project is currently open source, but may transition to a closed source license in the future for production use.
 
 RoboCo (Robot Company) is a comprehensive platform designed to develop and adapt humanoid robots for specific occupations. It combines expertise in robotics, human behavior analysis, and occupation-specific knowledge to create effective robot workers that can naturally integrate into human workplaces.
 
@@ -12,6 +13,7 @@ RoboCo (Robot Company) is a comprehensive platform designed to develop and adapt
 - **Extensible Tools**: Web research, physics simulation, and robot control capabilities
 - **Physical Interaction**: Real-world interaction and robot control
 - **Built-in Monitoring**: Comprehensive logging and monitoring system
+- **MCP Servers**: Support MCP (Model Context Protocols) Servers
 
 ## Installation
 
@@ -125,11 +127,10 @@ teams:
 Teams can be created from configuration:
 
 ```python
-from roboco.core.team_loader import TeamLoader
+from roboco.core import TeamBuilder
 
 # Create team from configuration
-loader = TeamLoader()
-team = loader.create_team("planning")
+team = TeamBuilder.create_team("planning")
 
 # Run the team
 result = await team.run_swarm(
@@ -205,6 +206,6 @@ Add new tools by creating classes in `src/roboco/tools/` that inherit from the b
 ## Acknowledgments
 
 - Built on top of [AG2](https://github.com/ag2ai/ag2)
-- Inspired by the design of [Manus](https://manus.im/) and [OpenManus](https://github.com/mannaandpoem/OpenManus/)
+- Inspired by the concepts of [Manus](https://manus.im/) and [OpenManus](https://github.com/mannaandpoem/OpenManus/)
 - Inspired by the need for better embodied AI and humanoid robotics development
 - Special thanks to the robotics and AI communities for their contributions to the field

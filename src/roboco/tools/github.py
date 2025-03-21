@@ -15,42 +15,75 @@ from datetime import datetime
 
 from github import Github, Repository, ContentFile
 from github.GithubException import GithubException
+from pydantic import BaseModel, Field
 
 from roboco.core import Tool, get_workspace
 from roboco.core.logger import get_logger
+from roboco.core.models import ToolConfig
 
-logger = get_logger(__name__)
+
+class GitHubConfig(ToolConfig):
+    """Configuration for GitHubTool."""
+    token: str = Field(
+        default="",
+        description="GitHub API token"
+    )
+    max_results: int = Field(
+        default=10,
+        description="Maximum number of search results to return"
+    )
+    timeout: int = Field(
+        default=30,
+        description="Request timeout in seconds"
+    )
+    rate_limit_delay: int = Field(
+        default=1,
+        description="Delay between API requests in seconds"
+    )
+    cache_dir: Optional[str] = Field(
+        default="./cache/github",
+        description="Directory for caching search results"
+    )
+
 
 class GitHubTool(Tool):
-    """Tool for interacting with GitHub repositories."""
+    """Tool for interacting with GitHub repositories, issues, and code."""
     
-    def __init__(self, config: Optional[Dict[str, Any]] = None):
-        """Initialize the GitHub tool.
+    def __init__(self, config: Optional[Union[Dict[str, Any], GitHubConfig]] = None):
+        """Initialize the GitHub Tool.
         
         Args:
-            config: Optional configuration for the tool
+            config: Configuration for the tool, including GitHub token and other settings.
         """
-        self.config = config or {}
-        self.token = self.config.get("token", os.environ.get("GITHUB_TOKEN", ""))
-        self.max_results = self.config.get("max_results", 10)
-        self.timeout = self.config.get("timeout", 30)
-        self.rate_limit_delay = self.config.get("rate_limit_delay", 1)  # Seconds between requests
+        super().__init__(config)
         
-        # Initialize PyGithub client
-        try:
-            self.github = Github(self.token, timeout=self.timeout)
-            logger.info("GitHub client initialized successfully")
-        except Exception as e:
-            logger.error(f"Error initializing GitHub client: {e}")
-            self.github = None
+        # Convert dict config to GitHubConfig if needed
+        if isinstance(config, dict):
+            config = GitHubConfig(**config)
+        elif config is None:
+            config = GitHubConfig()
+            
+        self.logger = get_logger(__name__)
+        
+        self.token = config.token or os.environ.get("GITHUB_TOKEN", "")
+        if not self.token:
+            self.logger.warning("GitHub token not provided. Some operations may be limited.")
+            
+        self.github = Github(self.token)
+        self.max_results = config.max_results
+        self.timeout = config.timeout
+        self.rate_limit_delay = config.rate_limit_delay
+        
+        # Create cache directory if it doesn't exist
+        if config.cache_dir:
+            self.cache_dir = Path(config.cache_dir)
+            self.cache_dir.mkdir(parents=True, exist_ok=True)
+        else:
+            self.cache_dir = None
         
         # Cache for search results
         self.cache = {}
-        self.cache_dir = self.config.get("cache_dir", None)
         
-        if self.cache_dir:
-            os.makedirs(self.cache_dir, exist_ok=True)
-            
         # Define the search repositories function
         def search_github_repos(query: str, language: Optional[str] = None, 
                               sort: str = "stars", max_results: Optional[int] = None) -> Dict[str, Any]:
@@ -75,7 +108,7 @@ class GitHubTool(Tool):
             func_or_tool=search_github_repos
         )
         
-        logger.info("Initialized GitHubTool")
+        self.logger.info("Initialized GitHubTool")
     
     async def search_repositories(self, query: str, language: Optional[str] = None, 
                                  sort: str = "stars", order: str = "desc", 
@@ -96,7 +129,7 @@ class GitHubTool(Tool):
         
         # Check cache
         if cache_key in self.cache:
-            logger.info(f"Using cached results for repo query: {query}")
+            self.logger.info(f"Using cached results for repo query: {query}")
             return self.cache[cache_key]
         
         # Prepare search parameters
@@ -106,7 +139,7 @@ class GitHubTool(Tool):
         
         results_limit = max_results or self.max_results
         
-        logger.info(f"Searching GitHub repositories for: {search_query}")
+        self.logger.info(f"Searching GitHub repositories for: {search_query}")
         
         try:
             if not self.github:
@@ -160,16 +193,16 @@ class GitHubTool(Tool):
             
             # Save to cache directory if enabled
             if self.cache_dir:
-                cache_file = Path(self.cache_dir) / f"github_repo_{query.replace(' ', '_')}.json"
+                cache_file = self.cache_dir / f"github_repo_{query.replace(' ', '_')}.json"
                 with open(cache_file, "w") as f:
                     json.dump(result, f, indent=2)
             
-            logger.info(f"Found {len(repos)} repositories for query: {search_query}")
+            self.logger.info(f"Found {len(repos)} repositories for query: {search_query}")
             
             return result
         
         except Exception as e:
-            logger.error(f"Error searching GitHub repositories: {e}")
+            self.logger.error(f"Error searching GitHub repositories: {e}")
             return {
                 "query": search_query,
                 "success": False,
@@ -225,13 +258,13 @@ class GitHubTool(Tool):
             }
             
         except GithubException as e:
-            logger.error(f"GitHub API error for repository {repo_name}: {e}")
+            self.logger.error(f"GitHub API error for repository {repo_name}: {e}")
             return {
                 "success": False,
                 "error": f"GitHub API error: {e.status} - {e.data.get('message', str(e))}"
             }
         except Exception as e:
-            logger.error(f"Error getting repository details for {repo_name}: {e}")
+            self.logger.error(f"Error getting repository details for {repo_name}: {e}")
             return {
                 "success": False,
                 "error": str(e)
@@ -293,7 +326,7 @@ class GitHubTool(Tool):
                 }
             
         except GithubException as e:
-            logger.error(f"GitHub API error for {repo_name}/{path}: {e}")
+            self.logger.error(f"GitHub API error for {repo_name}/{path}: {e}")
             return {
                 "success": False,
                 "repository": repo_name,
@@ -301,7 +334,7 @@ class GitHubTool(Tool):
                 "error": f"GitHub API error: {e.status} - {e.data.get('message', str(e))}"
             }
         except Exception as e:
-            logger.error(f"Error getting repository contents for {repo_name}/{path}: {e}")
+            self.logger.error(f"Error getting repository contents for {repo_name}/{path}: {e}")
             return {
                 "success": False,
                 "repository": repo_name,
@@ -355,12 +388,12 @@ class GitHubTool(Tool):
                     f.write(content)
                 
                 file_result["workspace_path"] = str(target_path)
-                logger.info(f"Saved file to workspace: {target_path}")
+                self.logger.info(f"Saved file to workspace: {target_path}")
             
             return file_result
             
         except Exception as e:
-            logger.error(f"Error getting file content for {repo_name}/{file_path}: {e}")
+            self.logger.error(f"Error getting file content for {repo_name}/{file_path}: {e}")
             return {
                 "success": False,
                 "repository": repo_name,
@@ -387,7 +420,7 @@ class GitHubTool(Tool):
         
         # Check cache
         if cache_key in self.cache:
-            logger.info(f"Using cached results for code query: {query}")
+            self.logger.info(f"Using cached results for code query: {query}")
             return self.cache[cache_key]
         
         # Prepare search parameters
@@ -401,7 +434,7 @@ class GitHubTool(Tool):
         
         results_limit = max_results or self.max_results
         
-        logger.info(f"Searching GitHub code for: {search_query}")
+        self.logger.info(f"Searching GitHub code for: {search_query}")
         
         try:
             if not self.github:
@@ -444,16 +477,16 @@ class GitHubTool(Tool):
             
             # Save to cache directory if enabled
             if self.cache_dir:
-                cache_file = Path(self.cache_dir) / f"github_code_{query.replace(' ', '_')}.json"
+                cache_file = self.cache_dir / f"github_code_{query.replace(' ', '_')}.json"
                 with open(cache_file, "w") as f:
                     json.dump(result, f, indent=2)
             
-            logger.info(f"Found {len(items)} code items for query: {search_query}")
+            self.logger.info(f"Found {len(items)} code items for query: {search_query}")
             
             return result
             
         except GithubException as e:
-            logger.error(f"GitHub API error for code search '{search_query}': {e}")
+            self.logger.error(f"GitHub API error for code search '{search_query}': {e}")
             return {
                 "query": search_query,
                 "success": False,
@@ -462,7 +495,7 @@ class GitHubTool(Tool):
                 "error": f"GitHub API error: {e.status} - {e.data.get('message', str(e))}"
             }
         except Exception as e:
-            logger.error(f"Error searching GitHub code: {e}")
+            self.logger.error(f"Error searching GitHub code: {e}")
             return {
                 "query": search_query,
                 "success": False,
@@ -522,7 +555,7 @@ class GitHubTool(Tool):
             # Execute git clone command
             import subprocess
             
-            logger.info(f"Cloning repository {repo_name} to {target_dir}")
+            self.logger.info(f"Cloning repository {repo_name} to {target_dir}")
             
             result = subprocess.run(
                 ["git", "clone", clone_url, str(target_dir)],
@@ -540,7 +573,7 @@ class GitHubTool(Tool):
             }
             
         except Exception as e:
-            logger.error(f"Error cloning repository {repo_name}: {e}")
+            self.logger.error(f"Error cloning repository {repo_name}: {e}")
             return {
                 "success": False,
                 "repository": repo_name,
@@ -553,13 +586,15 @@ class GitHubTool(Tool):
         self._function = func
         
     @classmethod
-    def create_with_config(cls, config: Dict[str, Any]) -> 'GitHubTool':
-        """Create an instance with the specified configuration.
+    def create_with_config(cls, config: Optional[Dict[str, Any]] = None) -> "GitHubTool":
+        """Create a new instance of the GitHubTool with the given configuration.
         
         Args:
-            config: Configuration dictionary
+            config: Configuration for the tool.
             
         Returns:
-            Configured GitHubTool instance
+            A new GitHubTool instance.
         """
-        return cls(config=config.get("github", {})) 
+        if config is None:
+            config = {}
+        return cls(GitHubConfig(**config)) 

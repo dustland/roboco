@@ -16,13 +16,39 @@ from datetime import datetime
 import logging
 
 import arxiv
+from pydantic import BaseModel, Field
 from roboco.core import Tool, get_workspace
+from roboco.core import logger
 from roboco.core.logger import get_logger
+from roboco.core.models import ToolConfig
 
-logger = get_logger(__name__)
+
+class ArxivConfig(ToolConfig):
+    """Configuration for ArxivTool."""
+    max_results: int = Field(
+        default=10,
+        description="Maximum number of search results to return"
+    )
+    timeout: int = Field(
+        default=30,
+        description="Request timeout in seconds"
+    )
+    rate_limit_delay: int = Field(
+        default=3,
+        description="Delay between API requests in seconds"
+    )
+    cache_dir: Optional[str] = Field(
+        default="./cache/arxiv",
+        description="Directory for caching search results"
+    )
+    temp_dir: Optional[str] = Field(
+        default="./tmp/arxiv_papers",
+        description="Directory for temporary paper downloads"
+    )
+
 
 class ArxivTool(Tool):
-    """Tool for searching and retrieving papers from arXiv."""
+    """Tool for interacting with the arXiv API to search and retrieve academic papers."""
     
     def __init__(self, config: Optional[Dict[str, Any]] = None):
         """Initialize the ArXiv tool.

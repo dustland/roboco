@@ -11,8 +11,7 @@ from pathlib import Path
 from typing import Dict, Any, List, Optional
 from datetime import datetime
 
-from roboco.core.logger import get_logger
-from roboco.core.config import load_config
+from roboco.core import get_logger, load_config
 
 logger = get_logger(__name__)
 
@@ -21,7 +20,7 @@ class Workspace:
     
     @classmethod
     def create_from_config(cls, config_path: Optional[str] = None) -> 'Workspace':
-        """Create a workspace instance from configuration.
+        """Create a workspace from configuration.
         
         Args:
             config_path: Path to the configuration file
@@ -29,7 +28,7 @@ class Workspace:
         Returns:
             Workspace: Initialized workspace instance
         """
-        from roboco.core.config import load_config, get_workspace
+        from roboco.core import get_workspace
         
         config = load_config(config_path)
         workspace_path = get_workspace(config)

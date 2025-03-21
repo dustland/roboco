@@ -9,11 +9,12 @@ from pydantic import BaseModel, Field
 
 import browser_use
 from browser_use import Agent, BrowserContextConfig
-from browser_use.browser.browser import Browser, BrowserConfig
+from browser_use.browser.browser import Browser, BrowserConfig as BrowserUseLibConfig
 from langchain_openai import ChatOpenAI
 
 from roboco.core.tool import Tool
 from roboco.core.logger import get_logger
+from roboco.core.models import ToolConfig
 from roboco.utils.browser_utils import get_chrome_path, get_platform, is_chrome_installed
 
 import os
@@ -22,6 +23,37 @@ logger = get_logger(__name__)
 
 # Define context type variable
 Context = TypeVar('Context')
+
+class BrowserUseConfig(ToolConfig):
+    """Configuration for BrowserUseTool."""
+    llm_model: str = Field(
+        default="gpt-4o",
+        description="LLM model to use with browser-use"
+    )
+    llm_temperature: float = Field(
+        default=0.0,
+        description="Temperature for LLM inference"
+    )
+    browser_path: Optional[str] = Field(
+        default=None,
+        description="Path to the Chrome/Chromium browser executable"
+    )
+    headless: bool = Field(
+        default=True,
+        description="Whether to run the browser in headless mode"
+    )
+    output_dir: Optional[str] = Field(
+        default="./output/browser",
+        description="Directory for browser output and screenshots"
+    )
+    debug: bool = Field(
+        default=False,
+        description="Enable debug mode"
+    )
+    max_steps: int = Field(
+        default=15,
+        description="Maximum number of steps in browser automation"
+    )
 
 class BrowserUseResult(BaseModel):
     """The result of using the browser to perform a task."""
@@ -50,24 +82,57 @@ class BrowserUseTool(Generic[Context], Tool):
     def __init__(
         self,
         *,
-        llm_config: Optional[Any] = None,
-        browser_config: Optional[Dict[str, Any]] = None,
-        output_dir: Optional[str] = None,
+        config: Optional[BrowserUseConfig] = None,
         **kwargs
     ):
         """Initialize the BrowserUseTool.
-        
+
         Args:
-            llm_config: LLM configuration
-            browser_config: Browser configuration
-            output_dir: Directory for saving agent_history.gif
+            config: Configuration for the browser tool
+            **kwargs: Additional keyword arguments
         """
-        self.tool_context = None
-        self.llm_config = llm_config or {}
-        self.browser_config = browser_config or {}
+        super().__init__(config=config, **kwargs)
+        
+        # Initialize with config
+        if config is None:
+            config = BrowserUseConfig()
+        elif isinstance(config, dict):
+            config = BrowserUseConfig(**config)
+            
+        self.logger = get_logger(__name__)
+        
+        # Configure LLM
+        self.llm_config = {
+            "model": config.llm_model,
+            "temperature": config.llm_temperature
+        }
+        
+        # Configure browser
+        browser_path = config.browser_path or get_chrome_path()
+        if not browser_path:
+            if not is_chrome_installed():
+                self.logger.warning("Chrome/Chromium not found. Browser tool may not work correctly.")
+                browser_path = ""
+            else:
+                self.logger.warning("Chrome/Chromium path not detected automatically. Using default.")
+        
+        self.browser_config = BrowserUseLibConfig(
+            browser_path=browser_path,
+            headless=config.headless
+        )
+        
+        # Set output directory
+        self.output_dir = config.output_dir
+        if self.output_dir:
+            os.makedirs(self.output_dir, exist_ok=True)
+        
+        # Additional settings
+        self.debug = config.debug
+        self.max_steps = config.max_steps
+        
+        # Browser instance will be initialized on demand
         self.browser = None
         self.agent = None
-        self.output_dir = output_dir
         
         # Standard browser setup
         if not is_chrome_installed():
@@ -101,102 +166,93 @@ class BrowserUseTool(Generic[Context], Tool):
         )
     
     async def _initialize_browser(self):
-        """Initialize the browser if not already done."""
+        """Initialize the browser if it hasn't been initialized yet."""
         if self.browser is None:
-            # Create browser configuration
-            browser_options = BrowserConfig(
-                headless=self.browser_config.get("headless", False),
-                chrome_instance_path=self.browser_config.get("chrome_instance_path"),
-                disable_security=self.browser_config.get("disable_security", True),
+            # Create browser instance
+            self.browser = Browser(self.browser_config)
+            
+            # Create LLM (ChatOpenAI) for the agent
+            llm = ChatOpenAI(
+                model=self.llm_config.get("model", "gpt-4o"),
+                temperature=self.llm_config.get("temperature", 0.0)
             )
             
-            # Create and store the browser instance
-            self.browser = Browser(config=browser_options)
-            logger.info("Browser initialized")
-        
-    async def browser_use(self, task: str) -> BrowserUseResult:
-        """Use the browser to perform a task."""
-        try:
-            # Create LLM from config
-            if hasattr(self.llm_config, 'model'):
-                # Pydantic model config
-                llm = ChatOpenAI(
-                    model=self.llm_config.model,
-                    temperature=getattr(self.llm_config, 'temperature', 0.7),
-                    max_tokens=getattr(self.llm_config, 'max_tokens', 500),
-                    api_key=getattr(self.llm_config, 'api_key', None),
-                    base_url=getattr(self.llm_config, 'base_url', None)
-                )
-            else:
-                # Dictionary config
-                llm = ChatOpenAI(**self.llm_config)
-            
-            # Initialize browser if needed
-            await self._initialize_browser()
-            
-            # Set up output path for GIF if directory is specified
-            if self.output_dir:
-                os.makedirs(self.output_dir, exist_ok=True)
-                gif_output = os.path.join(self.output_dir, "agent_history.gif")
-                logger.info(f"Browser session will be recorded to: {gif_output}")
-            else:
-                gif_output = True  # Just enable GIF generation with default path
-            
-            # Create a new agent for each task with the shared browser
+            # Initialize the browser-use agent
             self.agent = Agent(
-                task=task,
                 llm=llm,
                 browser=self.browser,
-                generate_gif=gif_output  # Pass the full path when output_dir is specified
+                output_dir=self.output_dir,
+                max_iterations=self.max_steps
             )
             
-            # Run agent
-            logger.info(f"Running browser agent for task: {task}")
-            result = await self.agent.run()
+            self.logger.info("Browser and agent initialized successfully")
             
-            # Process the result
-            if isinstance(result, dict):
-                extracted = result.get("content", [])
-                if isinstance(extracted, str):
-                    extracted = [extracted]
-                elif not isinstance(extracted, list):
-                    extracted = []
-                    
-                final_result = result.get("result", str(result))
-                
-                return BrowserUseResult(
-                    extracted_content=extracted,
-                    final_result=final_result
-                )
-            else:
-                return BrowserUseResult(final_result=str(result))
+        return self.browser
+    
+    async def browser_use(self, task: str) -> BrowserUseResult:
+        """Use the browser to perform a task.
+        
+        Args:
+            task: The task to perform with the browser.
+            
+        Returns:
+            The result of the browser task.
+        """
+        await self._initialize_browser()
+        
+        # Track original content and final result
+        result = BrowserUseResult()
+        
+        self.logger.info(f"Running browser task: {task}")
+        
+        try:
+            # Run the browser task
+            agent_result = await self.agent.run(
+                task=task
+            )
+            
+            # Extract observations from agent steps
+            if agent_result.steps:
+                for step in agent_result.steps:
+                    if step.observation:
+                        result.extracted_content.append(step.observation)
+            
+            # Store final result
+            result.final_result = agent_result.output
+            
+            if self.debug and self.output_dir:
+                # Save debug information
+                self.logger.info(f"Saving browser session debug information to {self.output_dir}")
+            
+            return result
             
         except Exception as e:
-            logger.error(f"Browser use error: {e}")
-            # Try to reinitialize browser if there was an error
-            if "Browser.new_context: Target page, context or browser has been closed" in str(e):
-                logger.info("Attempting to reinitialize browser after closure")
-                self.browser = None
-                await self._initialize_browser()
-                return BrowserUseResult(
-                    final_result=f"Browser was reset due to error: {str(e)}. Please try your task again."
-                )
-            return BrowserUseResult(final_result=f"Error: {str(e)}")
+            self.logger.error(f"Error executing browser task: {e}")
+            result.final_result = f"Error: {str(e)}"
+            return result
     
     async def cleanup(self):
-        """Close the browser and release resources."""
-        try:
-            if self.browser:
+        """Clean up browser resources when done."""
+        if self.browser:
+            try:
                 await self.browser.close()
+                self.logger.info("Browser closed successfully")
+            except Exception as e:
+                self.logger.error(f"Error closing browser: {e}")
+            finally:
                 self.browser = None
                 self.agent = None
-                logger.info("Browser closed successfully")
-        except Exception as e:
-            logger.error(f"Error closing browser: {e}")
     
     @classmethod
-    def create_with_context(cls, context: Context) -> "BrowserUseTool[Context]":
-        """Create a BrowserUseTool with a specific context."""
-        tool = cls()
-        tool.tool_context = context
-        return tool 
+    def create_with_config(cls, config: Optional[Dict[str, Any]] = None) -> "BrowserUseTool":
+        """Create a new instance of the BrowserUseTool with the given configuration.
+        
+        Args:
+            config: Configuration for the tool.
+            
+        Returns:
+            A new BrowserUseTool instance.
+        """
+        if config is None:
+            config = {}
+        return cls(config=BrowserUseConfig(**config)) 

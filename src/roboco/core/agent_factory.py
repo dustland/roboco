@@ -2,55 +2,59 @@
 Agent Factory Module
 
 This module provides a factory for creating agents based on role definitions,
-allowing for both prompt-driven agents and specialized agent classes.
+allowing for role-driven agent creation.
 """
 
 import os
 import yaml
-from typing import Dict, Any, Optional, Type, List, Union
+from typing import Dict, Any, Optional, Type, List, Union, ClassVar
 from loguru import logger
 
-from roboco.core.agent import Agent
+from roboco.core.agent import Agent, HumanProxy
 from roboco.core.tool import Tool
 
-# Import specialized agent classes
-try:
-    from roboco.agents.human import HumanProxy
-    from roboco.agents import (
-        Executive,
-        ProductManager,
-        SoftwareEngineer,
-        ReportWriter,
-        RoboticsScientist
-    )
-    specialized_agents_available = True
-except ImportError:
-    logger.warning("Some specialized agent classes could not be imported")
-    specialized_agents_available = False
-
 class AgentFactory:
-    """Factory for creating agents based on role definitions."""
+    """Factory for creating agents based on role definitions.
+    
+    This class follows the singleton pattern to ensure there is only
+    one central registry of agent classes across the application.
+    """
+    
+    # Singleton instance
+    _instance: ClassVar[Optional['AgentFactory']] = None
+    
+    @classmethod
+    def get_instance(cls, **kwargs) -> 'AgentFactory':
+        """Get the singleton instance of AgentFactory.
+        
+        Args:
+            **kwargs: Initialization parameters (only used when creating a new instance)
+            
+        Returns:
+            The singleton AgentFactory instance
+        """
+        if cls._instance is None:
+            cls._instance = cls(**kwargs)
+        return cls._instance
     
     def __init__(
         self,
         roles_config_path: str = "config/roles.yaml",
         prompts_dir: str = "config/prompts",
-        register_specialized_agents: bool = True,
     ):
         """Initialize the agent factory.
         
         Args:
             roles_config_path: Path to the roles configuration file
             prompts_dir: Directory containing markdown files with detailed role prompts
-            register_specialized_agents: Whether to automatically register specialized agent classes
         """
+        # Skip initialization if already initialized (singleton pattern)
+        if AgentFactory._instance is not None:
+            return
+            
         self.roles_config = self._load_roles_config(roles_config_path)
         self.prompts_dir = prompts_dir
         self.agent_registry = {}  # Registry of specialized agent classes
-        
-        # Register specialized agent classes if requested
-        if register_specialized_agents:
-            self._register_specialized_agents()
         
     def _load_roles_config(self, config_path: str) -> Dict[str, Any]:
         """Load the roles configuration from YAML file.
@@ -125,26 +129,6 @@ class AgentFactory:
         self.agent_registry[role_key] = agent_class
         logger.info(f"Registered specialized agent class {agent_class.__name__} for role '{role_key}'")
     
-    def _register_specialized_agents(self):
-        """Register all available specialized agent classes."""
-        # Register HumanProxy - always needed for tool execution
-        if 'HumanProxy' in globals():
-            self.register_agent_class("human_proxy", HumanProxy)
-        
-        # Only register other specialized agents if they're available
-        if specialized_agents_available:
-            # Register core specialized agent classes
-            try:
-                self.register_agent_class("executive", Executive)
-                self.register_agent_class("product_manager", ProductManager)
-                self.register_agent_class("software_engineer", SoftwareEngineer)
-                self.register_agent_class("report_writer", ReportWriter)
-                self.register_agent_class("robotics_scientist", RoboticsScientist)
-            except Exception as e:
-                logger.warning(f"Error registering specialized agents: {str(e)}")
-        
-        logger.info(f"Completed registration of specialized agent classes")
-    
     def create_agent(
         self,
         role_key: str,
@@ -156,7 +140,7 @@ class AgentFactory:
         """Create an agent for a specific role.
         
         If a specialized agent class is registered for the role, that class is used.
-        Otherwise, a basic Agent instance is created with the role's system prompt.
+        Otherwise, a basic Agent or HumanProxy instance is created based on the role configuration.
         
         Args:
             role_key: The key of the role in the configuration
@@ -166,7 +150,7 @@ class AgentFactory:
             **kwargs: Additional arguments passed to the agent constructor
             
         Returns:
-            An initialized agent instance
+            An initialized agent instance (either Agent or HumanProxy)
         """
         # Get the agent name (from parameter, config, or role key)
         if name is None:
@@ -175,25 +159,56 @@ class AgentFactory:
             except (KeyError, TypeError):
                 name = role_key.replace('_', ' ').title()
         
+        # Ensure the name doesn't contain whitespace (AG2 requirement)
+        name = name.replace(' ', '_')
+        
         # Get the system message if not provided
         if system_message is None:
             system_message = self._get_system_prompt(role_key)
         
-        # Check if we have a specialized agent class for this role
-        if role_key in self.agent_registry:
-            agent_class = self.agent_registry[role_key]
-            logger.info(f"Creating specialized {agent_class.__name__} agent for role '{role_key}'")
-            return agent_class(
-                name=name,
-                system_message=system_message,
-                **kwargs
-            )
+        # Extract tools from kwargs to handle them separately
+        if 'tools' in kwargs:
+            if tools is None:
+                tools = kwargs.pop('tools')
+            else:
+                tools.extend(kwargs.pop('tools'))
         
-        # Otherwise, create a basic agent with the role's system prompt
-        logger.info(f"Creating generic agent for role '{role_key}'")
-        return Agent(
-            name=name,
-            system_message=system_message,
-            tools=tools,
-            **kwargs
-        ) 
+        # Determine if this is a human proxy or agent role
+        role_type = "agent"  # Default to agent
+        try:
+            role_type = self.roles_config["roles"][role_key].get("type", "agent").lower()
+        except (KeyError, TypeError):
+            pass
+        
+        # Set up common parameters for agent creation
+        agent_params = {
+            "name": name,
+            "system_message": system_message,
+            **kwargs  # Include all additional parameters
+        }
+        
+        # Create agent based on role type and registry
+        if role_key in self.agent_registry:
+            # Create specialized agent using the registered class
+            agent_class = self.agent_registry[role_key]
+            logger.info(f"Creating {agent_class.__name__} for role '{role_key}'")
+            return agent_class(**agent_params)
+        elif role_type == "human_proxy":
+            # Create a HumanProxy
+            logger.info(f"Creating HumanProxy for role '{role_key}'")
+            # Set code_execution_config with use_docker=False
+            if "code_execution_config" not in agent_params:
+                agent_params["code_execution_config"] = {"work_dir": "workspace", "use_docker": False}
+            elif agent_params["code_execution_config"] is not None:
+                agent_params["code_execution_config"]["use_docker"] = False
+            return HumanProxy(**agent_params)
+        else:
+            # Create a basic Agent
+            logger.info(f"Creating Agent for role '{role_key}'")
+            return Agent(**agent_params)
+        
+    def debug_registry(self):
+        """Print the current state of the agent registry for debugging purposes."""
+        logger.info(f"Agent Registry contains {len(self.agent_registry)} entries:")
+        for role_key, agent_class in self.agent_registry.items():
+            logger.info(f"  - {role_key}: {agent_class.__name__}") 

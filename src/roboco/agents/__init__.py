@@ -9,19 +9,6 @@ For most use cases, using role markdown files and the configuration-based team s
 is recommended. However, creating custom Agent subclasses remains fully supported
 for specialized needs that can't be expressed through configuration alone.
 """
-
-import warnings
-
-# Inform users about the preferred approach
-warnings.warn(
-    "Most pre-configured agent classes have been moved to configuration files. "
-    "For standard agents, use the configuration-based system with role markdown files "
-    "in config/prompts/. Creating custom Agent subclasses is still supported for "
-    "specialized behavior that can't be expressed in configuration.",
-    UserWarning,
-    stacklevel=2
-)
-
 # Import the remaining specialized agent
 from roboco.agents.robotics_scientist import RoboticsScientist
 from roboco.agents.genesis_agent import GenesisAgent
