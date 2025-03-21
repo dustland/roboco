@@ -48,7 +48,7 @@ class Executive(Agent):
         self,
         name: str = "Executive",
         system_message: Optional[str] = None,
-        tools: Optional[List[Any]] = None,
+        tools: Optional[List[Any]] = None,  # Kept for backward compatibility but not used
         config_path: Optional[str] = None,
         terminate_msg: Optional[str] = None,
         **kwargs
@@ -59,7 +59,7 @@ class Executive(Agent):
         Args:
             name: Name of the agent (default: "Executive")
             system_message: Custom system message for the agent
-            tools: Optional list of tools available to the agent
+            tools: Optional list of tools available to the agent (not used, kept for compatibility)
             config_path: Optional path to agent configuration file
             terminate_msg: Optional message to include at the end of responses to signal completion
             **kwargs: Additional arguments to pass to the base Agent class
@@ -73,15 +73,17 @@ class Executive(Agent):
             "record_analysis": record_analysis
         }
         
+        # Filter out 'tools' parameter to avoid ConversableAgent error
+        safe_kwargs = {k: v for k, v in kwargs.items() if k != 'tools'}
+        
         # Initialize the base agent
         super().__init__(
             name=name,
             system_message=system_message,
-            tools=tools,
             config_path=config_path,
             terminate_msg=terminate_msg,
             function_map=function_map,
-            **kwargs
+            **safe_kwargs
         )
         
         # Register custom reply for vision-related messages
@@ -99,31 +101,27 @@ class Executive(Agent):
         response = f"""Thank you for sharing your vision. Let me analyze it strategically:
 
 ### Strategic Analysis
+{content}
 
-**Overview & Context**:
-I've reviewed your vision for: "{content[:100]}..."
+I've identified the following key elements:
+1. Business objectives: [Extracted from vision]
+2. Technical requirements: [Extracted from vision]
+3. Success metrics: [Extracted from vision]
+4. Potential risks: [Extracted from vision]
 
-**Key Business Objectives**:
-- Define clear market positioning
-- Identify competitive advantages
-- Establish technical feasibility
-
-**Recommended Actions**:
-1. Let's develop a detailed product specification
-2. Conduct market research to validate assumptions
-3. Create an implementation roadmap
-
-I'll coordinate with the Product Manager to develop detailed specifications for this vision.
-"""
+Is there any specific aspect of this vision you'd like me to elaborate on?"""
         
-        # Return the analysis
-        return {"content": response}
-
+        return response
+    
     def determine_next_agent(self, context_variables: Dict[str, Any]) -> Optional[str]:
-        """Determine the next agent based on current context."""
-        if not context_variables.get("product_spec"):
-            return "product_manager"  # Need initial specifications
-        elif context_variables.get("reviews_left", 0) > 0:
-            return "product_manager"  # Continue review cycle
-        else:
-            return "user_proxy"  # Finalize results
+        """Determine the next agent to hand off to based on the current context."""
+        # Simple logic for demonstration - can be expanded based on complex heuristics
+        if context_variables.get("requires_research", False):
+            return "Researcher"
+        elif context_variables.get("requires_implementation", False):
+            return "SoftwareEngineer"
+        elif context_variables.get("requires_summary", False):
+            return "ReportWriter"
+        
+        # Default handoff to Product Manager
+        return "ProductManager"

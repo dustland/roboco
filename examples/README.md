@@ -1,6 +1,52 @@
 # Roboco Examples
 
-This directory contains example scripts demonstrating how to use the Roboco system.
+This directory contains example scripts demonstrating how to use the Roboco library.
+
+## Tool System Examples
+
+### `tools_example.py`
+
+This example demonstrates how to use the enhanced Tool class and FileSystemTool with the new command-based approach:
+
+1. Using FileSystemTool directly to perform file operations
+2. Registering the FileSystemTool with an agent and having the agent use its commands
+
+To run:
+
+```bash
+python examples/tools_example.py
+```
+
+### `custom_tool.py`
+
+This example shows how to create a custom tool using the Tool base class:
+
+1. Implementing a CalculatorTool with multiple mathematical operations
+2. Using the tool directly to perform calculations
+3. Registering the tool with an agent and having the agent use its commands
+
+To run:
+
+```bash
+python examples/custom_tool.py
+```
+
+## Key Features Demonstrated
+
+These examples showcase the following key features of the enhanced Tool system:
+
+1. **Dynamic Command Registration**: Tools can register multiple commands and have them all available through a single entry point
+2. **Command Execution**: The `execute_command` method provides a unified interface for executing tool commands
+3. **Agent Integration**: Tools can register all their commands with agents automatically
+4. **Error Handling**: Built-in error handling for command execution
+5. **Primary Command**: Automatic selection of a primary command when none is specified
+
+## Usage Tips
+
+- When creating a new tool, inherit from `Tool` and implement your command functions as methods
+- Use `register_commands` to register all the command functions with the tool
+- Initialize the tool with `self.execute_command` as the entry point
+- Use `register_with_agent` to register all commands with an agent
 
 ## Directory Structure
 

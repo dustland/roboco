@@ -141,15 +141,14 @@ class FileSystemTool(Tool):
                     "error": str(e)
                 }
         
-        # Initialize the Tool parent class with the save_file function
+        # Initialize the Tool parent class with auto-discovery enabled
         super().__init__(
-            name="save_file",
-            description="Save content to a file at the specified path",
-            func_or_tool=save_file
+            name="filesystem",
+            description="Tool for file system operations including reading, writing, and listing files"
+            # No need to manually register functions - they will be auto-discovered
         )
         
-        # Register the functions
-        self.register_function(read_file)
-        self.register_function(list_directory)
+        # Ensure name is accessible through both parent class mechanisms
+        self._name = "filesystem"
         
-        logger.info("Initialized FileSystemTool")
+        logger.info(f"Initialized FileSystemTool with auto-discovered commands: {', '.join(self.commands.keys())}")

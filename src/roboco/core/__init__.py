@@ -7,17 +7,16 @@ This module contains the core components for creating and managing agent-based r
 from .agent import Agent
 from .team import Team
 from .tool import Tool
-from .tool_factory import ToolFactory
 from .config import load_config, get_llm_config, get_workspace
 from .logger import setup_logger, get_logger
 from .workspace import Workspace
-
+from .genesis_agent import GenesisAgent
 
 __all__ = [
     "Agent",
+    "GenesisAgent",
     "Team",
     "Tool",
-    "ToolFactory",
     "load_config",
     "get_llm_config",
     "get_workspace",

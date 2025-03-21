@@ -4,33 +4,32 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "roboco"
-version = "0.1.0"
-description = "Roboco Robotics Corporation - AI-Powered Robotics Development Platform"
+version = "0.2.0"
+description = "RoboCo - Multi-agents Platform for Embodied AI"
 authors = [
-    {name = "Roboco Team", email = "team@roboco.ai"}
+    {name = "Dustland Team", email = "hi@dustland.ai"}
 ]
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.11"
 classifiers = [
-    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
 ]
 dependencies = [
     "fastapi>=0.104.0",
     "uvicorn>=0.24.0",
-    "pydantic>=2.4.2",
+    "pydantic>=2.7.1",
     "python-dotenv>=1.0.0",
     "numpy>=1.24.3",
-    "requests>=2.31.0",
-    "jinja2>=3.1.2",
     "pyyaml>=6.0.1",
-    "beautifulsoup4>=4.12.2",
-    "markdown>=3.5.1", 
     "rich>=13.6.0",
-    "PyGithub",  # GitHub API client
-    "arxiv",     # ArXiv API client
-    "pyautogen[openai,browser-use]>=0.8.2",  # Autonomous agent framework with OpenAI and browser support
+    "loguru",
+    "tavily-python",
+    "PyGithub", # GitHub API client
+    "arxiv", # ArXiv API client
+    "pyautogen[openai,browser-use]>=0.8.2", # Autonomous agent framework with OpenAI and browser support
+    "mcp>=1.4.1",
 ]
 
 [project.optional-dependencies]
@@ -42,10 +41,7 @@ dev = [
     "pytest-cov",
     "flake8",
 ]
-genesis = ["genesis-embodied-ai>=0.1.0"]
-all = [
-    "genesis-embodied-ai>=0.1.0"
-]
+all = []
 
 [project.urls]
 "Homepage" = "https://github.com/dustland/roboco"
