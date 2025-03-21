@@ -27,7 +27,7 @@ def main():
     # Create browser tool with output directory
     browser_tool = BrowserUseTool(
         llm_config=get_llm_config(),
-        output_dir="./screenshots"
+        output_dir="workspace/screenshots"
     )
     
     # Register the tool with agents
@@ -37,10 +37,10 @@ def main():
     )
     
     # Start a conversation
-    print(f"Starting conversation. Browser output will be saved to: ./screenshots")
+    print(f"Starting conversation. Browser output will be saved to: workspace/screenshots")
     user_proxy.initiate_chat(
         assistant,
-        message="Please visit https://example.com and describe what you see."
+        message="Please find out how to use register_hand_off in ag2 framework."
     )
     
     print("Example complete")

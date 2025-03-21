@@ -7,7 +7,7 @@ from roboco.tools import BrowserUseTool
 async def simple_browser_example():
     
     # Set output directory
-    output_dir = "./screenshots"
+    output_dir = "workspace/screenshots"
     os.makedirs(output_dir, exist_ok=True)
     
     # Create browser tool with output directory
