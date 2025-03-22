@@ -190,6 +190,7 @@ config.toml
 user_data/
 
 # Roboco workspace
+workspace/
 !workspace/.gitkeep
 
 # User data
