@@ -14,10 +14,12 @@ A comprehensive platform for developing and adapting humanoid robots for specifi
 
 - 🤖 **Multi-Agent Teams** - Specialized agents for robotics, planning, and interaction
 - 🔧 **Configuration-Based System** - Define teams and agents using YAML configs
+- 📋 **Project Management** - Track goals, sprints, and todos across teams
 - 🛠️ **Extensible Tools** - Web research, physics simulation, and robot control
 - 🔌 **Model Context Protocol** - Support for MCP server integration
 - 🔄 **Physical Interaction** - Real-world interaction capabilities
 - 📊 **Built-in Monitoring** - Comprehensive logging and monitoring
+- 🌐 **REST API** - Control and monitor via HTTP API endpoints
 
 ## Quick Start
 
@@ -35,8 +37,16 @@ setup.bat   # On Windows
 cp .env.example .env
 # Edit .env with your API keys
 
+# Start the API server
+./start.sh  # On Unix/macOS
+# or
+python -m roboco server  # Start directly with CLI
+
 # Run an example
 python examples/test_config.py
+
+# Try the project management API
+python examples/api/project_example.py
 ```
 
 ## Documentation
@@ -45,6 +55,8 @@ python examples/test_config.py
 - [Agent System](docs/agent.md) - Creating and configuring agents
 - [Tools](docs/tools.md) - Built-in tools documentation
 - [MCP Integration](docs/mcp.md) - Model Context Protocol details
+- [API Server](docs/api.md) - REST API documentation
+- [Project Management](docs/projects.md) - Managing projects, sprints, and todos
 
 ## Configuration
 
