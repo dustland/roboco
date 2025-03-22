@@ -1,25 +1,25 @@
-# RoboCo: A Robot-driven Company
+# RoboCo
 
-> [!Warning]
-> This project is currently open source, but may transition to a closed source license in the future for production use.
+A Domain-Driven Multi-Agent Platform for Robot-Human Collaboration
 
-<p align="center">
-  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License"></a>
-  <a href="https://x.com/dustland_ai"><img src="https://img.shields.io/badge/Twitter-@dustland__ai-blue?logo=twitter" alt="Twitter"></a>
-</p>
+[![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Python](https://img.shields.io/badge/Python-3.10+-blue?logo=python&logoColor=white)](https://www.python.org/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.100.0+-00a393?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
+[![Built on AG2](https://img.shields.io/badge/Built%20on-AG2-orange)](https://github.com/ag2ai/ag2)
 
-A comprehensive platform for developing and adapting humanoid robots for specific occupations, combining AI, robotics, and human behavior analysis to create effective robot workers that integrate naturally into human workplaces.
+## Overview
+
+RoboCo is a powerful platform that combines Domain-Driven Design with Multi-Agent Systems to create intelligent, collaborative AI teams. Built with a clean architecture that separates concerns into domain, application, infrastructure, and interface layers, RoboCo enables you to build sophisticated AI applications with minimal boilerplate.
 
 ## Key Features
 
-- 🤖 **Multi-Agent Teams** - Specialized agents for robotics, planning, and interaction
-- 🔧 **Configuration-Based System** - Define teams and agents using YAML configs
-- 📋 **Project Management** - Track goals, sprints, and todos across teams
-- 🛠️ **Extensible Tools** - Web research, physics simulation, and robot control
-- 🔌 **Model Context Protocol** - Support for MCP server integration
-- 🔄 **Physical Interaction** - Real-world interaction capabilities
-- 📊 **Built-in Monitoring** - Comprehensive logging and monitoring
-- 🌐 **REST API** - Control and monitor via HTTP API endpoints
+- **Domain-Driven Design**: Clean architecture with proper separation of concerns and dependency injection
+- **Multi-Agent Teams**: Specialized agents that collaborate to solve complex problems
+- **Sprint Management**: Built-in project and sprint management for agile development
+- **MCP Integration**: Model Context Protocol for enhanced agent communication and reasoning
+- **Extensible Tools**: Plug-and-play tools for research, analysis, and interaction
+- **REST API**: Comprehensive API with FastAPI for seamless integration
+- **Workspace Management**: Organized workspaces for artifacts and project resources
 
 ## Quick Start
 
@@ -28,67 +28,81 @@ A comprehensive platform for developing and adapting humanoid robots for specifi
 git clone https://github.com/dustland/roboco.git
 cd roboco
 
-# Setup environment (uses uv package manager)
+# Setup environment
 ./setup.sh  # On Unix/macOS
 # or
 setup.bat   # On Windows
 
-# Add your API keys to .env
+# Configure API keys
 cp .env.example .env
 # Edit .env with your API keys
 
 # Start the API server
-./start.sh  # On Unix/macOS
-# or
-python -m roboco server  # Start directly with CLI
+./start.sh  # Uses default host (127.0.0.1) and port (8000)
+# Or with custom options
+./start.sh --host=0.0.0.0 --port=8080 --reload
+```
 
-# Run an example
-python examples/test_config.py
+## Architecture
 
-# Try the project management API
-python examples/api/project_example.py
+RoboCo follows a clean, domain-driven architecture:
+
+```
+src/roboco/
+├── api/                # REST API with FastAPI
+│   ├── routers/        # API route handlers
+│   ├── schemas/        # API data validation schemas
+│   └── server.py       # FastAPI application
+├── domain/             # Domain models and business logic
+│   ├── models/         # Core domain entities
+│   └── repositories/   # Repository interfaces
+├── infrastructure/     # External systems and implementations
+│   ├── repositories/   # Repository implementations
+│   └── adapters/       # External service adapters
+└── services/           # Application services
+    ├── agent_service.py    # Agent management
+    ├── api_service.py      # API facade
+    ├── project_service.py  # Project management
+    ├── sprint_service.py   # Sprint management
+    ├── team_service.py     # Team management
+    └── workspace_service.py # Workspace management
 ```
 
 ## Documentation
 
-- [Configuration Based Design](docs/config_based_design.md) - Working with agent teams
-- [Agent System](docs/agent.md) - Creating and configuring agents
-- [Tools](docs/tools.md) - Built-in tools documentation
-- [MCP Integration](docs/mcp.md) - Model Context Protocol details
-- [API Server](docs/api.md) - REST API documentation
-- [Project Management](docs/projects.md) - Managing projects, sprints, and todos
+- [Domain-Driven Design](docs/domain_driven_design.md) - Architecture overview
+- [Config-Based Design](docs/config_based_design.md) - Team configuration
+- [Object Model](docs/object_model.md) - Core domain models
+- [MCP](docs/mcp.md) - Multi-agent collaboration protocol
 
 ## Configuration
 
-Core configuration uses YAML format in `config/config.yaml`:
+RoboCo uses environment variables for configuration with sensible defaults:
 
-```yaml
-# Core Settings
-core:
-  workspace_base: "./workspace"
-  workspace_root: "workspace"
+```
+# .env
+OPENAI_API_KEY=your_api_key_here
+WORKSPACE_DIR=~/roboco_workspace
+LOG_LEVEL=INFO
+```
 
-# LLM Settings
-llm:
-  model: "gpt-4o"
-  api_key: "${OPENAI_API_KEY}"
-  max_tokens: 8000
-  temperature: 0.7
-  base_url: "https://api.openai.com/v1"
+The `start.sh` script provides a convenient way to launch the API server with various configuration options:
 
-  # Model-specific configurations also available
-  openai:
-    model: "gpt-4o"
-    # Additional settings
+```bash
+# Basic usage
+./start.sh
 
-  deepseek:
-    model: "deepseek-coder"
-    # Additional settings
+# Available options
+./start.sh --host=0.0.0.0     # Bind to all interfaces
+./start.sh --port=8080        # Use custom port
+./start.sh --reload           # Enable auto-reload for development
+./start.sh --workers=4        # Use multiple worker processes
+./start.sh --help             # Show all available options
 ```
 
 ## Contributing
 
-We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) and [Code of Conduct](CODE_OF_CONDUCT.md).
+We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) for details and our [Code of Conduct](CODE_OF_CONDUCT.md).
 
 ## Contact
 
@@ -114,4 +128,3 @@ We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) a
   journal = {GitHub repository},
   howpublished = {\url{https://github.com/dustland/roboco}},
 }
-```

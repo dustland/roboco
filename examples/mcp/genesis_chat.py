@@ -37,7 +37,7 @@ from pathlib import Path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 
 from roboco.agents import GenesisAgent
-from roboco.core.agent import HumanProxy
+from roboco.agents.human_proxy import HumanProxy
 
 async def main():
     """Demo of GenesisAgent with HumanProxy in a chat."""

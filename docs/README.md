@@ -98,7 +98,8 @@ RoboCo uses YAML for configuration. The main configuration files are:
 
 - `config/config.yaml`: Global settings
 - `config/teams.yaml`: Team definitions
-- `config/roles/*.md`: Agent role definitions
+- `config/roles.yaml`: Agent role definitions
+- `config/prompts/*.md`: Prompts of agent roles
 
 ## Next Steps
 
@@ -111,6 +112,5 @@ RoboCo uses YAML for configuration. The main configuration files are:
 
 If you encounter issues or have questions:
 
-- Check the [FAQ](faq.md) for common questions
 - Open an issue on GitHub
 - Contact us at hi@dustland.ai

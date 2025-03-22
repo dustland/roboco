@@ -13,6 +13,9 @@ from typing import Dict, List, Optional, Any, Union
 from datetime import datetime
 from pathlib import Path
 import markdown
+import time
+import yaml
+from datetime import timedelta
 
 from loguru import logger
 
@@ -527,4 +530,317 @@ class ProjectManager:
                 self._save_project(project_id)
                 return True
         
-        return False 
+        return False
+    
+    async def create_project_from_query(self, query: str, initial_teams: Optional[List[str]] = None) -> str:
+        """
+        Dynamically create a project based on a user query.
+        
+        Args:
+            query: The user's query that will be used to determine project details
+            initial_teams: Optional list of team keys to assign to the project
+            
+        Returns:
+            project_id: The ID of the newly created project
+        """
+        # Generate project name and description from query
+        project_name = self._generate_project_name(query)
+        project_id = self._sanitize_name(project_name)
+        
+        # Check if project already exists
+        if project_id in self.projects:
+            # Create a unique ID by appending a timestamp
+            project_id = f"{project_id}_{int(time.time())}"
+        
+        # Generate a more detailed project description
+        description = self._generate_project_description(query)
+        
+        # Determine appropriate teams for this project based on the query
+        if initial_teams is None or len(initial_teams) == 0:
+            teams = self._determine_teams_from_query(query)
+        else:
+            teams = initial_teams
+        
+        # Create the project with the determined details
+        logger.info(f"Creating project {project_id} from query: {query}")
+        self.create_project(
+            name=project_name,
+            description=description,
+            directory=project_id,  # Use project_id as directory name for consistency
+            teams=teams,
+            source_code_dir="src",
+            docs_dir="docs",
+            tags=self._extract_tags_from_query(query)
+        )
+        
+        # Create config directory and project.yaml
+        config_dir = os.path.join(self.projects_dir, project_id, "config")
+        os.makedirs(config_dir, exist_ok=True)
+        
+        # Save project configuration to YAML
+        project_config = {
+            "id": project_id,
+            "name": project_name,
+            "description": description,
+            "query": query,
+            "teams": teams,
+            "created_at": datetime.now().isoformat(),
+        }
+        
+        with open(os.path.join(config_dir, "project.yaml"), "w") as f:
+            yaml.dump(project_config, f, default_flow_style=False)
+        
+        # Create artifacts directory
+        artifacts_dir = os.path.join(self.projects_dir, project_id, "artifacts")
+        os.makedirs(artifacts_dir, exist_ok=True)
+        
+        # Create initial sprint and tasks based on the query
+        self._generate_initial_sprint_and_tasks(project_id, query)
+        
+        return project_id
+
+    def _generate_project_name(self, query: str) -> str:
+        """Generate a project name from a query string."""
+        # Basic implementation - extract key terms and form a name
+        # In a production system, you might use an LLM to generate a more natural name
+        words = query.split()
+        if len(words) <= 3:
+            return " ".join(words).title()
+        
+        # Take first 3-5 significant words
+        important_words = []
+        stop_words = {"a", "an", "the", "in", "on", "with", "for", "and", "or", "to", "of"}
+        
+        for word in words:
+            if word.lower() not in stop_words and len(important_words) < 5:
+                important_words.append(word)
+        
+        if important_words:
+            return " ".join(important_words).title()
+        else:
+            # Fallback if we couldn't extract significant words
+            return " ".join(words[:3]).title()
+
+    def _sanitize_name(self, name: str) -> str:
+        """Convert a name to a valid directory name."""
+        # Replace spaces with underscores and remove special characters
+        sanitized = name.lower().replace(" ", "_")
+        import re
+        return re.sub(r'[^\w-]', '', sanitized)
+
+    def _generate_project_description(self, query: str) -> str:
+        """Generate a more detailed project description from a query."""
+        # Basic implementation - in production, you might use an LLM to generate a better description
+        return f"Project initiated from query: {query}"
+
+    def _determine_teams_from_query(self, query: str) -> List[str]:
+        """Determine appropriate teams for a query."""
+        # Basic implementation - in production, you'd use more sophisticated logic or an LLM
+        # Default to research_team if we can't determine specific teams
+        query_lower = query.lower()
+        
+        if "research" in query_lower or "analysis" in query_lower or "study" in query_lower:
+            return ["research_team"]
+        elif "develop" in query_lower or "build" in query_lower or "create" in query_lower:
+            return ["dev_team"]
+        elif "design" in query_lower or "prototype" in query_lower:
+            return ["design_team"]
+        else:
+            return ["research_team"]  # Default to research team
+
+    def _extract_tags_from_query(self, query: str) -> List[str]:
+        """Extract relevant tags from a query."""
+        # Basic implementation - in production, you might use NLP to extract relevant terms
+        # For now, extract any words that might be domain keywords
+        keywords = {
+            "ai", "machine learning", "ml", "robotics", "robot", "automation", 
+            "research", "development", "analysis", "design", "market", "business",
+            "software", "hardware", "prototype", "testing"
+        }
+        
+        query_lower = query.lower()
+        tags = []
+        
+        for keyword in keywords:
+            if keyword in query_lower:
+                tags.append(keyword)
+        
+        return tags
+
+    def _generate_initial_sprint_and_tasks(self, project_id: str, query: str) -> None:
+        """Generate an initial sprint and tasks based on the query."""
+        # Create a first sprint
+        today = datetime.now()
+        end_date = today + timedelta(days=14)  # Two-week sprint
+        
+        sprint = self.create_sprint(
+            project_id=project_id,
+            name="Sprint 1",
+            description="Initial project planning and research",
+            start_date=today,
+            end_date=end_date,
+            status="active"
+        )
+        
+        # Set this as the current sprint
+        self.update_project(project_id, current_sprint="Sprint 1")
+        
+        # Generate initial tasks - this would be more sophisticated with an LLM
+        # For now, create some basic tasks based on project type
+        teams = self.projects[project_id].teams
+        query_lower = query.lower()
+        
+        if "research" in query_lower or "analysis" in query_lower:
+            # Research-oriented tasks
+            self.create_todo(
+                project_id=project_id,
+                title="Conduct initial literature review",
+                description="Gather and analyze existing research papers and articles relevant to the project",
+                status="TODO",
+                priority="high",
+                sprint_name="Sprint 1"
+            )
+            
+            self.create_todo(
+                project_id=project_id,
+                title="Define research methodology",
+                description="Outline the approach and methods to be used for gathering and analyzing data",
+                status="TODO",
+                priority="high",
+                sprint_name="Sprint 1"
+            )
+            
+            self.create_todo(
+                project_id=project_id,
+                title="Create data collection plan",
+                description="Identify data sources and create a plan for data collection and analysis",
+                status="TODO",
+                priority="medium",
+                sprint_name="Sprint 1"
+            )
+            
+            self.create_todo(
+                project_id=project_id,
+                title="Prepare initial findings report",
+                description="Compile initial findings into a preliminary report",
+                status="TODO",
+                priority="medium",
+                sprint_name="Sprint 1"
+            )
+        
+        elif "develop" in query_lower or "build" in query_lower or "create" in query_lower:
+            # Development-oriented tasks
+            self.create_todo(
+                project_id=project_id,
+                title="Define requirements",
+                description="Outline the functional and technical requirements for the project",
+                status="TODO",
+                priority="high",
+                sprint_name="Sprint 1"
+            )
+            
+            self.create_todo(
+                project_id=project_id,
+                title="Create system architecture",
+                description="Design the high-level architecture of the system",
+                status="TODO",
+                priority="high",
+                sprint_name="Sprint 1"
+            )
+            
+            self.create_todo(
+                project_id=project_id,
+                title="Set up development environment",
+                description="Prepare the necessary tools and configuration for development",
+                status="TODO",
+                priority="medium",
+                sprint_name="Sprint 1"
+            )
+            
+            self.create_todo(
+                project_id=project_id,
+                title="Implement core functionality",
+                description="Develop the essential features of the system",
+                status="TODO",
+                priority="medium",
+                sprint_name="Sprint 1"
+            )
+        
+        else:
+            # Generic tasks for any project type
+            self.create_todo(
+                project_id=project_id,
+                title="Define project goals and scope",
+                description="Clarify the objectives, deliverables, and boundaries of the project",
+                status="TODO",
+                priority="high",
+                sprint_name="Sprint 1"
+            )
+            
+            self.create_todo(
+                project_id=project_id,
+                title="Create project plan",
+                description="Develop a detailed plan including milestones and timelines",
+                status="TODO",
+                priority="high",
+                sprint_name="Sprint 1"
+            )
+            
+            self.create_todo(
+                project_id=project_id,
+                title="Identify resources and dependencies",
+                description="Determine the resources needed and any external dependencies",
+                status="TODO",
+                priority="medium",
+                sprint_name="Sprint 1"
+            )
+            
+            self.create_todo(
+                project_id=project_id,
+                title="Create progress tracking system",
+                description="Establish methods for tracking and reporting project progress",
+                status="TODO",
+                priority="medium",
+                sprint_name="Sprint 1"
+            )
+        
+        # Always add these general tasks
+        self.create_todo(
+            project_id=project_id,
+            title="Sprint 1 planning",
+            description="Define goals and tasks for the first sprint",
+            status="DONE",  # Already done since we're creating it now
+            priority="high",
+            sprint_name="Sprint 1"
+        )
+        
+        self.create_todo(
+            project_id=project_id,
+            title="Sprint 1 review",
+            description="Review accomplishments and challenges from the first sprint",
+            status="TODO",
+            priority="medium",
+            sprint_name="Sprint 1"
+        )
+        
+        # Create a second sprint in the backlog
+        second_sprint_start = end_date + timedelta(days=1)
+        second_sprint_end = second_sprint_start + timedelta(days=14)
+        
+        self.create_sprint(
+            project_id=project_id,
+            name="Sprint 2",
+            description="Implementation and development phase",
+            start_date=second_sprint_start,
+            end_date=second_sprint_end,
+            status="planned"
+        )
+        
+        # Add a backlog task for future planning
+        self.create_todo(
+            project_id=project_id,
+            title="Plan Sprint 2 tasks",
+            description="Based on Sprint 1 outcomes, define detailed tasks for Sprint 2",
+            status="TODO",
+            priority="low"
+        ) 

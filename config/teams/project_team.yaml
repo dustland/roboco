@@ -1,0 +1,48 @@
+name: Project Team
+description: Team specialized in project creation and management, translating user requirements into well-structured projects.
+
+# Define the team members (roles)
+roles:
+  - human_proxy
+  - project_agent
+
+# Default config for the team
+config:
+  terminate_msg: "TERMINATE"
+  max_rounds: 15
+  enable_human_feedback: true
+  output_dir: "project_team_output"
+
+# Per-agent configuration overrides
+agent_configs:
+  human_proxy:
+    name: Human
+    human_input_mode: "TERMINATE"
+    code_execution_config:
+      work_dir: "workspace"
+      use_docker: false
+
+  project_agent:
+    name: ProjectManager
+    # Ensure project agent has the right capabilities
+    llm_config:
+      temperature: 0.2 # Lower temperature for more predictable responses
+      seed: 42 # Consistent seed for reproducibility
+
+# Tools assigned to agents
+tools:
+  human_proxy:
+    - file_system
+    - web_search
+
+  project_agent:
+    - file_system # Enable file operations for creating project files
+
+# Handoff patterns - defines how agents interact
+handoffs:
+  # Default pattern: human_proxy -> project_agent -> human_proxy
+  human_proxy:
+    - project_agent
+
+  project_agent:
+    - human_proxy
