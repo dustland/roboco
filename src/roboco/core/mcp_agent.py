@@ -1,9 +1,9 @@
 """
 MCP Agent Module
 
-This module provides a base agent class for interacting with MCP (Machine Control Protocol) servers.
+This module provides a base agent class for interacting with MCP (Model Context Protocol) servers.
 It can be used as a foundation for specialized agents that need to communicate with various 
-MCP-compatible services like Genesis, Simulacra, or other simulation/control systems.
+MCP-compatible services that provide context and tools to LLMs.
 """
 
 from typing import Dict, Optional, List, Any
@@ -60,8 +60,9 @@ class McpAgent(Agent):
         
         # Add MCP capabilities info to system message
         mcp_info = (
-            "\n\nYou have access to an MCP (Machine Control Protocol) server. "
+            "\n\nYou have access to an MCP (Model Context Protocol) server. "
             "You can send commands to the server and receive responses. "
+            "The MCP server provides standardized access to data and tools. "
             "Use the available tools to interact with the MCP server."
         )
         

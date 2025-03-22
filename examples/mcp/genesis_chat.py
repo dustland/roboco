@@ -4,10 +4,11 @@ Genesis Agent Chat Example
 This example demonstrates how to use the GenesisAgent with a HumanProxy in a chat,
 where the HumanProxy executes the tools.
 
-IMPORTANT: Before running this script, you need to start the Genesis MCP server manually.
-The Genesis MCP server needs to be running and accessible. 
+IMPORTANT: Before running this script, you need to start the MCP server manually.
+The Model Context Protocol (MCP) is a standardized way for LLMs to interact with tools,
+data, and contexts through a server-client architecture.
 
-To set up the Genesis environment:
+To set up the MCP environment:
 
 1. Install the MCP package:
    pip install mcp
@@ -15,13 +16,16 @@ To set up the Genesis environment:
 2. Start the MCP server in a separate terminal with your server file:
    mcp dev server.py
    
-   This should display a message like "MCP server listening"
+   This starts an MCP server that provides a standardized interface for tools
+   and context that LLMs can interact with.
 
 3. Run this example script to interact with the server:
    python genesis_chat.py
    
-The GenesisAgent will connect to the running MCP server and provide access to 
-physics simulation capabilities through the HumanProxy.
+The GenesisAgent will connect to the running MCP server and access the 
+tools and context it provides through the HumanProxy executor.
+
+For more information, see: https://modelcontextprotocol.io/introduction
 """
 
 import asyncio

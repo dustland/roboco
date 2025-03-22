@@ -1,4 +1,4 @@
-# Configuration-Based Team System
+# CBD: Configuration-Based-Design
 
 The Roboco framework provides a flexible, configuration-based approach to defining and creating teams of AI agents. This document explains how to use this system to create custom teams without writing specialized agent or team classes.
 
