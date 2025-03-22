@@ -1,1 +1,0 @@
-Error: Tool.__init__() missing 2 required positional arguments: 'name' and 'description'
