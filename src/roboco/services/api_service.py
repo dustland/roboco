@@ -19,6 +19,7 @@ from roboco.services.team_service import TeamService
 from roboco.services.agent_service import AgentService
 from roboco.services.sprint_service import SprintService
 from roboco.services.workspace_service import WorkspaceService
+from roboco.services.chat_service import ChatService
 from roboco.infrastructure.adapters.pydantic_adapters import (
     project_to_pydantic, pydantic_to_project,
     sprint_to_pydantic, pydantic_to_sprint,
@@ -49,6 +50,7 @@ class ApiService:
         agent_service: Optional[AgentService] = None,
         sprint_service: Optional[SprintService] = None,
         workspace_service: Optional[WorkspaceService] = None,
+        chat_service: Optional[ChatService] = None,
         project_repository = None
     ):
         """
@@ -60,6 +62,7 @@ class ApiService:
             agent_service: Service for agent-related operations
             sprint_service: Service for sprint-related operations
             workspace_service: Service for workspace-related operations
+            chat_service: Service for chat-related operations
             project_repository: Optional repository to use for sprint service
         """
         self.project_service = project_service
@@ -73,6 +76,7 @@ class ApiService:
             
         self.sprint_service = sprint_service or SprintService(project_repository)
         self.workspace_service = workspace_service or WorkspaceService()
+        self.chat_service = chat_service or ChatService(project_repository)
         
         # Set up workspace directory
         self.workspace_dir = os.path.expanduser("~/roboco_workspace")
@@ -781,16 +785,9 @@ class ApiService:
         # Create a new conversation if no ID provided
         conversation_id = chat_request.conversation_id or str(uuid.uuid4())
         
-        # TODO: Implement actual chat with project agent
-        # This is a placeholder implementation
-        
-        return ChatResponse(
-            conversation_id=conversation_id,
-            message="This is a placeholder response from the project agent.",
-            project_id=None,
-            status="completed"
-        )
-
+        # Use the chat service for chat operations
+        return await self.chat_service.chat_with_project_agent(chat_request)
+    
     # Workspace-related methods
     
     async def create_workspace(self, name: str, description: Optional[str] = None) -> Dict[str, Any]:
