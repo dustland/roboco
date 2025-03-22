@@ -401,6 +401,28 @@ class RobocoConfig(BaseModel):
         """Get the workspace root path from core configuration."""
         return self.core.workspace_root
     
+    def get(self, key: str, default: Any = None) -> Any:
+        """Get a configuration value by key with a default fallback.
+        
+        Args:
+            key: The configuration key to retrieve
+            default: Default value to return if key is not found
+            
+        Returns:
+            The configuration value or default if not found
+        """
+        try:
+            # Handle nested keys with dots (e.g., "core.workspace_base")
+            if "." in key:
+                parts = key.split(".")
+                value = self
+                for part in parts:
+                    value = getattr(value, part)
+                return value
+            return getattr(self, key)
+        except (AttributeError, KeyError):
+            return default
+    
     class Config:
         """Pydantic model configuration."""
         

@@ -12,7 +12,7 @@ from datetime import datetime
 from loguru import logger
 
 from roboco.core.config import load_config, get_llm_config
-from roboco.agents.base import Agent, BaseAgent
+from roboco.core.agent import Agent
 from roboco.agents.human_proxy import HumanProxy
 
 
@@ -38,8 +38,9 @@ class AgentService:
         self._register_core_agent_types()
     
     def _register_core_agent_types(self):
-        """Register core agent types."""
-        self._agent_types["BaseAgent"] = BaseAgent
+        """Register the core agent types."""
+        self._agent_types = {}
+        self._agent_types["Agent"] = Agent
         self._agent_types["HumanProxy"] = HumanProxy
         
         # Dynamically discover and register other agent types

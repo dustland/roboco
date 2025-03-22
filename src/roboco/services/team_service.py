@@ -15,7 +15,6 @@ from loguru import logger
 
 from roboco.core import TeamBuilder, config
 from roboco.core.config import load_config, get_llm_config
-from roboco.teams import get_team_config
 
 
 class TeamService:
@@ -68,16 +67,16 @@ class TeamService:
         Returns:
             List of team information dictionaries.
         """
-        teams_config = get_team_config()
+        team_builder = TeamBuilder.get_instance()
+        teams_config = team_builder.teams_config.get("teams", {})
         
         result = []
         for key, team_info in teams_config.items():
             result.append({
-                "key": key,
+                "id": key,
                 "name": team_info.get("name", key),
                 "description": team_info.get("description", ""),
-                "roles": list(team_info.get("roles", {}).keys()),
-                "tools": team_info.get("tools", [])
+                "roles": team_info.get("roles", [])
             })
         
         return result
@@ -95,7 +94,8 @@ class TeamService:
         Raises:
             ValueError: If the team is not found.
         """
-        teams_config = get_team_config()
+        team_builder = TeamBuilder.get_instance()
+        teams_config = team_builder.teams_config.get("teams", {})
         
         if team_key not in teams_config:
             raise ValueError(f"Team '{team_key}' not found")
@@ -200,8 +200,8 @@ class TeamService:
         
         try:
             # Build the team
-            team_builder = TeamBuilder()
-            team = team_builder.build_team(team_key, output_dir=os.path.join(self.jobs_dir, job_id, output_dir))
+            team_builder = TeamBuilder.get_instance()
+            team = TeamBuilder.create_team(team_key, output_dir=os.path.join(self.jobs_dir, job_id, output_dir))
             
             # Set up the initial agent
             if not initial_agent and hasattr(team, "default_agent"):

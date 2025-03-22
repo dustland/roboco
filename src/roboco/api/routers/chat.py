@@ -15,7 +15,6 @@ from roboco.services.project_service import ProjectService
 
 
 router = APIRouter(
-    prefix="/chat",
     tags=["chat"],
 )
 

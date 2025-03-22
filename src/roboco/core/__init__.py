@@ -12,6 +12,7 @@ from .config import load_config, get_llm_config, get_workspace
 from .logger import setup_logger, get_logger
 from .workspace import Workspace
 from ..agents.genesis_agent import GenesisAgent
+from ..agents.human_proxy import HumanProxy
 from .agent_factory import AgentFactory
 from .team_builder import TeamBuilder
 from .schema import TeamConfig
@@ -22,6 +23,7 @@ __all__ = [
     "TeamBuilder",
     "McpAgent",
     "GenesisAgent",
+    "HumanProxy",
     "Team",
     "Tool",
     "load_config",

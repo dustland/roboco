@@ -63,7 +63,7 @@ class ApiService:
         self.project_service = project_service
         self.team_service = team_service or TeamService()
         self.agent_service = agent_service or AgentService()
-        self.sprint_service = sprint_service or SprintService(project_service.repository)
+        self.sprint_service = sprint_service or SprintService(project_service.project_repository)
         self.workspace_service = workspace_service or WorkspaceService()
         
         # Set up workspace directory

@@ -17,7 +17,6 @@ from roboco.services.project_service import ProjectService
 
 
 router = APIRouter(
-    prefix="/projects",
     tags=["projects"],
     responses={404: {"description": "Project not found"}},
 )

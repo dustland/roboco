@@ -30,6 +30,7 @@ dependencies = [
     "arxiv", # ArXiv API client
     "pyautogen[openai,browser-use]>=0.8.2", # Autonomous agent framework with OpenAI and browser support
     "mcp>=1.4.1",
+    "markdown>=3.4.0", # For markdown processing
 ]
 
 [project.optional-dependencies]

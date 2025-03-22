@@ -10,7 +10,8 @@ import yaml
 from typing import Dict, Any, Optional, Type, List, Union, ClassVar
 from loguru import logger
 
-from roboco.core.agent import Agent, HumanProxy
+from roboco.core.agent import Agent
+from roboco.agents.human_proxy import HumanProxy
 from roboco.core.tool import Tool
 
 class AgentFactory:
