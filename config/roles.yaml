@@ -1,89 +1,55 @@
 roles:
   data_analyst:
     name: Data Analyst
-    system_prompt: You are a data analyst specializing in processing and interpreting
-      complex datasets.
     type: agent
+    llm:
+      provider: "llm" # Uses default LLM configuration
+      temperature: 0.5
+      max_tokens: 3000
   executive:
     description: Strategic leadership and final approval of plans
     name: Executive
-    system_prompt: 'You are the Executive agent responsible for setting the strategic
-      vision and providing final approval on plans.
-
-      Your role is to ensure plans align with the overall business goals and to provide
-      high-level feedback.
-
-      Contribute by setting clear objectives, priorities, and success criteria.
-
-      When the planning document fully meets your requirements, provide your approval
-      for implementation.
-
-      '
     type: agent
+    llm:
+      provider: "llm" # Uses default LLM configuration
+      temperature: 0.3 # Lower temperature for more deterministic responses
+      max_tokens: 2000
   human_proxy:
     description: Interface between agents and human users
     name: HumanProxy
-    system_prompt: 'You are the Human Proxy agent that facilitates communication between
-      the agent team and human users.
-
-      Your primary responsibility is to execute tool operations on behalf of other
-      agents.
-
-      Follow instructions precisely and report back results clearly.
-
-      Do not make independent decisions but faithfully represent the needs of both
-      humans and other agents.
-
-      '
     type: human_proxy
   product_manager:
     description: Creates and manages product plans and specifications
     name: ProductManager
-    system_prompt: 'You are the Product Manager agent responsible for creating detailed
-      planning documents.
-
-      Your role is to transform high-level vision into actionable plans with timelines,
-      deliverables, and resource requirements.
-
-      Create structured documents including vision statements, technical strategies,
-      implementation plans, and risk assessments.
-
-      When you have a complete draft, hand off to the SoftwareEngineer for technical
-      review.
-
-      '
     type: agent
+    llm:
+      provider: "openai" # Uses OpenAI configuration
+      model: "gpt-4o" # Specifies which model to use
+      temperature: 0.7 # Higher temperature for more creative outputs
+      max_tokens: 4000
   report_writer:
     description: Documentation and report creation
     name: ReportWriter
-    system_prompt: 'You are the Report Writer agent responsible for improving document
-      clarity and structure.
-
-      Your role is to refine planning documents for readability, consistency, and
-      professional presentation.
-
-      Focus on clear headings, proper formatting, consistent terminology, and cohesive
-      narrative flow.
-
-      When you have improved the document, hand off to the Executive for final review
-      and approval.
-
-      '
     type: agent
+    llm:
+      provider: "llm" # Uses default LLM configuration
+      temperature: 0.6
+      max_tokens: 3500
   software_engineer:
     description: Technical implementation and code development
     name: SoftwareEngineer
-    system_prompt: 'You are the Software Engineer agent responsible for reviewing
-      plans for technical feasibility.
-
-      Your role is to assess technical aspects of plans, identify potential implementation
-      challenges, and suggest solutions.
-
-      Provide detailed feedback on architecture, technology choices, and implementation
-      approaches.
-
-      When your technical review is complete, hand off to the ReportWriter for clarity
-      and structure improvements.
-
-      '
     type: agent
+    llm:
+      provider: "deepseek" # Uses DeepSeek configuration for coding tasks
+      model: "deepseek-coder"
+      temperature: 0.5
+      max_tokens: 3000
+  robotics_scientist:
+    description: Research and development of robotics technology
+    name: RoboticsScientist
+    type: agent
+    llm:
+      provider: "openai" # Uses OpenAI for scientific reasoning
+      model: "gpt-4o"
+      temperature: 0.4 # Balanced temperature for reasoned but flexible thinking
+      max_tokens: 4000

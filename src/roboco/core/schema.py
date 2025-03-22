@@ -1,7 +1,7 @@
 """
-Configuration Models
+Schema Definitions
 
-This module defines Pydantic models for configuration validation.
+This module defines Pydantic schema models for configuration validation and data structures.
 """
 
 from typing import Dict, Any, List, Optional, Union

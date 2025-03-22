@@ -20,7 +20,7 @@ from pydantic import BaseModel, Field
 from roboco.core import Tool, get_workspace
 from roboco.core import logger
 from roboco.core.logger import get_logger
-from roboco.core.models import ToolConfig
+from roboco.core.schema import ToolConfig
 
 
 class ArxivConfig(ToolConfig):

@@ -41,14 +41,12 @@ class TeamBuilder:
     def __init__(
         self,
         teams_config_path: str = "config/teams.yaml",
-        teams_dir: str = "config/teams",
         **agent_factory_kwargs
     ):
         """Initialize the team builder.
         
         Args:
-            teams_config_path: Path to the global teams configuration file
-            teams_dir: Directory containing team-specific configuration files
+            teams_config_path: Path to the teams configuration file (YAML)
             **agent_factory_kwargs: Additional keyword arguments to pass to the AgentFactory
         """
         # Skip initialization if already initialized (singleton pattern)
@@ -67,13 +65,18 @@ class TeamBuilder:
         
         # Initialize team loading configuration
         self.teams_config_path = teams_config_path
-        self.teams_dir = teams_dir
         self.teams_config = self._load_teams_config(teams_config_path)
         
         # Initialize available tools
         self.available_tools = {
-            "filesystem": lambda: FileSystemTool(),
-            "browser_use": lambda: BrowserUseTool()
+            "fs": lambda: FileSystemTool(
+                name="fs",
+                description="Tool for interacting with the file system"
+            ),
+            "browser_use": lambda: BrowserUseTool(
+                name="browser_use",
+                description="Tool for browsing the web and interacting with websites"
+            )
         }
     
     def _load_teams_config(self, config_path: str) -> Dict[str, Any]:
@@ -95,49 +98,24 @@ class TeamBuilder:
             logger.warning("Using default empty configuration")
             return {"teams": {}}
     
-    def _load_team_specific_config(self, team_key: str) -> Optional[Dict[str, Any]]:
-        """Load a team-specific configuration from a YAML file.
-        
-        Args:
-            team_key: The key of the team to load the configuration for
-            
-        Returns:
-            The team-specific configuration, or None if the file doesn't exist
-        """
-        file_path = os.path.join(self.teams_dir, f"{team_key}.yaml")
-        try:
-            with open(file_path, 'r', encoding='utf-8') as file:
-                config = yaml.safe_load(file)
-                logger.info(f"Loaded team-specific configuration from {file_path}")
-                return config
-        except Exception as e:
-            logger.warning(f"No team-specific config found at {file_path}: {str(e)}")
-            return None
-    
     def get_team_config(self, team_key: str) -> Dict[str, Any]:
         """Get the configuration for a specific team.
         
-        Combines the global team configuration with any team-specific configuration.
+        Retrieves team configuration from the global teams.yaml file.
         
         Args:
             team_key: The key of the team in the configuration
             
         Returns:
-            The combined team configuration
+            The team configuration
         """
-        # Start with the global configuration
+        # Get the team configuration from the global teams.yaml
         try:
             team_config = self.teams_config["teams"][team_key].copy()
+            return team_config
         except (KeyError, TypeError):
-            logger.warning(f"Team '{team_key}' not found in global config, using empty configuration")
-            team_config = {}
-        
-        # Add any team-specific configuration, overriding global settings
-        specific_config = self._load_team_specific_config(team_key)
-        if specific_config:
-            team_config.update(specific_config)
-        
-        return team_config
+            logger.warning(f"Team '{team_key}' not found in config file {self.teams_config_path}")
+            raise KeyError(f"Team '{team_key}' not found in configuration")
     
     def with_roles(self, *role_keys: str) -> 'TeamBuilder':
         """Select the roles to include in the team.
@@ -256,188 +234,153 @@ class TeamBuilder:
         if "tool_executor" in team_config:
             builder.with_tool_executor(team_config["tool_executor"])
         
-        # Configure agent-specific settings
-        if "agent_configs" in team_config:
-            for role_key, config in team_config["agent_configs"].items():
-                builder.with_agent_config(role_key, **config)
-        
         # Configure tools
         if "tools" in team_config:
-            for tool_key in team_config["tools"]:
-                if tool_key in self.available_tools:
-                    # Create the tool instance
-                    tool = self.available_tools[tool_key]()
-                    
-                    # Register with all roles (will be filtered by tool executor)
-                    for role_key in team_config.get("roles", []):
-                        if role_key != team_config.get("tool_executor"):
-                            if role_key not in builder.tools:
-                                builder.tools[role_key] = []
-                            builder.tools[role_key].append(tool)
+            tool_executor = team_config.get("tool_executor", "human_proxy")
+            tool_instances = []
+            
+            for tool_name in team_config["tools"]:
+                if tool_name in builder.available_tools:
+                    tool_instances.append(builder.available_tools[tool_name]())
+            
+            if tool_instances:
+                builder.with_tools(tool_executor, tool_instances)
+                
+        # Configure agent-specific configurations
+        if "agent_configs" in team_config:
+            for role, config in team_config["agent_configs"].items():
+                builder.with_agent_config(role, **config)
         
-        # Configure workflow/handoffs
+        # Configure handoffs if workflow is defined
         if "workflow" in team_config:
             for handoff in team_config["workflow"]:
-                builder.with_handoff(
-                    from_role=handoff["from"],
-                    to_role=handoff["to"],
-                    condition=handoff.get("condition")
-                )
+                from_role = handoff.get("from")
+                to_role = handoff.get("to")
+                condition = handoff.get("condition")
+                
+                if from_role and to_role:
+                    builder.with_handoff(from_role, to_role, condition)
+        
+        # Configure output directory
+        output_dir = team_config.get("output_dir", "workspace/team_output")
         
         # Build the team
-        team = builder.build(
-            name=team_config.get("name", f"Team_{team_key}"),
-            description=team_config.get("description", "")
-        )
-        
-        # Set output directory if specified
-        if "output_dir" in team_config:
-            output_dir = team_config["output_dir"]
-            os.makedirs(output_dir, exist_ok=True)
-            team.shared_context["output_dir"] = output_dir
-        
-        logger.info(f"Created team '{team.name}' with {len(team.agents)} agents")
-        return team
+        team_name = team_config.get("name", team_key)
+        return builder.build(name=team_name, output_dir=output_dir)
     
     def build(self, team_class: Type[Team] = Team, name: str = None, **team_kwargs) -> Team:
-        """Build the team with the configured agents.
+        """Build the team with the configured parameters.
         
         Args:
-            team_class: The team class to instantiate
-            name: Name for the team (default: Generated based on roles)
-            **team_kwargs: Additional arguments for the team constructor
+            team_class: Optional custom Team class to use
+            name: Optional name for the team
+            **team_kwargs: Additional arguments to pass to the Team constructor
             
         Returns:
-            An initialized team instance
+            An initialized Team instance with all configured agents
         """
-        # Generate a name if not provided
-        if name is None:
-            name = "Team_" + "_".join(self.selected_roles)
-        
-        # Debug: Print selected roles
-        logger.debug(f"Building team with selected roles: {self.selected_roles}")
-        
-        # Remove description if present (not supported by Team constructor)
-        description = team_kwargs.pop("description", None)
-        if description:
-            logger.debug(f"Team description: {description}")
-            
-        # Create initial team instance
-        team = team_class(name=name, agents={}, **team_kwargs)
-        
-        # Enable swarm orchestration
-        team.enable_swarm()
-        
-        # Create all agents from selected roles
+        # Create an empty agents dictionary
         agents = {}
-        for role_key in self.selected_roles:
-            # Get agent-specific configs
-            agent_kwargs = self.agent_configs.get(role_key, {})
-            logger.debug(f"Creating agent for role '{role_key}' with kwargs: {agent_kwargs}")
+        
+        # Create the agent factory
+        agent_factory = AgentFactory.get_instance()
+        
+        # Created a set of processed roles to avoid duplicates
+        processed_roles = set()
+        
+        # Create each agent in the team
+        for role in self.selected_roles:
+            if role in processed_roles:
+                continue
+                
+            processed_roles.add(role)
             
-            # Check if we have a specialized agent class registered for this role
-            if role_key in self.agent_factory.agent_registry:
-                logger.info(f"Using specialized agent class for role '{role_key}': {self.agent_factory.agent_registry[role_key].__name__}")
+            # Get the agent configuration if specified
+            agent_config = self.agent_configs.get(role, {})
             
-            # Create the agent using the factory
-            agent = self.agent_factory.create_agent(
-                role_key=role_key,
-                tools=self.tools.get(role_key, []),
-                **agent_kwargs
+            # Create the agent
+            agent = agent_factory.create_agent(
+                role_key=role,
+                **agent_config
             )
             
-            logger.info(f"Created agent for role '{role_key}' with type: {type(agent).__name__}")
+            # Register tools if present
+            if role in self.tools and hasattr(agent, "register_tool"):
+                for tool in self.tools[role]:
+                    try:
+                        agent.register_tool(tool)
+                    except Exception as e:
+                        logger.error(f"Failed to register tool with {role}: {e}")
             
-            # Add to our collection
-            agents[agent.name] = agent
+            # Add the agent to the dictionary
+            agents[role] = agent
             
-            # Add to the team
-            team.add_agent(agent.name, agent)
-            logger.info(f"Added agent '{agent.name}' of type {agent.__class__.__name__} to the team")
+        # Create the team
+        logger.info(f"Building team with {len(agents)} agents: {', '.join(agents.keys())}")
+        team = team_class(name=name or "Team", agents=agents, **team_kwargs)
         
-        # Register tools with the tool executor if specified
-        if self.tool_executor_role:
-            # Get the role name from the agent factory's configuration
-            tool_executor_name = None
-            try:
-                tool_executor_name = self.agent_factory.roles_config["roles"][self.tool_executor_role]["name"]
-            except (KeyError, TypeError):
-                # If we can't find it in the config, try to find it by looking at agent names
-                for agent_name, agent in agents.items():
-                    system_message = getattr(agent, "system_message", "").lower()
-                    if (self.tool_executor_role in agent_name.lower() or 
-                        (system_message and self.tool_executor_role in system_message)):
-                        tool_executor_name = agent_name
-                        break
-            
-            if tool_executor_name and tool_executor_name in team.agents:
-                tool_executor = team.get_agent(tool_executor_name)
+        # Register handoffs between agents
+        self._register_handoffs(team)
                 
-                for agent_name, agent in agents.items():
-                    if agent != tool_executor:
-                        # Register any tools the agent has with the tool executor
-                        for tool_name, tool in agent.function_map.items():
-                            if hasattr(tool, "register_with_agents") and callable(tool.register_with_agents):
-                                tool.register_with_agents(agent, tool_executor)
-        
-        # Register handoffs
-        if self.handoff_definitions:
-            from autogen import register_hand_off, AfterWork
+        # Set the tool executor if configured
+        if self.tool_executor_role and self.tool_executor_role in agents:
+            # Store the executor in the team's shared context
+            team.shared_context["tool_executor"] = agents[self.tool_executor_role]
+            logger.info(f"Set {self.tool_executor_role} as tool executor")
             
-            for handoff in self.handoff_definitions:
-                from_role_name = None
-                to_role_name = None
+            # Register tools with the executor
+            executor = agents[self.tool_executor_role]
+            for role, agent in agents.items():
+                if role != self.tool_executor_role and hasattr(agent, "register_tools_with_executor"):
+                    try:
+                        agent.register_tools_with_executor(executor)
+                        logger.info(f"Registered tools from {role} with executor {self.tool_executor_role}")
+                    except Exception as e:
+                        logger.error(f"Failed to register tools from {role} with executor: {e}")
                 
-                # Get role names from agent factory configuration
-                try:
-                    from_role_name = self.agent_factory.roles_config["roles"][handoff["from_role"]]["name"]
-                    to_role_name = self.agent_factory.roles_config["roles"][handoff["to_role"]]["name"]
-                except (KeyError, TypeError):
-                    # If we can't find it in the config, try to find matching agents
-                    for agent_name, agent in agents.items():
-                        system_message = getattr(agent, "system_message", "").lower()
-                        if (handoff["from_role"] in agent_name.lower() or 
-                            (system_message and handoff["from_role"] in system_message)):
-                            from_role_name = agent_name
-                        
-                        if (handoff["to_role"] in agent_name.lower() or 
-                            (system_message and handoff["to_role"] in system_message)):
-                            to_role_name = agent_name
-                
-                if from_role_name in team.agents and to_role_name in team.agents:
-                    from_agent = team.get_agent(from_role_name)
-                    to_agent = team.get_agent(to_role_name)
-                    
-                    # Create the handoff
-                    register_hand_off(
-                        agent=from_agent,
-                        hand_to=AfterWork(agent=to_agent)
-                    )
-                else:
-                    logger.warning(f"Could not create handoff from {handoff['from_role']} to {handoff['to_role']}: agent not found")
-            
-            logger.info(f"Registered {len(self.handoff_definitions)} handoffs between agents")
-        
         return team
+    
+    def _register_handoffs(self, team: Team) -> None:
+        """Register handoffs between agents in the team.
+        
+        Args:
+            team: The team object to register handoffs for
+        """
+        if not self.handoff_definitions:
+            return
+            
+        from autogen import register_hand_off, AfterWork
+        
+        for handoff in self.handoff_definitions:
+            from_role = handoff["from_role"]
+            to_role = handoff["to_role"]
+            
+            if from_role in team.agents and to_role in team.agents:
+                from_agent = team.get_agent(from_role)
+                to_agent = team.get_agent(to_role)
+                
+                # Register the handoff
+                register_hand_off(
+                    agent=from_agent,
+                    hand_to=AfterWork(agent=to_agent)
+                )
+                logger.info(f"Registered handoff from {from_role} to {to_role}")
+            else:
+                logger.warning(f"Could not create handoff from {from_role} to {to_role}: one or both agents not found")
+        
+        logger.info(f"Registered {len(self.handoff_definitions)} handoffs between agents")
     
     def list_available_teams(self) -> List[str]:
         """List all available team configurations.
         
         Returns:
-            List of team keys from global and team-specific configurations
+            List of team keys from the teams.yaml configuration file
         """
         teams = set()
         
         # Add teams from global config
         if "teams" in self.teams_config:
             teams.update(self.teams_config["teams"].keys())
-        
-        # Add teams from team-specific configs
-        if os.path.exists(self.teams_dir):
-            for filename in os.listdir(self.teams_dir):
-                if filename.endswith(".yaml"):
-                    team_key = filename[:-5]  # Remove .yaml
-                    teams.add(team_key)
         
         return sorted(list(teams))
     

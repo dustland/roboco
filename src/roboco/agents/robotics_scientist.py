@@ -10,8 +10,8 @@ from typing import List, Dict, Any, Optional
 from pydantic import BaseModel, Field
 
 from roboco.core.logger import get_logger
-from roboco.core.agent import Agent
-from roboco.core.models import LLMConfig
+from roboco.core import Agent
+from roboco.core.schema import LLMConfig
 from roboco.tools.browser_use import BrowserUseTool, BrowserUseResult
 
 logger = get_logger(__name__)

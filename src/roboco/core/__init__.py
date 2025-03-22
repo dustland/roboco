@@ -14,7 +14,7 @@ from .workspace import Workspace
 from ..agents.genesis_agent import GenesisAgent
 from .agent_factory import AgentFactory
 from .team_builder import TeamBuilder
-from .models import TeamConfig
+from .schema import TeamConfig
 
 __all__ = [
     "Agent",

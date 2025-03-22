@@ -97,9 +97,8 @@ class AgentFactory:
     def _get_system_prompt(self, role_key: str) -> str:
         """Get the system prompt for a specific role.
         
-        First attempts to load a detailed markdown prompt.
-        Falls back to the compact prompt from roles.yaml if no markdown file exists.
-        Finally falls back to a default prompt if neither exists.
+        First attempts to load a detailed markdown prompt from the prompts directory.
+        Falls back to a default prompt if no markdown file exists.
         
         Args:
             role_key: The key of the role in the configuration
@@ -110,14 +109,44 @@ class AgentFactory:
         # First try to load detailed markdown prompt
         markdown_prompt = self._load_markdown_prompt(role_key)
         if markdown_prompt:
+            logger.info(f"Using detailed markdown prompt for role '{role_key}'")
             return markdown_prompt
         
-        # Fall back to compact prompt from roles.yaml
+        # If no markdown prompt exists, create a default prompt based on role name
         try:
-            return self.roles_config["roles"][role_key]["system_prompt"]
+            # Get role name from config if available
+            role_name = self.roles_config["roles"][role_key].get("name", role_key.replace('_', ' ').title())
+            default_prompt = f"You are the {role_name} agent."
+            logger.info(f"Using default prompt for role '{role_key}': '{default_prompt}'")
+            return default_prompt
         except (KeyError, TypeError):
-            logger.warning(f"System prompt for '{role_key}' not found in config, using default")
-            return f"You are the {role_key.replace('_', ' ').title()} agent."
+            # Create a generic prompt based on role key
+            default_prompt = f"You are the {role_key.replace('_', ' ').title()} agent."
+            logger.warning(f"Role '{role_key}' not found in config, using default prompt: '{default_prompt}'")
+            return default_prompt
+    
+    def _get_llm_config(self, role_key: str) -> Optional[Dict[str, Any]]:
+        """Get the LLM configuration for a specific role.
+        
+        Extracts the LLM configuration from the role definition in roles.yaml.
+        
+        Args:
+            role_key: The key of the role in the configuration
+            
+        Returns:
+            Dictionary containing LLM configuration or None if not specified
+        """
+        try:
+            role_config = self.roles_config["roles"][role_key]
+            if "llm" in role_config:
+                llm_config = role_config["llm"].copy()
+                logger.info(f"Found LLM configuration for role '{role_key}': {llm_config}")
+                return llm_config
+        except (KeyError, TypeError):
+            pass
+        
+        logger.info(f"No LLM configuration found for role '{role_key}'")
+        return None
     
     def register_agent_class(self, role_key: str, agent_class: Type[Agent]):
         """Register a specialized agent class for a specific role.
@@ -186,6 +215,20 @@ class AgentFactory:
             "system_message": system_message,
             **kwargs  # Include all additional parameters
         }
+        
+        # Get LLM configuration from role definition if not explicitly provided
+        if "llm_config" not in agent_params:
+            llm_config = self._get_llm_config(role_key)
+            if llm_config:
+                # Extract provider if specified
+                provider = llm_config.pop("provider", "llm")
+                
+                # If using a specific provider, set it in the agent parameters
+                if provider != "llm":
+                    agent_params["llm_provider"] = provider
+                
+                # Add the rest of the LLM configuration
+                agent_params["llm_config"] = llm_config
         
         # Create agent based on role type and registry
         if role_key in self.agent_registry:

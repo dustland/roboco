@@ -20,7 +20,7 @@ teams:
       - from: executive
         to: product_manager
     tools:
-      - filesystem
+      - fs
     tool_executor: human_proxy
 
   # Robotics team configuration
@@ -44,7 +44,7 @@ teams:
       - from: product_manager
         to: executive
     tools:
-      - filesystem
+      - fs
       - browser_use
     tool_executor: human_proxy
 
@@ -66,7 +66,7 @@ teams:
       - from: report_writer
         to: product_manager
     tools:
-      - filesystem
+      - fs
       - browser_use
     tool_executor: human_proxy
 
@@ -88,6 +88,6 @@ teams:
       - from: software_engineer
         to: executive
     tools:
-      - filesystem
+      - fs
       - browser_use
     tool_executor: human_proxy

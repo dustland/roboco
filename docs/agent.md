@@ -49,7 +49,7 @@ The termination message system is implemented in three key components:
    - Propagating termination messages to recipient agents
    - Updating the system message of recipient agents
 
-3. **Configuration**: The `RobocoConfig` class in `src/roboco/core/models.py` defines:
+3. **Configuration**: The `RobocoConfig` class in `src/roboco/core/schema.py` defines:
    - The default termination message
    - The configuration structure for the termination message
 

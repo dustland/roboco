@@ -10,9 +10,11 @@ from pydantic import BaseModel, Field
 from loguru import logger
 
 from tavily import TavilyClient
-from roboco.core.tool import Tool
+from roboco.core import Tool
 from roboco.core.logger import get_logger
-from roboco.core.models import ToolConfig
+from roboco.core.schema import ToolConfig
+
+from langchain_core.tools import Tool as LangchainTool
 
 
 class WebSearchConfig(ToolConfig):

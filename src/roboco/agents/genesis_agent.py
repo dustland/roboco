@@ -77,7 +77,7 @@ class GenesisAgent(McpAgent):
             async def run_simulation(code: str, parameters: Optional[Dict] = None) -> Dict:
                 """Run a Genesis simulation with the provided code and parameters."""
                 if not self.session:
-                    await self.initialize()
+                    await self.connect_to_server()
                     if not self.session:
                         return {"error": "Failed to connect to Genesis MCP server. Please make sure it's running."}
                         
@@ -95,7 +95,7 @@ class GenesisAgent(McpAgent):
             async def get_world_info() -> Dict:
                 """Get information about the current Genesis world state."""
                 if not self.session:
-                    await self.initialize()
+                    await self.connect_to_server()
                     if not self.session:
                         return {"error": "Failed to connect to Genesis MCP server. Please make sure it's running."}
                         
@@ -110,7 +110,7 @@ class GenesisAgent(McpAgent):
             async def get_basic_simulation() -> Dict:
                 """Get a basic Genesis simulation template."""
                 if not self.session:
-                    await self.initialize()
+                    await self.connect_to_server()
                     if not self.session:
                         return {"error": "Failed to connect to Genesis MCP server. Please make sure it's running."}
                         
@@ -145,4 +145,51 @@ class GenesisAgent(McpAgent):
         
         # Re-register the tools with the new executor
         self._register_mcp_tools()
+    
+    async def connect(self) -> bool:
+        """Connect to the Genesis MCP server.
+        
+        Returns:
+            bool: True if connected successfully
+        """
+        logger.info(f"Connecting to Genesis MCP server: {self.mcp_server_command}")
+        
+        try:
+            await self.connect_to_server()
+            logger.info("Successfully connected to Genesis MCP server")
+            self._register_mcp_tools()
+            return True
+        except Exception as e:
+            logger.error(f"Failed to connect to Genesis MCP server: {str(e)}")
+            return False
+
+    async def start_simulation(self, *args, **kwargs) -> bool:
+        """Start a Genesis simulation.
+        
+        Returns:
+            bool: True if simulation started successfully
+        """
+        try:
+            await self.connect_to_server()
+            response = await self.send_command("run_simulation", {})
+            logger.info(f"Started Genesis simulation: {response}")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to start Genesis simulation: {str(e)}")
+            return False
+            
+    async def get_simulation_info(self) -> Dict[str, Any]:
+        """Get information about the current Genesis simulation.
+        
+        Returns:
+            Dict[str, Any]: Simulation information
+        """
+        try:
+            await self.connect_to_server()
+            response = await self.send_command("get_world_info", {})
+            logger.info(f"Retrieved Genesis simulation info")
+            return response
+        except Exception as e:
+            logger.error(f"Failed to get Genesis simulation info: {str(e)}")
+            return {}
     

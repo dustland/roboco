@@ -6,15 +6,16 @@ This module provides a tool for web browsing and task automation.
 
 from typing import Dict, Any, List, Optional, TypeVar, Generic
 from pydantic import BaseModel, Field
+import json
 
 import browser_use
 from browser_use import Agent, BrowserContextConfig
 from browser_use.browser.browser import Browser, BrowserConfig as BrowserUseLibConfig
 from langchain_openai import ChatOpenAI
 
-from roboco.core.tool import Tool
+from roboco.core import Tool
 from roboco.core.logger import get_logger
-from roboco.core.models import ToolConfig
+from roboco.core.schema import ToolConfig
 from roboco.utils.browser_utils import get_chrome_path, get_platform, is_chrome_installed
 
 import os

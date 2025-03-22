@@ -49,9 +49,23 @@ You stay focused on user value and business outcomes.
 
 When an agent is created, the system will:
 
-1. First check for a detailed markdown prompt in this directory
-2. If not found, fall back to the compact prompt in `roles.yaml`
-3. If neither exists, use a default prompt
+1. First check for a detailed markdown prompt in this directory with a filename matching the role key (e.g., `executive.md`)
+2. If no matching prompt file is found, a default prompt will be generated based on the role name
+
+**Note:** System prompts are no longer defined in `roles.yaml`. All prompts should be placed in this directory as markdown files.
+
+## File Naming
+
+The prompt files must be named to match the role key in `roles.yaml`:
+
+| Role Key             | Prompt File             |
+| -------------------- | ----------------------- |
+| `executive`          | `executive.md`          |
+| `product_manager`    | `product_manager.md`    |
+| `software_engineer`  | `software_engineer.md`  |
+| `report_writer`      | `report_writer.md`      |
+| `human_proxy`        | `human_proxy.md`        |
+| `robotics_scientist` | `robotics_scientist.md` |
 
 ## Custom Prompt Directories
 
@@ -80,3 +94,5 @@ loader = TeamLoader(
 3. Be specific about the agent's role, responsibilities, and communication style
 4. Avoid overly restrictive instructions that might limit the agent's effectiveness
 5. Use consistent formatting and structure across all prompt files
+6. Version control your prompt files to track changes over time
+7. Consider organizing sections with clear headings for better readability

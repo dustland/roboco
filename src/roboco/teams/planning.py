@@ -11,7 +11,7 @@ from typing import Dict, Any, List, Optional, Union
 from loguru import logger
 
 from roboco.core import Team, TeamBuilder
-from roboco.core.models import TeamConfig
+from roboco.core.schema import TeamConfig
 
 class PlanningTeam(Team):
     """Team of agents that collaborate on planning a project."""

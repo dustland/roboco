@@ -62,15 +62,13 @@ async def main():
     )
     
     try:
-        # Initialize the connection to the MCP server
-        print("Initializing connection to MCP server...")
-        success = await genesis_agent.initialize()
+        # Connect to the Genesis MCP server
+        print("Connecting to Genesis MCP server...")
+        success = await genesis_agent.connect_to_server()
         if not success:
-            print("Failed to connect to MCP server")
-            print("\nMake sure you have:")
-            print("1. Installed the MCP package: pip install mcp")
-            print("2. Started the MCP server in a separate terminal: mcp dev server.py")
+            print("Failed to connect to Genesis MCP server. Make sure it's running.")
             return
+        print("Successfully connected to Genesis MCP server")
         
         print("\n----- Starting chat with Genesis assistant -----")
         print("Type 'exit' to end the conversation")

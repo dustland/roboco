@@ -8,9 +8,9 @@ import datetime
 from typing import Dict, Any, Optional
 from pydantic import BaseModel, Field
 
-from roboco.core.tool import Tool
+from roboco.core import Tool
 from roboco.core.logger import get_logger
-from roboco.core.models import ToolConfig
+from roboco.core.schema import ToolConfig
 
 
 class TimeConfig(ToolConfig):

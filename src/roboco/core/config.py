@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Optional, Dict, Any, Union
 from dotenv import load_dotenv
 import yaml
-from .models import RobocoConfig
+from .schema import RobocoConfig
 
 
 def load_env_vars() -> None:
@@ -148,12 +148,14 @@ def create_default_config() -> RobocoConfig:
     return config
 
 
-def get_llm_config(config: Optional[RobocoConfig] = None) -> Dict[str, Any]:
+def get_llm_config(config: Optional[RobocoConfig] = None, provider: str = "llm") -> Dict[str, Any]:
     """
     Create an LLM configuration dictionary suitable for agent use.
     
     Args:
         config: RobocoConfig instance (if None, will call load_config)
+        provider: The LLM provider to use (e.g., "llm", "openai", "deepseek", "ollama")
+                 This allows different agents to use different LLM providers.
         
     Returns:
         Dictionary containing the LLM configuration for agents
@@ -164,17 +166,39 @@ def get_llm_config(config: Optional[RobocoConfig] = None) -> Dict[str, Any]:
     # Extract base LLM configuration
     llm_section = config.llm
     
-    # Create the config dictionary with just the essential parameters
-    agent_llm_config = {
-        "model": llm_section.model,
-        "api_key": llm_section.api_key,
-        "temperature": llm_section.temperature,
-        "max_tokens": llm_section.max_tokens,
-    }
+    # If provider is the default "llm", use the base configuration
+    if provider == "llm":
+        # Create the config dictionary with just the essential parameters
+        agent_llm_config = {
+            "model": llm_section.model,
+            "api_key": llm_section.api_key,
+            "temperature": llm_section.temperature,
+            "max_tokens": llm_section.max_tokens,
+        }
+        
+        # Add base_url if provided
+        if hasattr(llm_section, 'base_url') and llm_section.base_url:
+            agent_llm_config["base_url"] = llm_section.base_url
     
-    # Add base_url if provided
-    if hasattr(llm_section, 'base_url') and llm_section.base_url:
-        agent_llm_config["base_url"] = llm_section.base_url
+    # Otherwise, use a specific provider's configuration
+    else:
+        # Check if the provider configuration exists
+        if not hasattr(llm_section, provider) or getattr(llm_section, provider) is None:
+            raise ValueError(f"LLM provider '{provider}' not found in configuration")
+        
+        provider_config = getattr(llm_section, provider)
+        
+        # Create the config dictionary with provider-specific parameters
+        agent_llm_config = {
+            "model": provider_config.get("model", llm_section.model),
+            "api_key": provider_config.get("api_key", llm_section.api_key),
+            "temperature": provider_config.get("temperature", llm_section.temperature),
+            "max_tokens": provider_config.get("max_tokens", llm_section.max_tokens),
+        }
+        
+        # Add base_url if provided in the provider config
+        if "base_url" in provider_config:
+            agent_llm_config["base_url"] = provider_config["base_url"]
     
     return agent_llm_config
 

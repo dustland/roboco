@@ -36,6 +36,20 @@ class McpAgent(Agent):
     - Manage session lifecycle
     
     It can be subclassed to create specialized agents for specific MCP services.
+    
+    Connection Lifecycle:
+    1. Call connect_to_server() to establish connection to the MCP server
+    2. Use send_command() and get_resource() to interact with the server
+    3. Call close() to properly clean up resources when done
+    
+    Or use the context manager interface:
+    
+    ```python
+    async with McpAgent(...) as agent:
+        await agent.send_command(...)
+    ```
+    
+    This will automatically handle connection and cleanup.
     """
     
     def __init__(
@@ -95,14 +109,14 @@ class McpAgent(Agent):
         """
         pass
             
-    async def initialize(self) -> bool:
-        """Initialize the connection to the MCP server.
+    async def connect_to_server(self) -> bool:
+        """Connect to the MCP server.
         
         Returns:
             bool: True if connection was successful, False otherwise
         """
         if not HAS_MCP:
-            logger.error("MCP package is not installed. Cannot initialize connection.")
+            logger.error("MCP package is not installed. Cannot connect to server.")
             return False
         
         try:
@@ -142,18 +156,19 @@ class McpAgent(Agent):
             return False
             
     async def close(self):
-        """Close the connection to the MCP server."""
-        if self.session:
+        """Close the connection to the MCP server and clean up resources."""
+        # Store the session and context references so we can clear them immediately
+        session_ref = self.session
+        session_ctx_ref = self._session_ctx
+        
+        # Clear the references immediately to prevent other methods from using them
+        self.session = None
+        self._session_ctx = None
+        
+        # Now clean up the resources
+        if session_ctx_ref is not None:
             try:
-                await self.session.close()
-                self.session = None
-            except Exception as e:
-                logger.error(f"Error closing MCP session: {e}")
-                
-        if self._session_ctx is not None:
-            try:
-                await self._session_ctx.__aexit__(None, None, None)
-                self._session_ctx = None
+                await session_ctx_ref.__aexit__(None, None, None)
                 logger.debug(f"Closed connection to MCP server for {self.name} agent")
             except Exception as e:
                 logger.error(f"Error closing MCP connection: {e}")
@@ -166,26 +181,15 @@ class McpAgent(Agent):
             args: Optional arguments for the command
             
         Returns:
-            Dict: The response from the server
+            The response from the MCP server
         """
-        if not HAS_MCP:
-            return {
-                "success": False,
-                "message": "MCP package is not installed",
-                "result": None
-            }
+        if not self.is_connected:
+            logger.warning("MCP server connection not established. Attempting to connect...")
+            success = await self.connect_to_server()
+            if not success:
+                raise ConnectionError("Failed to connect to MCP server")
             
         try:
-            if not self.session:
-                logger.debug(f"No active MCP session, attempting to initialize")
-                success = await self.initialize()
-                if not success:
-                    return {
-                        "success": False,
-                        "message": "Failed to initialize MCP connection",
-                        "result": None
-                    }
-                
             logger.debug(f"Sending MCP command: {command} with args: {args or {}}")
             result = await self.session.call_tool(command, inputs=args or {})
             return {
@@ -208,19 +212,16 @@ class McpAgent(Agent):
             resource_name: The name of the resource to retrieve
             
         Returns:
-            Tuple[Optional[str], bool]: The resource content and a success flag
+            A tuple containing the resource content and a boolean indicating success
         """
-        if not HAS_MCP:
-            logger.error("MCP package is not installed. Cannot get resource.")
-            return None, False
+        if not self.is_connected:
+            logger.warning("MCP server connection not established. Attempting to connect...")
+            success = await self.connect_to_server()
+            if not success:
+                logger.error("Failed to connect to MCP server")
+                return None, False
             
         try:
-            if not self.session:
-                logger.debug(f"No active MCP session, attempting to initialize")
-                success = await self.initialize()
-                if not success:
-                    return None, False
-                
             logger.debug(f"Getting MCP resource: {resource_name}")
             content, _ = await self.session.read_resource(resource_name)
             return content, True
@@ -230,9 +231,18 @@ class McpAgent(Agent):
         
     async def __aenter__(self):
         """Async context manager entry point."""
-        await self.initialize()
+        await self.connect_to_server()
         return self
         
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         """Async context manager exit point."""
-        await self.close() 
+        await self.close()
+
+    @property
+    def is_connected(self) -> bool:
+        """Check if the agent is connected to an MCP server.
+        
+        Returns:
+            bool: True if connected, False otherwise
+        """
+        return self.session is not None and self._session_ctx is not None 

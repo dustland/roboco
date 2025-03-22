@@ -38,6 +38,7 @@ class Agent(AssistantAgent):
         config_path: Optional[str] = None,
         terminate_msg: Optional[str] = None,
         llm_config: Optional[Dict[str, Any]] = None,
+        llm_provider: str = "llm",
         **kwargs
     ):
         """Initialize an agent.
@@ -49,13 +50,15 @@ class Agent(AssistantAgent):
             terminate_msg: Optional message to include at the end of responses to signal completion.
                            If None, uses the value from config.
             llm_config: Optional LLM configuration. If None, loads from config_path.
+            llm_provider: The LLM provider to use (e.g., "llm", "openai", "deepseek", "ollama").
+                         This allows different agents to use different LLM providers.
             **kwargs: Additional arguments passed to AssistantAgent
         """
         # Use provided llm_config or load from config if None
         if llm_config is None and 'llm_config' not in kwargs:
             config = load_config(config_path)
-            llm_config = get_llm_config(config)
-            logger.debug(f"Loaded llm_config for {name}: {llm_config}")
+            llm_config = get_llm_config(config, provider=llm_provider)
+            logger.debug(f"Loaded llm_config for {name} using provider {llm_provider}: {llm_config}")
         else:
             logger.debug(f"Using provided llm_config for {name}")
         
@@ -114,6 +117,7 @@ class HumanProxy(UserProxyAgent):
         config_path: Optional[str] = None,
         human_input_mode: str = "NEVER",
         code_execution_config: Optional[Dict[str, Any]] = None,
+        llm_provider: str = "llm",
         **kwargs
     ):
         """Initialize a human proxy agent.
@@ -124,13 +128,14 @@ class HumanProxy(UserProxyAgent):
             config_path: Optional path to agent configuration file
             human_input_mode: Mode for human input (ALWAYS, TERMINATE, NEVER)
             code_execution_config: Configuration for code execution
+            llm_provider: The LLM provider to use (e.g., "llm", "openai", "deepseek", "ollama")
             **kwargs: Additional arguments passed to UserProxyAgent
         """
         # Use provided configuration or load from config if None
         if 'llm_config' not in kwargs:
             config = load_config(config_path)
-            llm_config = get_llm_config(config)
-            logger.debug(f"Loaded llm_config for {name}: {llm_config}")
+            llm_config = get_llm_config(config, provider=llm_provider)
+            logger.debug(f"Loaded llm_config for {name} using provider {llm_provider}: {llm_config}")
         
         # Setup code execution config if provided
         if code_execution_config is None:

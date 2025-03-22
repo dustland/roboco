@@ -8,8 +8,11 @@ This script demonstrates how to use the PlanningTeam class with a simple TeamCon
 import os
 import asyncio
 from loguru import logger
+from pathlib import Path
 
-from roboco.core.models import TeamConfig
+import sys
+from roboco.core import TeamBuilder
+from roboco.core.schema import TeamConfig
 from roboco.teams.planning import PlanningTeam
 
 async def main():
