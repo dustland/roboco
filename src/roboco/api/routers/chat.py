@@ -28,8 +28,8 @@ async def get_api_service():
     # Create the domain service
     project_service = ProjectService(repository)
     
-    # Create the API service
-    api_service = ApiService(project_service)
+    # Create the API service - pass the repository directly
+    api_service = ApiService(project_service, project_repository=repository)
     
     return api_service
 
@@ -51,17 +51,12 @@ async def chat_with_project_agent(
     Returns the chat response with project details if created.
     """
     try:
-        result = await api_service.chat_with_project_agent(
-            chat_request.query,
-            chat_request.teams,
-            chat_request.conversation_id,
-            background_tasks
-        )
+        result = await api_service.chat_with_project_agent(chat_request)
         
         # Create a conversation ID if one wasn't provided
-        conversation_id = chat_request.conversation_id or result.get("conversation_id", "")
+        conversation_id = chat_request.conversation_id or result.conversation_id
         
-        return ChatResponse.from_chat_result(result, conversation_id)
+        return result
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:

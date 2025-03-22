@@ -31,8 +31,8 @@ async def get_api_service():
     # Create the domain service
     project_service = ProjectService(repository)
     
-    # Create the API service
-    api_service = ApiService(project_service)
+    # Create the API service - pass the repository directly
+    api_service = ApiService(project_service, project_repository=repository)
     
     return api_service
 

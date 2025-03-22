@@ -48,7 +48,8 @@ class ApiService:
         team_service: Optional[TeamService] = None,
         agent_service: Optional[AgentService] = None,
         sprint_service: Optional[SprintService] = None,
-        workspace_service: Optional[WorkspaceService] = None
+        workspace_service: Optional[WorkspaceService] = None,
+        project_repository = None
     ):
         """
         Initialize the API service with its dependencies.
@@ -59,11 +60,18 @@ class ApiService:
             agent_service: Service for agent-related operations
             sprint_service: Service for sprint-related operations
             workspace_service: Service for workspace-related operations
+            project_repository: Optional repository to use for sprint service
         """
         self.project_service = project_service
         self.team_service = team_service or TeamService()
         self.agent_service = agent_service or AgentService()
-        self.sprint_service = sprint_service or SprintService(project_service.project_repository)
+        
+        # If project_repository is not provided, try to get it from the router's dependency injection
+        if project_repository is None:
+            from roboco.infrastructure.repositories.file_project_repository import FileProjectRepository
+            project_repository = FileProjectRepository()
+            
+        self.sprint_service = sprint_service or SprintService(project_repository)
         self.workspace_service = workspace_service or WorkspaceService()
         
         # Set up workspace directory
@@ -778,7 +786,7 @@ class ApiService:
         
         return ChatResponse(
             conversation_id=conversation_id,
-            response="This is a placeholder response from the project agent.",
+            message="This is a placeholder response from the project agent.",
             project_id=None,
             status="completed"
         )
