@@ -6,78 +6,130 @@ This document describes the high-level object model and architecture of the Robo
 
 Roboco follows Domain-Driven Design principles with a clear separation of concerns across different layers:
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                     Interface Layer                         │
-│                                                             │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐  │
-│  │  API Routes │  │ API Schemas │  │ Command Line Tools  │  │
-│  └─────────────┘  └─────────────┘  └─────────────────────┘  │
-└───────────────────────────┬─────────────────────────────────┘
-                            │
-                            ▼
-┌─────────────────────────────────────────────────────────────┐
-│                    Application Layer                        │
-│                                                             │
-│  ┌─────────────────┐  ┌───────────────┐  ┌──────────────┐   │
-│  │ Project Service │  │ Agent Service │  │ API Service  │   │
-│  └─────────────────┘  └───────────────┘  └──────────────┘   │
-└───────────────────────────┬─────────────────────────────────┘
-                            │
-                            ▼
-┌─────────────────────────────────────────────────────────────┐
-│                      Domain Layer                           │
-│                                                             │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐  │
-│  │   Models    │  │ Repositories│  │ Domain Services     │  │
-│  │             │  │ (Interfaces)│  │                     │  │
-│  └─────────────┘  └─────────────┘  └─────────────────────┘  │
-└───────────────────────────┬─────────────────────────────────┘
-                            │
-                            ▼
-┌─────────────────────────────────────────────────────────────┐
-│                   Infrastructure Layer                      │
-│                                                             │
-│  ┌─────────────────┐  ┌───────────────┐  ┌──────────────┐   │
-│  │ Repository Impl │  │ External APIs │  │   Adapters   │   │
-│  └─────────────────┘  └───────────────┘  └──────────────┘   │
-└─────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    subgraph Interface["Interface Layer"]
+        API_Routes["API Routes"]
+        API_Schemas["API Schemas"]
+        CLI["Command Line Tools"]
+    end
+    
+    subgraph Application["Application Layer"]
+        Project_Service["Project Service"]
+        Agent_Service["Agent Service"]
+        API_Service["API Service"]
+    end
+    
+    subgraph Domain["Domain Layer"]
+        Models["Models"]
+        Repositories["Repositories\n(Interfaces)"]
+        Domain_Services["Domain Services"]
+    end
+    
+    subgraph Infrastructure["Infrastructure Layer"]
+        Repo_Impl["Repository Impl"]
+        External_APIs["External APIs"]
+        Adapters["Adapters"]
+    end
+    
+    Interface --> Application
+    Application --> Domain
+    Domain --> Infrastructure
 ```
 
 ## Core Domain Objects
 
 ### Project Management Domain
 
-```
-┌───────────────┐     ┌───────────┐     ┌───────────┐
-│    Project    │1   *│   Sprint  │1   *│  TodoItem │
-└───────┬───────┘     └─────┬─────┘     └─────┬─────┘
-        │                   │                 │
-        │                   │                 │
-        ▼                   ▼                 ▼
-┌───────────────┐     ┌───────────┐     ┌───────────┐
-│Project Service│     │Sprint Svc │     │Todo Service│
-└───────┬───────┘     └─────┬─────┘     └─────┬─────┘
-        │                   │                 │
-        │                   │                 │
-        ▼                   ▼                 ▼
-┌───────────────┐     
-│Project Repo   │     
-└───────────────┘     
+```mermaid
+classDiagram
+    Project "1" --> "*" Sprint
+    Sprint "1" --> "*" TodoItem
+    Project --> ProjectStatus
+    Sprint --> SprintStatus
+    TodoItem --> TodoStatus
+    
+    class Project {
+        +id: str
+        +name: str
+        +description: str
+        +status: ProjectStatus
+        +created_at: datetime
+        +updated_at: datetime
+    }
+    
+    class Sprint {
+        +id: str
+        +project_id: str
+        +name: str
+        +description: str
+        +status: SprintStatus
+        +start_date: datetime
+        +end_date: datetime
+    }
+    
+    class TodoItem {
+        +id: str
+        +sprint_id: str
+        +title: str
+        +description: str
+        +status: TodoStatus
+        +assigned_to: str
+        +priority: int
+    }
+    
+    class ProjectStatus {
+        <<enumeration>>
+        PLANNING
+        ACTIVE
+        COMPLETED
+        ARCHIVED
+    }
+    
+    class SprintStatus {
+        <<enumeration>>
+        PLANNED
+        IN_PROGRESS
+        COMPLETED
+        CANCELLED
+    }
+    
+    class TodoStatus {
+        <<enumeration>>
+        TODO
+        IN_PROGRESS
+        REVIEW
+        DONE
+    }
 ```
 
 ### Agent Orchestration Domain
 
-```
-┌───────────┐     ┌───────────┐     ┌───────────┐
-│    Team   │1   *│   Agent   │1   *│    Tool   │
-└─────┬─────┘     └─────┬─────┘     └─────┬─────┘
-      │                 │                 │
-      │                 │                 │
-      ▼                 ▼                 ▼
-┌───────────┐     ┌───────────┐     ┌───────────┐
-│ Team Svc  │     │ Agent Svc │     │ Tool Svc  │
-└───────────┘     └───────────┘     └───────────┘
+```mermaid
+classDiagram
+    Team "1" --> "*" Agent
+    Agent "1" --> "*" Tool
+    
+    class Team {
+        +id: str
+        +name: str
+        +description: str
+        +agents: List[str]
+    }
+    
+    class Agent {
+        +id: str
+        +name: str
+        +type: str
+        +capabilities: List[str]
+    }
+    
+    class Tool {
+        +id: str
+        +name: str
+        +description: str
+        +agent_id: str
+    }
 ```
 
 ## Domain Layer
@@ -94,14 +146,14 @@ Domain models represent the core business entities with behavior, not just data 
 - Domain-specific operations
 
 **Example Structure:**
-```
-domain/
-  ├── models/
-  │   ├── project.py
-  │   ├── sprint.py
-  │   └── todo_item.py
-  └── repositories/
-      └── project_repository.py
+```mermaid
+graph TD
+    domain[domain/] --> models[models/]
+    domain --> repositories[repositories/]
+    models --> project[project.py]
+    models --> sprint[sprint.py]
+    models --> todo_item[todo_item.py]
+    repositories --> project_repository[project_repository.py]
 ```
 
 ### Repository Interfaces
@@ -127,11 +179,11 @@ Services coordinate domain objects to perform business operations that span mult
 - No business rules (delegated to domain)
 
 **Example Structure:**
-```
-services/
-  ├── project_service.py
-  ├── agent_service.py
-  └── api_service.py
+```mermaid
+graph TD
+    services[services/] --> project_service[project_service.py]
+    services --> agent_service[agent_service.py]
+    services --> api_service[api_service.py]
 ```
 
 ## Infrastructure Layer
@@ -148,12 +200,12 @@ Concrete implementations of repository interfaces that handle data persistence.
 - Manage serialization/deserialization
 
 **Example Structure:**
-```
-infrastructure/
-  ├── repositories/
-  │   └── file_project_repository.py
-  └── adapters/
-      └── pydantic_adapters.py
+```mermaid
+graph TD
+    infrastructure[infrastructure/] --> repositories[repositories/]
+    infrastructure --> adapters[adapters/]
+    repositories --> file_project_repository[file_project_repository.py]
+    adapters --> pydantic_adapters[pydantic_adapters.py]
 ```
 
 ### Adapters
@@ -179,15 +231,15 @@ Pydantic models for API validation and serialization.
 - No business logic
 
 **Example Structure:**
-```
-api/
-  ├── schemas/
-  │   ├── project.py
-  │   ├── sprint.py
-  │   └── todo.py
-  └── routers/
-      ├── project.py
-      └── job.py
+```mermaid
+graph TD
+    api[api/] --> schemas[schemas/]
+    api --> routers[routers/]
+    schemas --> project_schema[project.py]
+    schemas --> sprint_schema[sprint.py]
+    schemas --> todo_schema[todo.py]
+    routers --> project_router[project.py]
+    routers --> job_router[job.py]
 ```
 
 ### API Routers
@@ -213,12 +265,12 @@ Roboco is designed to be extensible in several key areas:
 
 The configuration system allows for customization without code changes:
 
-```
-config/
-  ├── roles/         # Agent role definitions
-  ├── teams/         # Team compositions
-  ├── tools/         # Tool configurations
-  └── config.toml    # Global configuration
+```mermaid
+graph TD
+    config[config/] --> roles[roles/]
+    config --> teams[teams/]
+    config --> tools[tools/]
+    config --> config_toml[config.toml]
 ```
 
 ## Dependency Flow

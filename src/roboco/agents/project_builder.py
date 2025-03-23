@@ -110,48 +110,19 @@ class ProjectBuilder(Agent):
     
     def _register_functions(self) -> None:
         """Register project management functions with the agent."""
-        # Register core functions that will be available in conversations
-        self.register_function(
-            self.create_project_from_query,
-            name="create_project",
-            description="Create a new project from a natural language query",
-        )
+        # Create a dictionary mapping function names to function objects
+        function_map = {
+            "create_project": self.create_project_from_query,
+            "list_projects": self.list_available_projects,
+            "project_details": self.get_project_details,
+            "create_team": self.create_team_for_project,
+            "run_team": self.run_team_collaboration,
+            "create_sprint": self.create_sprint,
+            "run_sprint": self.run_sprint,
+        }
         
-        self.register_function(
-            self.list_available_projects,
-            name="list_projects",
-            description="List all available projects",
-        )
-        
-        self.register_function(
-            self.get_project_details,
-            name="project_details",
-            description="Get detailed information about a specific project",
-        )
-        
-        self.register_function(
-            self.create_team_for_project,
-            name="create_team",
-            description="Create a team for a specific project",
-        )
-        
-        self.register_function(
-            self.run_team_collaboration,
-            name="run_team",
-            description="Run a team collaboration for a specific project",
-        )
-        
-        self.register_function(
-            self.create_sprint,
-            name="create_sprint",
-            description="Create a new sprint for a project",
-        )
-        
-        self.register_function(
-            self.run_sprint,
-            name="run_sprint",
-            description="Run a sprint for a project, executing all team collaborations in sequence",
-        )
+        # Register all functions at once
+        self.register_function(function_map)
     
     async def create_project_from_query(self, query: str, teams: Optional[List[str]] = None) -> Dict[str, Any]:
         """Create a project from a natural language query.
