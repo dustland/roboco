@@ -10,7 +10,7 @@ from typing import Dict, Any, Union
 from loguru import logger
 
 from roboco.core.tool import Tool, command
-from roboco.domain.models.project_manifest import ProjectManifest, dict_to_project_manifest
+from roboco.core.models.project_manifest import ProjectManifest, dict_to_project_manifest
 
 class FileSystemTool(Tool):
     """Tool for file system operations including reading and writing files."""

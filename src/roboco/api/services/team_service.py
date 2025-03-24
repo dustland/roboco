@@ -199,95 +199,95 @@ class TeamService:
         self._save_jobs_status()
         
         try:
-            # Create the team
+            # Build the team
             team_builder = TeamBuilder.get_instance()
-            team = team_builder.build_team(team_key)
+            team = TeamBuilder.create_team(team_key, output_dir=os.path.join(self.jobs_dir, job_id, output_dir))
             
-            # Set up the output directory
-            job_output_dir = os.path.join(self.jobs_dir, job_id, output_dir)
-            os.makedirs(job_output_dir, exist_ok=True)
+            # Set up the initial agent
+            if not initial_agent and hasattr(team, "default_agent"):
+                initial_agent = team.default_agent
             
-            # Set up the team with the output directory
-            team.set_output_dir(job_output_dir)
+            if not initial_agent:
+                # If no initial agent specified, use the first agent
+                agents = team.get_agents()
+                if agents:
+                    initial_agent = next(iter(agents.keys()))
             
-            # Add project ID to the team's context if provided
-            if project_id:
-                team.add_to_context("project_id", project_id)
+            # Update job status with the actual initial agent
+            job_status["initial_agent"] = initial_agent
+            job_status["current_agent"] = initial_agent
+            self._save_jobs_status()
             
-            # Add any additional parameters to the team's context
-            for key, value in parameters.items():
-                team.add_to_context(key, value)
+            # Start the team with the query
+            result = team.start(initial_agent, query, parameters)
             
-            # Run the team with the query
-            if initial_agent:
-                # Start with a specific agent
-                agent = team.get_agent(initial_agent)
-                if not agent:
-                    raise ValueError(f"Agent '{initial_agent}' not found in team '{team_key}'")
-                
-                result = team.run(query, initial_agent=agent)
-            else:
-                # Let the team decide which agent to start with
-                result = team.run(query)
-            
-            # Update job status with result
+            # Update job status
             job_status["status"] = "completed"
             job_status["end_time"] = datetime.now().isoformat()
-            job_status["result"] = result
             job_status["last_updated"] = datetime.now().isoformat()
+            job_status["result"] = result
+            self._save_jobs_status()
             
         except Exception as e:
-            logger.error(f"Error running job {job_id}: {e}")
+            logger.error(f"Error running job {job_id}: {str(e)}")
             
-            # Update job status with error
+            # Update job status
             job_status["status"] = "failed"
-            job_status["error"] = str(e)
             job_status["end_time"] = datetime.now().isoformat()
             job_status["last_updated"] = datetime.now().isoformat()
-        
-        # Save updated job status
-        self._save_jobs_status()
+            job_status["error"] = str(e)
+            self._save_jobs_status()
     
-    async def get_job_status(self, job_id: str) -> Dict[str, Any]:
+    async def list_jobs(self, status_filter: Optional[str] = None, project_id: Optional[str] = None) -> List[Dict[str, Any]]:
         """
-        Get the status of a job.
+        List all jobs, optionally filtered by status or project ID.
         
         Args:
-            job_id: The ID of the job.
-            
-        Returns:
-            Job status dictionary.
-            
-        Raises:
-            ValueError: If the job is not found.
-        """
-        if job_id not in self.jobs_status:
-            raise ValueError(f"Job '{job_id}' not found")
-        
-        return self.jobs_status[job_id]
-    
-    async def list_jobs(self, project_id: Optional[str] = None) -> List[Dict[str, Any]]:
-        """
-        List all jobs, optionally filtered by project ID.
-        
-        Args:
+            status_filter: Optional status to filter by.
             project_id: Optional project ID to filter by.
             
         Returns:
             List of job status dictionaries.
         """
-        if project_id:
-            return [job for job in self.jobs_status.values() 
-                   if job.get("project_id") == project_id]
-        else:
-            return list(self.jobs_status.values())
+        result = []
+        
+        for job_id, job_status in self.jobs_status.items():
+            # Apply filters
+            if status_filter and job_status.get("status") != status_filter:
+                continue
+                
+            if project_id and job_status.get("project_id") != project_id:
+                continue
+                
+            result.append(job_status)
+        
+        # Sort by start time (newest first)
+        result.sort(key=lambda x: x.get("start_time", ""), reverse=True)
+        
+        return result
     
-    async def cancel_job(self, job_id: str) -> Dict[str, Any]:
+    async def get_job_status(self, job_id: str) -> Optional[Dict[str, Any]]:
         """
-        Cancel a running job.
+        Get the status of a specific job.
         
         Args:
-            job_id: The ID of the job to cancel.
+            job_id: The ID of the job.
+            
+        Returns:
+            Job status dictionary or None if not found.
+        """
+        return self.jobs_status.get(job_id)
+    
+    async def update_job_status(self, job_id: str, current_agent: Optional[str] = None,
+                               progress: Optional[float] = None, status_message: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Update the status of a job.
+        
+        Args:
+            job_id: The ID of the job.
+            current_agent: Optional name of the current agent.
+            progress: Optional progress value (0.0 to 1.0).
+            status_message: Optional status message.
             
         Returns:
             Updated job status dictionary.
@@ -300,58 +300,57 @@ class TeamService:
         
         job_status = self.jobs_status[job_id]
         
-        if job_status["status"] == "running":
-            # Mark the job as cancelled
-            job_status["status"] = "cancelled"
-            job_status["end_time"] = datetime.now().isoformat()
-            job_status["last_updated"] = datetime.now().isoformat()
-            self._save_jobs_status()
+        # Update fields
+        if current_agent:
+            job_status["current_agent"] = current_agent
+            
+        if progress is not None:
+            job_status["progress"] = progress
+            
+        if status_message:
+            job_status["status_message"] = status_message
+        
+        job_status["last_updated"] = datetime.now().isoformat()
+        self._save_jobs_status()
         
         return job_status
     
-    async def delete_job(self, job_id: str) -> bool:
+    async def cancel_job(self, job_id: str) -> bool:
         """
-        Delete a job and its associated files.
+        Cancel a running job.
         
         Args:
-            job_id: The ID of the job to delete.
+            job_id: The ID of the job to cancel.
             
         Returns:
-            True if the job was deleted, False otherwise.
-            
-        Raises:
-            ValueError: If the job is not found.
+            True if the job was cancelled, False if not found or already completed.
         """
         if job_id not in self.jobs_status:
-            raise ValueError(f"Job '{job_id}' not found")
+            return False
         
         job_status = self.jobs_status[job_id]
         
-        # Don't allow deleting running jobs
-        if job_status["status"] == "running":
-            raise ValueError(f"Cannot delete a running job. Cancel it first.")
+        if job_status["status"] != "running":
+            return False
         
-        # Remove the job directory
-        job_dir = os.path.join(self.jobs_dir, job_id)
-        if os.path.exists(job_dir):
-            import shutil
-            shutil.rmtree(job_dir)
-        
-        # Remove the job from the status tracking
-        del self.jobs_status[job_id]
+        # Update job status
+        job_status["status"] = "cancelled"
+        job_status["end_time"] = datetime.now().isoformat()
+        job_status["last_updated"] = datetime.now().isoformat()
         self._save_jobs_status()
         
         return True
     
-    async def get_job_output(self, job_id: str) -> Dict[str, Any]:
+    async def list_job_artifacts(self, job_id: str, path: str = "") -> List[Dict[str, Any]]:
         """
-        Get the output files for a job.
+        List artifacts for a specific job.
         
         Args:
             job_id: The ID of the job.
+            path: Optional path within the job directory.
             
         Returns:
-            Dictionary with file information.
+            List of artifact information dictionaries.
             
         Raises:
             ValueError: If the job is not found.
@@ -361,29 +360,94 @@ class TeamService:
         
         job_status = self.jobs_status[job_id]
         output_dir = job_status["output_dir"]
-        job_dir = os.path.join(self.jobs_dir, job_id)
-        job_output_dir = os.path.join(job_dir, output_dir)
         
-        # Get list of files in the output directory
-        files = []
-        if os.path.exists(job_output_dir):
-            for root, _, filenames in os.walk(job_output_dir):
-                for filename in filenames:
-                    file_path = os.path.join(root, filename)
-                    rel_path = os.path.relpath(file_path, job_output_dir)
-                    
-                    # Get file stats
-                    stats = os.stat(file_path)
-                    
-                    files.append({
-                        "name": filename,
-                        "path": rel_path,
-                        "size": stats.st_size,
-                        "modified": datetime.fromtimestamp(stats.st_mtime).isoformat()
-                    })
+        # Construct the full path
+        job_dir = os.path.join(self.jobs_dir, job_id, output_dir)
+        target_path = os.path.join(job_dir, path) if path else job_dir
         
-        return {
-            "job_id": job_id,
-            "output_dir": output_dir,
-            "files": files
-        }
+        if not os.path.exists(target_path):
+            raise ValueError(f"Path '{path}' not found in job '{job_id}'")
+        
+        result = []
+        
+        # List files and directories
+        for item in os.listdir(target_path):
+            item_path = os.path.join(target_path, item)
+            rel_path = os.path.join(path, item) if path else item
+            
+            # Get item info
+            stat = os.stat(item_path)
+            
+            artifact_info = {
+                "name": item,
+                "path": rel_path,
+                "size": stat.st_size,
+                "last_modified": datetime.fromtimestamp(stat.st_mtime).isoformat(),
+                "type": "directory" if os.path.isdir(item_path) else "file"
+            }
+            
+            result.append(artifact_info)
+        
+        # Sort directories first, then by name
+        result.sort(key=lambda x: (0 if x["type"] == "directory" else 1, x["name"]))
+        
+        return result
+    
+    async def get_job_artifact(self, job_id: str, artifact_path: str) -> str:
+        """
+        Get the path to a specific artifact file.
+        
+        Args:
+            job_id: The ID of the job.
+            artifact_path: Path to the artifact within the job directory.
+            
+        Returns:
+            Full path to the artifact file.
+            
+        Raises:
+            ValueError: If the job or artifact is not found.
+        """
+        if job_id not in self.jobs_status:
+            raise ValueError(f"Job '{job_id}' not found")
+        
+        job_status = self.jobs_status[job_id]
+        output_dir = job_status["output_dir"]
+        
+        # Construct the full path
+        job_dir = os.path.join(self.jobs_dir, job_id, output_dir)
+        artifact_full_path = os.path.join(job_dir, artifact_path)
+        
+        if not os.path.exists(artifact_full_path) or not os.path.isfile(artifact_full_path):
+            raise ValueError(f"Artifact '{artifact_path}' not found in job '{job_id}'")
+        
+        return artifact_full_path
+    
+    async def register_tool(self, job_id: str, tool_name: str, agent_name: str, 
+                           parameters: Optional[Dict[str, Any]] = None) -> bool:
+        """
+        Register a tool with an agent for a specific job.
+        
+        Args:
+            job_id: The ID of the job.
+            tool_name: The name of the tool to register.
+            agent_name: The name of the agent to register the tool with.
+            parameters: Optional tool initialization parameters.
+            
+        Returns:
+            True if successful.
+            
+        Raises:
+            ValueError: If the job is not found or the tool registration fails.
+        """
+        if job_id not in self.jobs_status:
+            raise ValueError(f"Job '{job_id}' not found")
+        
+        job_status = self.jobs_status[job_id]
+        
+        if job_status["status"] != "running":
+            raise ValueError(f"Job '{job_id}' is not running")
+        
+        # TODO: Implement actual tool registration with the running job
+        # This would require a way to communicate with the running job
+        
+        return True

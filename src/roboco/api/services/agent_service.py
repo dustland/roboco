@@ -200,3 +200,31 @@ class AgentService:
             "name": name,
             "system_prompt": agent.system_prompt
         }
+    
+    async def initiate_chat(self, sender_agent: Agent, recipient_agent: Agent, 
+                           message: str, terminate_msg: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Initiate a chat between two agents.
+        
+        Args:
+            sender_agent: The agent sending the message.
+            recipient_agent: The agent receiving the message.
+            message: The initial message.
+            terminate_msg: Optional termination message.
+            
+        Returns:
+            Chat result dictionary.
+        """
+        # Set termination message if provided
+        if terminate_msg:
+            recipient_agent.terminate_msg = terminate_msg
+        
+        # Initiate the chat
+        response = recipient_agent.chat(message, sender_agent)
+        
+        return {
+            "sender": sender_agent.name,
+            "recipient": recipient_agent.name,
+            "message": message,
+            "response": response
+        }

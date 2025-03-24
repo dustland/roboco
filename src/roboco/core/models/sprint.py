@@ -192,7 +192,7 @@ class Sprint:
         sprint = cls(**data, todos=[])
         
         # Now we can safely import TodoItem and add the todos
-        from roboco.domain.models.todo_item import TodoItem
+        from roboco.core.models.todo_item import TodoItem
         for todo_data in todos_data:
             sprint.todos.append(TodoItem.from_dict(todo_data))
         

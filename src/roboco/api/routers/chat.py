@@ -6,12 +6,13 @@ It follows the DDD principles by using the domain services through the API servi
 """
 
 from typing import Dict, Any, Optional, List
-from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 
 from roboco.services.api_service import ApiService
-from roboco.api.schemas.chat import ChatRequest, ChatResponse
-from roboco.infrastructure.repositories.file_project_repository import FileProjectRepository
+from roboco.api.models.chat import ChatRequest, ChatResponse
+from roboco.api.dependencies import get_api_service
 from roboco.services.project_service import ProjectService
+from roboco.infrastructure.repositories.file_project_repository import FileProjectRepository
 
 
 router = APIRouter(

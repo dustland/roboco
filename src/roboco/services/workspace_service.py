@@ -199,8 +199,8 @@ class WorkspaceService:
         
         Args:
             workspace_id_or_name: ID or name of the workspace
-            name: Optional new name
-            description: Optional new description
+            name: New name for the workspace
+            description: New description for the workspace
             
         Returns:
             Dictionary with updated workspace information
@@ -208,7 +208,7 @@ class WorkspaceService:
         Raises:
             ValueError: If the workspace is not found
         """
-        # Get the workspace
+        # Get current workspace
         workspace = await self.get_workspace(workspace_id_or_name)
         
         # Update metadata
@@ -216,10 +216,10 @@ class WorkspaceService:
         with open(metadata_path, "r") as f:
             metadata = json.load(f)
         
-        if name:
+        if name is not None:
             metadata["name"] = name
         
-        if description:
+        if description is not None:
             metadata["description"] = description
         
         metadata["updated_at"] = datetime.now().isoformat()
@@ -227,12 +227,7 @@ class WorkspaceService:
         with open(metadata_path, "w") as f:
             json.dump(metadata, f, indent=2)
         
-        # If name changed, rename the directory
-        if name and name.lower().replace(" ", "_") != os.path.basename(workspace["path"]):
-            new_path = os.path.join(self.workspace_base, name.lower().replace(" ", "_"))
-            shutil.move(workspace["path"], new_path)
-            workspace["path"] = new_path
-        
+        # Return updated workspace info
         return {
             "id": metadata["id"],
             "name": metadata["name"],
@@ -255,269 +250,189 @@ class WorkspaceService:
         Raises:
             ValueError: If the workspace is not found
         """
+        # Get workspace
+        workspace = await self.get_workspace(workspace_id_or_name)
+        
+        # Delete workspace directory
         try:
-            # Get the workspace
-            workspace = await self.get_workspace(workspace_id_or_name)
-            
-            # Delete the workspace directory
             shutil.rmtree(workspace["path"])
-            
             return True
-        except ValueError:
-            raise
         except Exception as e:
-            logger.error(f"Error deleting workspace {workspace_id_or_name}: {str(e)}")
+            logger.error(f"Error deleting workspace: {str(e)}")
             return False
     
-    async def save_artifact(self, workspace_id_or_name: str, 
-                           artifact_name: str, 
-                           content: Union[str, bytes, BinaryIO],
-                           artifact_type: str = "text",
-                           metadata: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    async def list_files(self, workspace_id_or_name: str, path: Optional[str] = None) -> List[Dict[str, Any]]:
         """
-        Save an artifact to a workspace.
+        List files in a workspace.
         
         Args:
             workspace_id_or_name: ID or name of the workspace
-            artifact_name: Name of the artifact
-            content: Content of the artifact (string, bytes, or file-like object)
-            artifact_type: Type of the artifact (text, binary, image, etc.)
-            metadata: Optional metadata for the artifact
+            path: Optional path within the workspace
             
         Returns:
-            Dictionary with artifact information
+            List of dictionaries with file information
             
         Raises:
             ValueError: If the workspace is not found
         """
-        # Get the workspace
+        # Get workspace
         workspace = await self.get_workspace(workspace_id_or_name)
         
-        # Create artifacts directory if it doesn't exist
-        artifacts_dir = os.path.join(workspace["path"], "artifacts")
-        os.makedirs(artifacts_dir, exist_ok=True)
+        # Determine the directory to list
+        if path:
+            # Ensure path doesn't try to escape the workspace
+            norm_path = os.path.normpath(path)
+            if norm_path.startswith("..") or norm_path.startswith("/"):
+                raise ValueError(f"Invalid path: {path}")
+            
+            dir_path = os.path.join(workspace["path"], norm_path)
+        else:
+            dir_path = workspace["path"]
         
-        # Generate a unique filename
-        artifact_id = str(uuid.uuid4())
-        file_ext = os.path.splitext(artifact_name)[1] if "." in artifact_name else ""
-        if not file_ext:
-            if artifact_type == "text":
-                file_ext = ".txt"
-            elif artifact_type == "json":
-                file_ext = ".json"
-            elif artifact_type == "image":
-                file_ext = ".png"
-            elif artifact_type == "html":
-                file_ext = ".html"
+        # Check if directory exists
+        if not os.path.exists(dir_path) or not os.path.isdir(dir_path):
+            raise ValueError(f"Directory not found: {path or '/'}")
         
-        filename = f"{artifact_id}{file_ext}"
-        file_path = os.path.join(artifacts_dir, filename)
+        # List files and directories
+        items = []
+        for item in os.listdir(dir_path):
+            item_path = os.path.join(dir_path, item)
+            rel_path = os.path.relpath(item_path, workspace["path"])
+            
+            # Get file stats
+            stats = os.stat(item_path)
+            
+            items.append({
+                "name": item,
+                "path": rel_path,
+                "type": "directory" if os.path.isdir(item_path) else "file",
+                "size": stats.st_size,
+                "modified": datetime.fromtimestamp(stats.st_mtime).isoformat()
+            })
         
-        # Save the content
+        return items
+    
+    async def read_file(self, workspace_id_or_name: str, path: str) -> str:
+        """
+        Read a file from a workspace.
+        
+        Args:
+            workspace_id_or_name: ID or name of the workspace
+            path: Path to the file within the workspace
+            
+        Returns:
+            File contents as a string
+            
+        Raises:
+            ValueError: If the workspace or file is not found
+        """
+        # Get workspace
+        workspace = await self.get_workspace(workspace_id_or_name)
+        
+        # Ensure path doesn't try to escape the workspace
+        norm_path = os.path.normpath(path)
+        if norm_path.startswith("..") or norm_path.startswith("/"):
+            raise ValueError(f"Invalid path: {path}")
+        
+        file_path = os.path.join(workspace["path"], norm_path)
+        
+        # Check if file exists
+        if not os.path.exists(file_path) or not os.path.isfile(file_path):
+            raise ValueError(f"File not found: {path}")
+        
+        # Read file
+        try:
+            with open(file_path, "r") as f:
+                return f.read()
+        except UnicodeDecodeError:
+            # Try to read as binary and convert to base64
+            import base64
+            with open(file_path, "rb") as f:
+                content = f.read()
+                return base64.b64encode(content).decode("utf-8")
+    
+    async def write_file(self, workspace_id_or_name: str, path: str, content: Union[str, bytes]) -> Dict[str, Any]:
+        """
+        Write a file to a workspace.
+        
+        Args:
+            workspace_id_or_name: ID or name of the workspace
+            path: Path to the file within the workspace
+            content: File contents as a string or bytes
+            
+        Returns:
+            Dictionary with file information
+            
+        Raises:
+            ValueError: If the workspace is not found
+        """
+        # Get workspace
+        workspace = await self.get_workspace(workspace_id_or_name)
+        
+        # Ensure path doesn't try to escape the workspace
+        norm_path = os.path.normpath(path)
+        if norm_path.startswith("..") or norm_path.startswith("/"):
+            raise ValueError(f"Invalid path: {path}")
+        
+        file_path = os.path.join(workspace["path"], norm_path)
+        
+        # Create parent directories if they don't exist
+        os.makedirs(os.path.dirname(file_path), exist_ok=True)
+        
+        # Write file
         if isinstance(content, str):
             with open(file_path, "w") as f:
                 f.write(content)
-        elif isinstance(content, bytes):
+        else:
             with open(file_path, "wb") as f:
                 f.write(content)
-        else:  # File-like object
-            with open(file_path, "wb") as f:
-                shutil.copyfileobj(content, f)
         
-        # Create metadata
-        artifact_metadata = {
-            "id": artifact_id,
-            "name": artifact_name,
-            "type": artifact_type,
-            "created_at": datetime.now().isoformat(),
-            "filename": filename,
-            "workspace_id": workspace["id"],
-            "user_metadata": metadata or {}
-        }
-        
-        # Save metadata
-        metadata_dir = os.path.join(artifacts_dir, "metadata")
-        os.makedirs(metadata_dir, exist_ok=True)
-        with open(os.path.join(metadata_dir, f"{artifact_id}.json"), "w") as f:
-            json.dump(artifact_metadata, f, indent=2)
+        # Get file stats
+        stats = os.stat(file_path)
         
         return {
-            "id": artifact_id,
-            "name": artifact_name,
-            "type": artifact_type,
-            "path": file_path,
-            "url": f"/artifacts/{workspace['id']}/{filename}",
-            "created_at": artifact_metadata["created_at"],
-            "metadata": metadata or {}
+            "name": os.path.basename(file_path),
+            "path": path,
+            "type": "file",
+            "size": stats.st_size,
+            "modified": datetime.fromtimestamp(stats.st_mtime).isoformat()
         }
     
-    async def get_artifact(self, workspace_id_or_name: str, artifact_id_or_name: str) -> Dict[str, Any]:
+    async def delete_file(self, workspace_id_or_name: str, path: str) -> bool:
         """
-        Get an artifact from a workspace.
+        Delete a file from a workspace.
         
         Args:
             workspace_id_or_name: ID or name of the workspace
-            artifact_id_or_name: ID or name of the artifact
+            path: Path to the file within the workspace
             
         Returns:
-            Dictionary with artifact information and content
+            True if the file was deleted, False otherwise
             
         Raises:
-            ValueError: If the workspace or artifact is not found
+            ValueError: If the workspace or file is not found
         """
-        # Get the workspace
+        # Get workspace
         workspace = await self.get_workspace(workspace_id_or_name)
         
-        # Look for the artifact
-        artifacts_dir = os.path.join(workspace["path"], "artifacts")
-        metadata_dir = os.path.join(artifacts_dir, "metadata")
+        # Ensure path doesn't try to escape the workspace
+        norm_path = os.path.normpath(path)
+        if norm_path.startswith("..") or norm_path.startswith("/"):
+            raise ValueError(f"Invalid path: {path}")
         
-        # Try to find by ID first
-        if os.path.exists(metadata_dir):
-            metadata_path = os.path.join(metadata_dir, f"{artifact_id_or_name}.json")
-            if os.path.exists(metadata_path):
-                with open(metadata_path, "r") as f:
-                    metadata = json.load(f)
-                
-                file_path = os.path.join(artifacts_dir, metadata["filename"])
-                if os.path.exists(file_path):
-                    # Read content based on type
-                    if metadata["type"] == "text" or metadata["type"] == "json" or metadata["type"] == "html":
-                        with open(file_path, "r") as f:
-                            content = f.read()
-                    else:
-                        with open(file_path, "rb") as f:
-                            content = f.read()
-                    
-                    return {
-                        "id": metadata["id"],
-                        "name": metadata["name"],
-                        "type": metadata["type"],
-                        "path": file_path,
-                        "url": f"/artifacts/{workspace['id']}/{metadata['filename']}",
-                        "created_at": metadata["created_at"],
-                        "content": content,
-                        "metadata": metadata.get("user_metadata", {})
-                    }
+        file_path = os.path.join(workspace["path"], norm_path)
         
-        # If not found by ID, try to find by name
-        for root, _, files in os.walk(metadata_dir):
-            for file in files:
-                if file.endswith(".json"):
-                    metadata_path = os.path.join(root, file)
-                    try:
-                        with open(metadata_path, "r") as f:
-                            metadata = json.load(f)
-                        
-                        if metadata["name"] == artifact_id_or_name:
-                            file_path = os.path.join(artifacts_dir, metadata["filename"])
-                            if os.path.exists(file_path):
-                                # Read content based on type
-                                if metadata["type"] == "text" or metadata["type"] == "json" or metadata["type"] == "html":
-                                    with open(file_path, "r") as f:
-                                        content = f.read()
-                                else:
-                                    with open(file_path, "rb") as f:
-                                        content = f.read()
-                                
-                                return {
-                                    "id": metadata["id"],
-                                    "name": metadata["name"],
-                                    "type": metadata["type"],
-                                    "path": file_path,
-                                    "url": f"/artifacts/{workspace['id']}/{metadata['filename']}",
-                                    "created_at": metadata["created_at"],
-                                    "content": content,
-                                    "metadata": metadata.get("user_metadata", {})
-                                }
-                    except Exception as e:
-                        logger.error(f"Error reading artifact metadata {file}: {str(e)}")
+        # Check if file exists
+        if not os.path.exists(file_path):
+            raise ValueError(f"File not found: {path}")
         
-        raise ValueError(f"Artifact '{artifact_id_or_name}' not found in workspace '{workspace_id_or_name}'")
-    
-    async def list_artifacts(self, workspace_id_or_name: str, 
-                            artifact_type: Optional[str] = None) -> List[Dict[str, Any]]:
-        """
-        List all artifacts in a workspace.
-        
-        Args:
-            workspace_id_or_name: ID or name of the workspace
-            artifact_type: Optional type to filter by
-            
-        Returns:
-            List of dictionaries with artifact information
-            
-        Raises:
-            ValueError: If the workspace is not found
-        """
-        # Get the workspace
-        workspace = await self.get_workspace(workspace_id_or_name)
-        
-        # Look for artifacts
-        artifacts = []
-        artifacts_dir = os.path.join(workspace["path"], "artifacts")
-        metadata_dir = os.path.join(artifacts_dir, "metadata")
-        
-        if os.path.exists(metadata_dir):
-            for root, _, files in os.walk(metadata_dir):
-                for file in files:
-                    if file.endswith(".json"):
-                        metadata_path = os.path.join(root, file)
-                        try:
-                            with open(metadata_path, "r") as f:
-                                metadata = json.load(f)
-                            
-                            # Apply type filter if specified
-                            if artifact_type and metadata["type"] != artifact_type:
-                                continue
-                            
-                            file_path = os.path.join(artifacts_dir, metadata["filename"])
-                            if os.path.exists(file_path):
-                                artifacts.append({
-                                    "id": metadata["id"],
-                                    "name": metadata["name"],
-                                    "type": metadata["type"],
-                                    "path": file_path,
-                                    "url": f"/artifacts/{workspace['id']}/{metadata['filename']}",
-                                    "created_at": metadata["created_at"],
-                                    "metadata": metadata.get("user_metadata", {})
-                                })
-                        except Exception as e:
-                            logger.error(f"Error reading artifact metadata {file}: {str(e)}")
-        
-        return artifacts
-    
-    async def delete_artifact(self, workspace_id_or_name: str, artifact_id_or_name: str) -> bool:
-        """
-        Delete an artifact from a workspace.
-        
-        Args:
-            workspace_id_or_name: ID or name of the workspace
-            artifact_id_or_name: ID or name of the artifact
-            
-        Returns:
-            True if the artifact was deleted, False otherwise
-            
-        Raises:
-            ValueError: If the workspace is not found
-        """
+        # Delete file or directory
         try:
-            # Get the artifact (this will also validate the workspace)
-            artifact = await self.get_artifact(workspace_id_or_name, artifact_id_or_name)
-            
-            # Delete the artifact file
-            if os.path.exists(artifact["path"]):
-                os.remove(artifact["path"])
-            
-            # Delete the metadata file
-            workspace = await self.get_workspace(workspace_id_or_name)
-            metadata_path = os.path.join(workspace["path"], "artifacts", "metadata", f"{artifact['id']}.json")
-            if os.path.exists(metadata_path):
-                os.remove(metadata_path)
-            
+            if os.path.isdir(file_path):
+                shutil.rmtree(file_path)
+            else:
+                os.remove(file_path)
             return True
-        except ValueError:
-            raise
         except Exception as e:
-            logger.error(f"Error deleting artifact {artifact_id_or_name}: {str(e)}")
+            logger.error(f"Error deleting file: {str(e)}")
             return False

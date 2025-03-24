@@ -5,7 +5,10 @@ This module provides base classes for organizing agents into teams and managing 
 """
 
 import os
+import logging
+from abc import ABC, abstractmethod
 from typing import Dict, Any, List, Optional, Tuple, Union
+
 from loguru import logger
 
 from autogen import (
@@ -17,9 +20,10 @@ from autogen import (
 )
 
 from roboco.core.config import load_config, get_llm_config
+from roboco.core.schema import TodoItem
 
 
-class Team:
+class Team(ABC):
     """
     Base class for all roboco teams, providing common functionality for team management.
     """
@@ -199,45 +203,184 @@ class Team:
                 # Handle case where chat_result is not a tuple
                 result = {"chat_result": chat_result}
                 
+            return result
+            
         except Exception as e:
-            logger.error(f"Error in swarm chat: {e}")
-            raise
-        
-        return result
+            logger.error(f"Error in swarm execution: {str(e)}")
+            return {"error": str(e)}
+
+
+class BaseExecutionTeam(Team):
+    """Base class for teams that execute tasks."""
     
-    def initiate_chat(self, 
-                     initial_agent_name: str, 
-                     message: str, 
-                     context_variables: Optional[Dict[str, Any]] = None,
-                     max_rounds: int = 10) -> Dict[str, Any]:
-        """
-        Initiate a chat with automatic handoffs among agents.
-        
-        This method sets up a swarm chat with the specified initial agent and message,
-        configuring automatic handoffs between agents based on their roles.
+    def __init__(
+        self, 
+        name: str,
+        project_dir: str, 
+        agent_types: List[str], 
+        tool_types: List[str],
+        config_path: Optional[str] = None
+    ):
+        """Initialize the execution team.
         
         Args:
-            initial_agent_name: Name of the agent to start the chat
-            message: The initial message to send
-            context_variables: Optional context variables to initialize the chat with
-            max_rounds: Maximum number of conversation rounds
+            name: Name of the team
+            project_dir: Directory of the project
+            agent_types: List of agent types to include in the team
+            tool_types: List of tools to make available to the team
+            config_path: Optional path to team configuration file
+        """
+        super().__init__(name=name, config_path=config_path)
+        self.project_dir = project_dir
+        self.agent_types = agent_types
+        self.tool_types = tool_types
+        
+        # Initialize agents based on agent_types
+        self._initialize_agents()
+    
+    def _initialize_agents(self):
+        """Initialize the agents for this team."""
+        for agent_type in self.agent_types:
+            agent = self._create_agent(agent_type)
+            if agent:
+                self.add_agent(agent_type, agent)
+    
+    def _create_agent(self, agent_type: str) -> Optional[ConversableAgent]:
+        """Create an agent of the specified type.
+        
+        Args:
+            agent_type: Type of agent to create
             
         Returns:
-            Dictionary containing the conversation history, context, and results
+            An initialized agent instance
         """
-        logger.info(f"Initiating chat with {initial_agent_name}")
+        # This would be implemented with a factory pattern
+        # For now, we'll just log and return None
+        logger.info(f"Creating agent of type: {agent_type}")
+        return None
+    
+    @abstractmethod
+    async def execute_tasks(self, tasks: List[TodoItem]) -> Dict[str, Any]:
+        """Execute the given tasks using this team's agents.
         
-        # Enable swarm if not already enabled
-        if not self.swarm_enabled:
-            self.enable_swarm(context_variables)
+        Args:
+            tasks: List of tasks to execute
             
-        # Register handoffs if not already done
-        self.register_handoffs()
+        Returns:
+            Dictionary with execution results
+        """
+        pass
+
+
+class SequentialExecutionTeam(BaseExecutionTeam):
+    """Team that executes tasks sequentially."""
+    
+    async def execute_tasks(self, tasks: List[TodoItem]) -> Dict[str, Any]:
+        """Execute tasks in sequence."""
+        results = {
+            "tasks": [],
+            "success": True,
+            "execution_time": 0
+        }
+        
+        for task in tasks:
+            # Skip completed tasks
+            if task.status == "DONE":
+                results["tasks"].append({
+                    "title": task.title,
+                    "status": "DONE",
+                    "skipped": True
+                })
+                continue
             
-        # Run the swarm with the configured handoffs
-        return self.run_swarm(
-            initial_agent_name=initial_agent_name,
-            query=message,
-            context_variables=context_variables,
-            max_rounds=max_rounds
-        )
+            # Execute task (placeholder)
+            logger.info(f"SequentialTeam executing task: {task.title}")
+            
+            # Record result (placeholder)
+            results["tasks"].append({
+                "title": task.title,
+                "status": "DONE",
+                "execution_time": 0,
+                "output": f"Executed task: {task.title}",
+                "error": None
+            })
+        
+        return results
+
+
+class ParallelExecutionTeam(BaseExecutionTeam):
+    """Team that executes tasks in parallel."""
+    
+    async def execute_tasks(self, tasks: List[TodoItem]) -> Dict[str, Any]:
+        """Execute tasks in parallel."""
+        results = {
+            "tasks": [],
+            "success": True,
+            "execution_time": 0
+        }
+        
+        # Placeholder for parallel execution
+        logger.info(f"ParallelTeam would execute {len(tasks)} tasks in parallel")
+        
+        for task in tasks:
+            results["tasks"].append({
+                "title": task.title,
+                "status": "DONE",
+                "execution_time": 0,
+                "output": f"Executed task: {task.title}",
+                "error": None
+            })
+        
+        return results
+
+
+class IterativeExecutionTeam(BaseExecutionTeam):
+    """Team that executes tasks iteratively with feedback loops."""
+    
+    async def execute_tasks(self, tasks: List[TodoItem]) -> Dict[str, Any]:
+        """Execute tasks iteratively."""
+        results = {
+            "tasks": [],
+            "success": True,
+            "execution_time": 0
+        }
+        
+        # Placeholder for iterative execution
+        logger.info(f"IterativeTeam would execute {len(tasks)} tasks iteratively")
+        
+        for task in tasks:
+            results["tasks"].append({
+                "title": task.title,
+                "status": "DONE",
+                "execution_time": 0,
+                "output": f"Executed task: {task.title}",
+                "error": None
+            })
+        
+        return results
+
+
+class GenericExecutionTeam(BaseExecutionTeam):
+    """Generic team for when no specialized team is available."""
+    
+    async def execute_tasks(self, tasks: List[TodoItem]) -> Dict[str, Any]:
+        """Execute tasks with a generic approach."""
+        results = {
+            "tasks": [],
+            "success": True,
+            "execution_time": 0
+        }
+        
+        # Placeholder for generic execution
+        logger.info(f"GenericTeam executing {len(tasks)} tasks")
+        
+        for task in tasks:
+            results["tasks"].append({
+                "title": task.title,
+                "status": "DONE",
+                "execution_time": 0,
+                "output": f"Executed task: {task.title}",
+                "error": None
+            })
+        
+        return results

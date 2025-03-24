@@ -12,9 +12,9 @@ import asyncio
 from loguru import logger
 import os
 
-from roboco.core.models.project import Project
-from roboco.core.repositories.project_repository import ProjectRepository
-from roboco.api.models.chat import ChatRequest, ChatResponse
+from roboco.domain.models.project import Project
+from roboco.domain.repositories.project_repository import ProjectRepository
+from roboco.api.schemas.chat import ChatRequest, ChatResponse
 from roboco.core.config import load_config, get_llm_config
 from roboco.teams.project_team import ProjectTeam
 

@@ -6,7 +6,7 @@ It follows the DDD principles by using the domain services through the API servi
 """
 
 from typing import List, Optional, Dict, Any
-from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 
 from roboco.services.api_service import ApiService
 from roboco.api.schemas.job import JobRequest, JobStatus, TeamInfo, ArtifactInfo, ToolRegistration, AgentStatusUpdate

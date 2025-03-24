@@ -7,7 +7,7 @@ This module defines the interface for project repositories.
 from abc import ABC, abstractmethod
 from typing import List, Optional, Dict, Any
 
-from roboco.domain.models.project import Project
+from roboco.core.models.project import Project
 
 
 class ProjectRepository(ABC):

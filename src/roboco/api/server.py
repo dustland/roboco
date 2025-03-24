@@ -17,13 +17,14 @@ from fastapi.responses import JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from loguru import logger
 
-from roboco.api.routers import project, job, chat
+from roboco.api.routers import chat, job, project
 from roboco.services.api_service import ApiService
 from roboco.services.project_service import ProjectService
+from roboco.services.task_service import TaskService
 from roboco.services.team_service import TeamService
 from roboco.services.agent_service import AgentService
-from roboco.services.sprint_service import SprintService
 from roboco.services.workspace_service import WorkspaceService
+from roboco.services.chat_service import ChatService
 from roboco.infrastructure.repositories.file_project_repository import FileProjectRepository
 
 
@@ -80,19 +81,23 @@ def get_api_service() -> ApiService:
     # Create the agent service
     agent_service = AgentService()
     
-    # Create the sprint service
-    sprint_service = SprintService(project_repository)
+    # Create the task service
+    task_service = TaskService(project_repository)
     
     # Create the workspace service
     workspace_service = WorkspaceService()
+    
+    # Create the chat service
+    chat_service = ChatService()
     
     # Create the API service with all the required services
     return ApiService(
         project_service=project_service,
         team_service=team_service,
         agent_service=agent_service,
-        sprint_service=sprint_service,
-        workspace_service=workspace_service
+        task_service=task_service,
+        workspace_service=workspace_service,
+        chat_service=chat_service
     )
 
 

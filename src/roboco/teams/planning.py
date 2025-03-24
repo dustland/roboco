@@ -12,7 +12,7 @@ import asyncio
 import json
 
 from roboco.core.agent import Agent
-from roboco.agents.project_builder import ProjectBuilder
+from roboco.agents.planner import Planner
 
 
 class PlanningTeam:
@@ -39,20 +39,20 @@ class PlanningTeam:
             llm_config=False,
             code_execution_config={"work_dir": f"{workspace_dir}/code", "use_docker": False}
         )
-        project_builder = ProjectBuilder(
-            name="project_builder",
+        planner = Planner(
+            name="planner",
             terminate_msg=None,  # Set to None to prevent premature conversation termination
         )
         self.agents = {
             "executer": executer,
-            "project_builder": project_builder
+            "planner": planner
         }
         
         # Register tools with agents
         from roboco.tools.fs import FileSystemTool
         fs_tool = FileSystemTool()
 
-        fs_tool.register_with_agents(project_builder, executer)
+        fs_tool.register_with_agents(planner, executer)
         
     def get_agent(self, name: str) -> Agent:
         """Get an agent by name.
@@ -83,7 +83,7 @@ class PlanningTeam:
         """
         # Get the agents
         executer = self.get_agent("executer")
-        project_builder = self.get_agent("project_builder")
+        planner = self.get_agent("planner")
         
         # Format the message to leverage the LLM's capabilities for project structure creation
         message = f"""
@@ -109,7 +109,7 @@ Focus on creating a comprehensive project structure that would be ready for imme
         try:
             # Start chat with the project agent and get the result directly
             chat_result = executer.initiate_chat(
-                recipient=project_builder,
+                recipient=planner,
                 message=message,
                 max_turns=10,
             )

@@ -6,14 +6,16 @@ It follows the DDD principles by using the domain services through the API servi
 """
 
 from typing import List, Optional
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import ValidationError
 
-from roboco.services.api_service import ApiService
-from roboco.api.schemas.project import Project, ProjectCreate, ProjectUpdate
+from roboco.api.models.project import Project, ProjectCreate, ProjectUpdate
 from roboco.api.schemas.sprint import Sprint, SprintCreate, SprintUpdate
 from roboco.api.schemas.todo import TodoItem, TodoItemCreate, TodoItemUpdate
 from roboco.infrastructure.repositories.file_project_repository import FileProjectRepository
 from roboco.services.project_service import ProjectService
+from roboco.api.dependencies import get_api_service
+from roboco.services.api_service import ApiService
 
 
 router = APIRouter(

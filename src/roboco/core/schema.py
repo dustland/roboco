@@ -116,8 +116,8 @@ class LLMConfig(BaseModel):
     )
 
 
-class TodoItem(BaseModel):
-    """A single todo item in a project."""
+class Task(BaseModel):
+    """A single task in a project."""
     title: str = Field(..., description="Title of the task")
     description: Optional[str] = Field(None, description="Detailed description of the task")
     status: str = Field(default="TODO", description="Status of the task (TODO, IN_PROGRESS, DONE)")
@@ -130,23 +130,13 @@ class TodoItem(BaseModel):
     tags: List[str] = Field(default_factory=list, description="Tags for categorizing the task")
 
 
-class Sprint(BaseModel):
-    """A sprint or iteration in a project."""
-    name: str = Field(..., description="Name of the sprint")
-    description: Optional[str] = Field(None, description="Description of the sprint goals")
-    start_date: datetime = Field(..., description="Start date of the sprint")
-    end_date: datetime = Field(..., description="End date of the sprint")
-    status: str = Field(default="planned", description="Status of the sprint (planned, active, completed)")
-    todos: List[TodoItem] = Field(default_factory=list, description="Todo items scheduled for this sprint")
-
-
 class ProjectConfig(BaseModel):
     """Configuration for a project.
     
     A project is a high-level organizational unit that contains goals,
     teams, and artifacts such as source code and documents. It can span 
-    multiple jobs and provides a way to track progress over time through
-    iterations or sprints.
+    multiple jobs and provides a way to track progress through a flat
+    list of tasks.
     """
     name: str = Field(..., description="Name of the project")
     description: str = Field(..., description="Description of the project goals")
@@ -155,9 +145,7 @@ class ProjectConfig(BaseModel):
     directory: str = Field(..., description="Directory where project files are stored")
     teams: List[str] = Field(default_factory=list, description="Teams involved in this project")
     jobs: List[str] = Field(default_factory=list, description="Jobs associated with this project")
-    sprints: List[Sprint] = Field(default_factory=list, description="Sprints or iterations planned for this project")
-    current_sprint: Optional[str] = Field(None, description="Name of the current active sprint")
-    todos: List[TodoItem] = Field(default_factory=list, description="Unassigned todo items for the project")
+    tasks: List[Task] = Field(default_factory=list, description="Tasks for the project")
     tags: List[str] = Field(default_factory=list, description="Tags for categorizing the project")
     source_code_dir: str = Field(default="src", description="Directory for source code within the project directory")
     docs_dir: str = Field(default="docs", description="Directory for documentation within the project directory")
@@ -166,38 +154,14 @@ class ProjectConfig(BaseModel):
         extra='allow'  # Allow extra fields for project-specific configs
     )
     
-    def add_todo(self, todo: TodoItem) -> None:
-        """Add a todo item to the project.
+    def add_task(self, task: Task):
+        """Add a task to the project.
         
         Args:
-            todo: The todo item to add
+            task: The task to add
         """
-        self.todos.append(todo)
+        self.tasks.append(task)
         self.updated_at = datetime.now()
-    
-    def add_sprint(self, sprint: Sprint) -> None:
-        """Add a sprint to the project.
-        
-        Args:
-            sprint: The sprint to add
-        """
-        self.sprints.append(sprint)
-        self.updated_at = datetime.now()
-    
-    def get_active_sprint(self) -> Optional[Sprint]:
-        """Get the currently active sprint.
-        
-        Returns:
-            The active sprint or None if no sprint is active
-        """
-        if not self.current_sprint:
-            return None
-            
-        for sprint in self.sprints:
-            if sprint.name == self.current_sprint:
-                return sprint
-                
-        return None
 
 
 class OrgStructureConfig(BaseModel):
@@ -394,6 +358,10 @@ class RobocoConfig(BaseModel):
     logging: LoggingConfig = Field(
         default_factory=LoggingConfig,
         description="Logging configuration"
+    )
+    projects: Dict[str, ProjectConfig] = Field(
+        default_factory=dict,
+        description="Project configurations"
     )
     
     @property

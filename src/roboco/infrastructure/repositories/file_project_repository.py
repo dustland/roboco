@@ -1,22 +1,19 @@
 """
-File-based Project Repository Implementation
+File-based Project Repository
 
-This module implements the ProjectRepository interface using the file system for storage.
+This module provides a file-based implementation of the ProjectRepository interface.
+It stores projects as JSON files on disk.
 """
 
 import os
 import json
-import shutil
-from typing import List, Optional, Dict, Any
+from typing import List, Optional
 from datetime import datetime
-import asyncio
 from loguru import logger
 
-from roboco.domain.repositories.project_repository import ProjectRepository
-from roboco.domain.models.project import Project
-from roboco.domain.models.sprint import Sprint
-from roboco.domain.models.todo_item import TodoItem
-from roboco.core import config
+from roboco.core.models.project import Project
+from roboco.core.repositories.project_repository import ProjectRepository
+from roboco.core.config import load_config
 
 
 class FileProjectRepository(ProjectRepository):
@@ -32,7 +29,7 @@ class FileProjectRepository(ProjectRepository):
         Args:
             projects_dir: Optional custom directory for storing projects
         """
-        self.config = config.load_config()
+        self.config = load_config()
         self.projects_dir = projects_dir or os.path.join(self.config.core.workspace_base, "projects")
         os.makedirs(self.projects_dir, exist_ok=True)
         

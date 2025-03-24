@@ -10,10 +10,9 @@ from datetime import datetime
 import uuid
 from loguru import logger
 
-from roboco.domain.models.project import Project
-from roboco.domain.models.sprint import Sprint
-from roboco.domain.models.todo_item import TodoItem
-from roboco.domain.repositories.project_repository import ProjectRepository
+from roboco.core.models.project import Project
+from roboco.core.schema import Task
+from roboco.core.repositories.project_repository import ProjectRepository
 
 
 class ProjectService:
@@ -131,56 +130,7 @@ class ProjectService:
         """
         return await self.project_repository.find_by_tag(tag)
     
-    async def add_sprint_to_project(
-        self,
-        project_id: str,
-        name: str,
-        description: Optional[str] = None,
-        start_date: Optional[datetime] = None,
-        end_date: Optional[datetime] = None,
-        status: str = "planned",
-        tags: Optional[List[str]] = None
-    ) -> str:
-        """Add a sprint to a project.
-        
-        Args:
-            project_id: ID of the project to add the sprint to
-            name: Name of the sprint
-            description: Description of the sprint
-            start_date: Start date of the sprint
-            end_date: End date of the sprint
-            status: Status of the sprint (planned, active, completed)
-            tags: Tags for categorizing the sprint
-            
-        Returns:
-            ID of the project
-            
-        Raises:
-            ValueError: If the project does not exist or a sprint with the same name already exists
-        """
-        project = await self.project_repository.get_by_id(project_id)
-        if not project:
-            raise ValueError(f"Project with ID {project_id} does not exist")
-            
-        # Check if a sprint with the same name already exists
-        if any(s.name == name for s in project.sprints):
-            raise ValueError(f"Sprint {name} already exists in project {project.name}")
-            
-        sprint = Sprint(
-            name=name,
-            description=description,
-            start_date=start_date,
-            end_date=end_date,
-            status=status,
-            tags=tags or []
-        )
-        
-        project.add_sprint(sprint)
-        await self.project_repository.save(project)
-        
-        return project_id
-    
-    async def add_todo_to_project(
+    async def add_task_to_project(
         self,
         project_id: str,
         title: str,
@@ -188,32 +138,30 @@ class ProjectService:
         status: str = "TODO",
         assigned_to: Optional[str] = None,
         priority: str = "medium",
-        sprint_name: Optional[str] = None,
         tags: Optional[List[str]] = None
     ) -> str:
-        """Add a todo item to a project.
+        """Add a task to a project.
         
         Args:
-            project_id: ID of the project to add the todo to
-            title: Title of the todo
-            description: Description of the todo
-            status: Status of the todo (TODO, IN_PROGRESS, DONE)
-            assigned_to: Agent or person assigned to the todo
+            project_id: ID of the project to add the task to
+            title: Title of the task
+            description: Description of the task
+            status: Status of the task (TODO, IN_PROGRESS, DONE)
+            assigned_to: Agent or person assigned to the task
             priority: Priority level (low, medium, high, critical)
-            sprint_name: Name of the sprint to add the todo to (if any)
-            tags: Tags for categorizing the todo
+            tags: Tags for categorizing the task
             
         Returns:
             ID of the project
             
         Raises:
-            ValueError: If the project does not exist or the specified sprint does not exist
+            ValueError: If the project does not exist
         """
         project = await self.project_repository.get_by_id(project_id)
         if not project:
             raise ValueError(f"Project with ID {project_id} does not exist")
             
-        todo = TodoItem(
+        task = Task(
             title=title,
             description=description,
             status=status,
@@ -222,40 +170,7 @@ class ProjectService:
             tags=tags or []
         )
         
-        if sprint_name:
-            # Find the sprint
-            sprint = next((s for s in project.sprints if s.name == sprint_name), None)
-            if not sprint:
-                raise ValueError(f"Sprint {sprint_name} does not exist in project {project.name}")
-                
-            # Add the todo to the sprint
-            sprint.add_todo(todo)
-        else:
-            # Add the todo to the project
-            project.add_todo(todo)
-        
-        await self.project_repository.save(project)
-        
-        return project_id
-    
-    async def set_current_sprint(self, project_id: str, sprint_name: str) -> str:
-        """Set the current active sprint for a project.
-        
-        Args:
-            project_id: ID of the project
-            sprint_name: Name of the sprint to set as current
-            
-        Returns:
-            ID of the project
-            
-        Raises:
-            ValueError: If the project does not exist or the specified sprint does not exist
-        """
-        project = await self.project_repository.get_by_id(project_id)
-        if not project:
-            raise ValueError(f"Project with ID {project_id} does not exist")
-            
-        project.set_current_sprint(sprint_name)
+        project.add_task(task)
         await self.project_repository.save(project)
         
         return project_id

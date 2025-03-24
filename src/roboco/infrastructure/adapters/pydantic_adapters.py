@@ -9,10 +9,10 @@ domain-driven design while maintaining backward compatibility with the API layer
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 
-from roboco.core.schema import ProjectConfig, TodoItem as PydanticTodoItem, Sprint as PydanticSprint
-from roboco.domain.models.project import Project
-from roboco.domain.models.sprint import Sprint
-from roboco.domain.models.todo_item import TodoItem
+from roboco.core.schema import ProjectConfig, TodoItem as PydanticTodoItem, Sprint as PydanticSprint, Task
+from roboco.core.models.project import Project
+from roboco.core.models.sprint import Sprint
+from roboco.core.models.todo_item import TodoItem
 
 
 def project_to_pydantic(project: Project) -> ProjectConfig:

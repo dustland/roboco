@@ -3,7 +3,7 @@
 Test Project Team
 
 This script tests the ProjectTeam implementation to verify it can:
-1. Complete a conversation between the human proxy and project builder
+1. Complete a conversation between the human proxy and planner
 2. Successfully create a project folder with the correct structure
 3. Generate appropriate project metadata
 
@@ -63,20 +63,20 @@ async def main():
     os.makedirs(workspace_dir, exist_ok=True)
     
     # Create the project team
-    print("Creating Project Team...")
+    print("Creating Planning Team...")
     planning_team = PlanningTeam(
         workspace_dir=workspace_dir
     )
     
     # Define the test query
-    query = "Create a simple todo app with popular tech stacks"
+    query = "Build a beautiful todo app"
     # Run the chat
-    print(f"\nRunning chat with project builder... query: {query}")
+    print(f"\nRunning chat with planner... query: {query}")
 
     result = await planning_team.run_chat(query=query)
     
     # Print the response
-    print_section("Project Builder Response")
+    print_section("Planner Response")
     print(result["response"])
     
     # Print the chat history
@@ -98,7 +98,7 @@ async def main():
         print("No todo app project directory found. Check the workspace directory manually.")
     
     print_section("Test Complete")
-    print("✅ The ProjectTeam test has completed.")
+    print("✅ The PlanningTeam test has completed.")
     print("Check the output above to verify if the project was created successfully.")
 
 if __name__ == "__main__":
