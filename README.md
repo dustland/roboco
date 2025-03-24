@@ -51,21 +51,24 @@ RoboCo follows a clean, domain-driven architecture:
 src/roboco/
 ├── api/                # REST API with FastAPI
 │   ├── routers/        # API route handlers
-│   ├── schemas/        # API data validation schemas
 │   └── server.py       # FastAPI application
-├── domain/             # Domain models and business logic
+├── core/               # Core domain models and interfaces
 │   ├── models/         # Core domain entities
-│   └── repositories/   # Repository interfaces
+│   ├── repositories/   # Repository interfaces
+│   └── schema/         # Data validation schemas
 ├── infrastructure/     # External systems and implementations
 │   ├── repositories/   # Repository implementations
 │   └── adapters/       # External service adapters
-└── services/           # Application services
-    ├── agent_service.py    # Agent management
-    ├── api_service.py      # API facade
-    ├── project_service.py  # Project management
-    ├── sprint_service.py   # Sprint management
-    ├── team_service.py     # Team management
-    └── workspace_service.py # Workspace management
+├── services/           # Application services
+│   ├── agent_service.py    # Agent management
+│   ├── api_service.py      # API facade
+│   ├── chat_service.py     # Chat interactions
+│   ├── project_service.py  # Project management
+│   ├── task_service.py     # Task management
+│   ├── team_service.py     # Team management
+│   └── workspace_service.py # Workspace management
+└── teams/              # Multi-agent team implementations
+    └── project_team.py # Project creation and management team
 ```
 
 ## Documentation

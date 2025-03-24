@@ -17,13 +17,14 @@ flowchart TB
     subgraph Application["Application Layer"]
         Project_Service["Project Service"]
         Agent_Service["Agent Service"]
+        Task_Service["Task Service"]
         API_Service["API Service"]
     end
     
-    subgraph Domain["Domain Layer"]
+    subgraph Core["Core Layer"]
         Models["Models"]
         Repositories["Repositories\n(Interfaces)"]
-        Domain_Services["Domain Services"]
+        Schema["Schema Definitions"]
     end
     
     subgraph Infrastructure["Infrastructure Layer"]
@@ -33,8 +34,8 @@ flowchart TB
     end
     
     Interface --> Application
-    Application --> Domain
-    Domain --> Infrastructure
+    Application --> Core
+    Core --> Infrastructure
 ```
 
 ## Core Domain Objects
@@ -132,9 +133,9 @@ classDiagram
     }
 ```
 
-## Domain Layer
+## Core Layer
 
-The domain layer contains the core business logic and entities of the system.
+The core layer contains the domain models, interfaces, and schema definitions that form the heart of the system.
 
 ### Domain Models
 
@@ -148,11 +149,12 @@ Domain models represent the core business entities with behavior, not just data 
 **Example Structure:**
 ```mermaid
 graph TD
-    domain[domain/] --> models[models/]
-    domain --> repositories[repositories/]
+    core[core/] --> models[models/]
+    core --> repositories[repositories/]
+    core --> schema[schema/]
     models --> project[project.py]
     models --> sprint[sprint.py]
-    models --> todo_item[todo_item.py]
+    models --> task[task.py]
     repositories --> project_repository[project_repository.py]
 ```
 
@@ -167,7 +169,7 @@ Repository interfaces define the contract for data access operations without spe
 
 ## Application Layer
 
-The application layer orchestrates the domain layer to perform business operations.
+The application layer orchestrates the core layer to perform business operations.
 
 ### Services
 
@@ -183,6 +185,7 @@ Services coordinate domain objects to perform business operations that span mult
 graph TD
     services[services/] --> project_service[project_service.py]
     services --> agent_service[agent_service.py]
+    services --> task_service[task_service.py]
     services --> api_service[api_service.py]
 ```
 
@@ -237,7 +240,7 @@ graph TD
     api --> routers[routers/]
     schemas --> project_schema[project.py]
     schemas --> sprint_schema[sprint.py]
-    schemas --> todo_schema[todo.py]
+    schemas --> task_schema[task.py]
     routers --> project_router[project.py]
     routers --> job_router[job.py]
 ```
@@ -277,9 +280,9 @@ graph TD
 
 The system follows a dependency rule where inner layers do not depend on outer layers:
 
-- Domain layer has no external dependencies
-- Application layer depends only on the domain layer
-- Infrastructure layer implements interfaces defined in the domain layer
+- Core layer has no external dependencies
+- Application layer depends only on the core layer
+- Infrastructure layer implements interfaces defined in the core layer
 - Interface layer depends on the application layer
 
 This ensures that the core business logic remains isolated from technical concerns and can evolve independently.

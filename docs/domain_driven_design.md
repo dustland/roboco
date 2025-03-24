@@ -20,7 +20,7 @@ A shared language between developers and domain experts that is used consistentl
 The heart of the software, representing the core business concepts, rules, and logic.
 
 **Implementation in Roboco:**
-- Domain models in `domain/models/` contain business logic and invariants
+- Domain models in `core/models/` contain business logic and invariants
 - Rich behavior methods that enforce business rules
 - Models represent real business entities rather than data structures
 
@@ -35,14 +35,14 @@ Explicit boundaries between different parts of the system, each with its own ubi
 
 ## Architectural Layers
 
-### Domain Layer
+### Domain Layer (Core)
 
 Contains the domain models, business logic, and domain services.
 
 **Implementation in Roboco:**
-- `domain/models/`: Core business entities with behavior
-- `domain/repositories/`: Interfaces defining persistence operations
-- `domain/services/`: Domain-specific operations that don't belong to a single entity
+- `core/models/`: Core business entities with behavior
+- `core/repositories/`: Interfaces defining persistence operations
+- `core/schema/`: Data validation schemas for domain objects
 
 ### Application Layer
 
@@ -51,6 +51,7 @@ Coordinates the application tasks and delegates work to the domain layer.
 **Implementation in Roboco:**
 - `services/`: Application services that orchestrate domain operations
 - `services/api_service.py`: Facade for the API layer to access domain functionality
+- `services/task_service.py`: Manages task-related operations
 
 ### Infrastructure Layer
 
@@ -65,7 +66,7 @@ Provides technical capabilities to support the higher layers.
 Handles interaction with external systems or users.
 
 **Implementation in Roboco:**
-- `api/`: FastAPI endpoints and schemas for HTTP interaction
+- `api/`: FastAPI endpoints for HTTP interaction
 - `api/schemas/`: Pydantic models for API validation and serialization
 - `api/routers/`: Organized API endpoints by domain concept
 
@@ -76,7 +77,7 @@ Handles interaction with external systems or users.
 Provides an abstraction layer between the domain and data mapping layers.
 
 **Implementation in Roboco:**
-- `domain/repositories/project_repository.py`: Interface defining persistence operations
+- `core/repositories/project_repository.py`: Interface defining persistence operations
 - `infrastructure/repositories/file_project_repository.py`: Concrete implementation using file system
 
 ### Adapter Pattern
