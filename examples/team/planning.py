@@ -22,8 +22,7 @@ from datetime import datetime
 project_root = Path(__file__).parent.parent.parent
 sys.path.append(str(project_root))
 
-from roboco.teams.project_team import ProjectTeam
-from roboco.core.config import load_config, get_llm_config
+from roboco.teams.planning import PlanningTeam
 from loguru import logger
 
 # Configure logging
@@ -59,39 +58,44 @@ async def main():
     """Run the Project Team test."""
     print_section("Project Team Test")
     
-    # Create workspace directory
-    workspace_dir = "workspace/test_project"
+    # Set base workspace directory
+    workspace_dir = "workspace"
     os.makedirs(workspace_dir, exist_ok=True)
-    
-    # Load config for LLM settings
-    config = load_config()
-    llm_config = get_llm_config(config)
     
     # Create the project team
     print("Creating Project Team...")
-    project_team = ProjectTeam(
-        llm_config=llm_config,
+    planning_team = PlanningTeam(
         workspace_dir=workspace_dir
     )
     
     # Define the test query
-    query = "Create a simple todo app with React frontend and FastAPI backend"
-    teams = ["frontend", "backend"]
-    
-    print(f"\nTest Query: {query}")
-    print(f"Teams: {teams}")
-    
+    query = "Create a simple todo app with popular tech stacks"
     # Run the chat
-    print("\nRunning chat with project builder...")
-    result = await project_team.run_chat(query=query, teams=teams)
+    print(f"\nRunning chat with project builder... query: {query}")
+
+    result = await planning_team.run_chat(query=query)
     
     # Print the response
     print_section("Project Builder Response")
     print(result["response"])
     
-    # Check if project was created
+    # Print the chat history
+    print_section("Chat History")
+    for msg in result.get("chat_history", []):
+        role = msg.get("role", "unknown")
+        content = msg.get("content", "")
+        print(f"{role.upper()}: {content[:100]}..." if len(content) > 100 else f"{role.upper()}: {content}")
+    
+    # List the created project structure
     print_section("Project Structure")
-    list_directory_contents(workspace_dir)
+    for item in os.listdir(workspace_dir):
+        item_path = os.path.join(workspace_dir, item)
+        if os.path.isdir(item_path) and item.startswith("todo"):  # Look for todo app directory
+            print(f"Found project directory: {item}")
+            list_directory_contents(item_path)
+            break
+    else:
+        print("No todo app project directory found. Check the workspace directory manually.")
     
     print_section("Test Complete")
     print("✅ The ProjectTeam test has completed.")

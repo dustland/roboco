@@ -7,12 +7,31 @@ It wraps autogen.tools.Tool to provide a consistent interface for all Roboco too
 
 import inspect
 import functools
+import logging
 from typing import Any, Callable, Dict, List, Optional, Union, TypeVar, Set
 from loguru import logger
 
 from autogen.tools import Tool as AutogenTool
 
 T = TypeVar('T')
+
+def command(primary: bool = False):
+    """
+    Decorator to mark a method as a command that should be registered with the tool.
+    
+    Args:
+        primary: Whether this command should be the primary (default) command
+        
+    Returns:
+        Decorated function
+    """
+    def decorator(func):
+        # Mark the function as a command without wrapping it
+        func._is_command = True
+        func._is_primary = primary
+        return func
+    
+    return decorator
 
 class Tool(AutogenTool):
     """
@@ -25,45 +44,38 @@ class Tool(AutogenTool):
         ```python
         class MyTool(Tool):
             def __init__(self):
-                # Define commands that will be dynamically registered
-                
-                def process_query(query: str) -> Dict[str, Any]:
-                    '''
-                    Process a query.
-                    
-                    Args:
-                        query: The query to process
-                        
-                    Returns:
-                        The processed result
-                    '''
-                    return {"result": f"Processed {query}"}
-                
-                def search_data(term: str, max_results: int = 10) -> Dict[str, Any]:
-                    '''
-                    Search for data with the given term.
-                    
-                    Args:
-                        term: The search term
-                        max_results: Maximum number of results to return
-                        
-                    Returns:
-                        Dictionary with search results
-                    '''
-                    return {"results": [f"Result for {term}: {i}" for i in range(max_results)]}
-                
                 # Initialize with the parent class
                 super().__init__(
                     name="my_tool",
                     description="Tool for processing queries and searching data"
                 )
+            
+            @command()
+            def process_query(self, query: str) -> Dict[str, Any]:
+                '''
+                Process a query.
                 
-                # Register all commands
-                commands = {
-                    "process_query": process_query,
-                    "search_data": search_data
-                }
-                self.register_commands(commands)
+                Args:
+                    query: The query to process
+                    
+                Returns:
+                    The processed result
+                '''
+                return {"result": f"Processed {query}"}
+            
+            @command(primary=True)
+            def search_data(self, term: str, max_results: int = 10) -> Dict[str, Any]:
+                '''
+                Search for data with the given term.
+                
+                Args:
+                    term: The search term
+                    max_results: Maximum number of results to return
+                    
+                Returns:
+                    The search results
+                '''
+                return {"results": [f"Result {i} for {term}" for i in range(max_results)]}
         ```
     """
     
@@ -76,225 +88,193 @@ class Tool(AutogenTool):
         **kwargs
     ):
         """
-        Initialize the Tool.
+        Initialize the tool.
         
         Args:
-            name: The name of the tool
-            description: A description of what the tool does
-            func_or_tool: The function to be called when the tool is invoked (optional)
-            auto_discover: Whether to automatically discover functions defined in __init__ (default: True)
+            name: Name of the tool
+            description: Description of the tool
+            func_or_tool: Optional function or tool to wrap
+            auto_discover: Whether to automatically discover and register commands
             **kwargs: Additional arguments to pass to the parent class
         """
-        # Initialize instance variables
-        self.commands = {}
-        self.primary_command = None
-        self.registered_with_agents = set()
+        self._name = name
+        self._description = description
+        self.commands: Dict[str, Callable] = {}
+        self.primary_command: Optional[str] = None
+        self.registered_with_agents: Set = set()
         
-        # If auto_discover is enabled, find functions defined in __init__
+        # Auto-discover and register commands if enabled
         if auto_discover:
-            # Get the local variables from the caller frame (__init__ of the child class)
-            import inspect
-            caller_frame = inspect.currentframe().f_back
-            local_vars = caller_frame.f_locals if caller_frame else {}
-            
-            # Find all callable objects that aren't methods or built-ins
             discovered_commands = {}
-            for name, obj in local_vars.items():
-                # Skip non-callable, private, or special items
-                if not callable(obj) or name.startswith('_') or name == 'self':
-                    continue
-                    
-                # Skip methods (bound to an instance)
-                if inspect.ismethod(obj):
-                    continue
-                    
-                # Skip builtins and imports
-                if obj.__module__ in ('builtins', '__builtin__'):
-                    continue
-                    
-                # Avoid infinite recursion edge case with nested functions that call Tool.__init__
-                if name in ('super', '__init__'):
+            for name, method in inspect.getmembers(self, predicate=inspect.ismethod):
+                # Skip methods that start with underscore (private methods)
+                if name.startswith('_'):
                     continue
                 
-                # It's a function we can use as a command
-                discovered_commands[name] = obj
-                logger.debug(f"Auto-discovered command: {name}")
+                # Skip methods that are not marked as commands
+                if not hasattr(method, '_is_command'):
+                    continue
+                
+                # Add to discovered commands
+                discovered_commands[name] = method
+                
+                # Check if this is the primary command
+                if hasattr(method, '_is_primary') and method._is_primary:
+                    self.primary_command = name
             
-            # Register the discovered commands
-            if discovered_commands:
-                self.register_commands(discovered_commands)
-                logger.debug(f"Auto-registered {len(discovered_commands)} commands: {', '.join(discovered_commands.keys())}")
+            # Register all discovered commands
+            for name, method in discovered_commands.items():
+                self.register_command(name, method)
+            
+            logger.debug(f"Auto-registered {len(discovered_commands)} commands: {', '.join(discovered_commands.keys())}")
         
-        # If no function is provided, create a command executor wrapper
-        if func_or_tool is None or func_or_tool == self.execute_command:
-            func_or_tool = self._create_command_executor()
+        # Create the command executor function for the parent class
+        executor = func_or_tool if func_or_tool is not None else self._create_command_executor()
         
-        super().__init__(
-            name=name,
-            description=description,
-            func_or_tool=func_or_tool,
-            **kwargs
-        )
+        # Initialize the parent class
+        super().__init__(name=name, description=description, func_or_tool=executor, **kwargs)
         
-        # Update the description with registered commands
-        self._update_tool_description()
+        # Set the description
+        self._description = self._generate_description()
         
         logger.debug(f"Initialized {self.__class__.__name__} tool")
     
     def _create_command_executor(self) -> Callable:
         """
-        Create a command executor function for this tool.
+        Create a function that executes the primary command or a specified command.
         
-        The command executor is a function that takes a command name and parameters,
-        and executes the appropriate command.
+        This method creates a function that will be used by the AutogenTool parent class
+        as the main entry point for executing commands.
         
         Returns:
-            A function that can be used to execute commands
+            A function that executes commands
         """
-        tool_instance = self
-        
-        def command_executor(command: str = None, **kwargs: Any) -> Any:
+        def execute_command(*args: Any, **kwargs: Any) -> Any:
             """
-            Execute a command with the given parameters.
+            Execute a command with the given arguments.
             
             Args:
-                command: The command to execute
-                **kwargs: Parameters for the command
+                *args: Positional arguments to pass to the command
+                **kwargs: Keyword arguments to pass to the command
                 
             Returns:
                 The result of the command execution
+            
+            Raises:
+                ValueError: If the command is not found or if required parameters are missing
             """
-            return tool_instance.execute_command(command, **kwargs)
+            # Extract the command name from kwargs if it exists
+            command = kwargs.pop("command", None)
             
-        # Set the name to match the tool's name
-        command_executor.__name__ = f"{self.__class__.__name__}_command_executor"
-        
-        return command_executor
-    
-    def register_commands(self, commands: Dict[str, Callable]) -> None:
-        """
-        Register multiple commands with the tool.
-        
-        Args:
-            commands: Dictionary mapping command names to functions
-        """
-        for cmd_name, cmd_func in commands.items():
-            self.register_command(cmd_name, cmd_func)
-        
-        # After registering all commands, update the description
-        self._update_tool_description()
-    
-    def register_command(self, command_name: str, command_func: Callable) -> None:
-        """
-        Register a single command with the tool.
-        
-        Args:
-            command_name: Name of the command
-            command_func: Function to execute for the command
-        """
-        if command_name in self.commands:
-            logger.warning(f"Command {command_name} already registered, overwriting")
-        
-        self.commands[command_name] = command_func
-        
-        # If this is the first command, set it as primary
-        if self.primary_command is None:
-            self.primary_command = command_name
+            # Handle special case for agent tool calls which may pass args/kwargs in a specific format
+            if len(args) == 1 and isinstance(args[0], dict):
+                agent_args = []
+                agent_kwargs = {}
+                
+                # Case 1: Agent passes {"args": [...], "kwargs": {...}}
+                if "args" in args[0] and "kwargs" in args[0]:
+                    agent_args = args[0].get("args", [])
+                    agent_kwargs = args[0].get("kwargs", {})
+                    
+                    # If the first arg is a command name (string), extract it
+                    if agent_args and isinstance(agent_args[0], str) and agent_args[0] in self.commands:
+                        command = agent_args[0]
+                        agent_args = agent_args[1:]
+                
+                # Case 2: Agent passes direct parameters as a dict
+                else:
+                    agent_kwargs = args[0]
+                
+                # Special handling for FileSystemTool's save_file command
+                if self.name == "filesystem" and command == "save_file" and len(agent_args) >= 1:
+                    # If we have a file_path as the first arg but no content in kwargs, try to extract from args
+                    if "content" not in agent_kwargs and len(agent_args) >= 1:
+                        # The first arg might be the file_path, and we need to find content
+                        if "file_path" not in agent_kwargs:
+                            agent_kwargs["file_path"] = agent_args[0]
+                            
+                        # If there's a second arg, it might be the content
+                        if len(agent_args) >= 2:
+                            agent_kwargs["content"] = agent_args[1]
+                
+                # Special handling for FileSystemTool's read_file command
+                if self.name == "filesystem" and (command == "read_file" or "read_file" in agent_args):
+                    if "read_file" in agent_args:
+                        command = "read_file"
+                        agent_args.remove("read_file")
+                    
+                    if len(agent_args) >= 1 and "file_path" not in agent_kwargs:
+                        agent_kwargs["file_path"] = agent_args[0]
+                
+                # Use these instead of the original args/kwargs
+                args = agent_args
+                kwargs.update(agent_kwargs)
             
-        logger.debug(f"Registered command: {command_name}")
-        
-        # Update the description after registering a command
-        self._update_tool_description()
-    
-    def _extract_examples_from_docstring(self, docstring: str) -> List[str]:
-        """
-        Extract example usages from a function's docstring.
-        
-        Args:
-            docstring: The function's docstring
+            # If no command is specified, use the primary command
+            if command is None:
+                if self.primary_command is None:
+                    raise ValueError(f"No command specified and no primary command found for {self.name}")
+                command = self.primary_command
             
+            try:
+                # Execute the command
+                return self.execute_command(command=command, *args, **kwargs)
+            except TypeError as e:
+                # Provide more helpful error message
+                logger.error(f"Error executing command {command}: {e}")
+                return {
+                    "success": False,
+                    "error": f"Error executing command {command}: {e}",
+                    "command": command
+                }
+            
+        return execute_command
+    
+    def _generate_description(self) -> str:
+        """
+        Generate a description for the tool.
+        
+        This method generates a rich description of the tool and its commands,
+        including parameter information, return values, and examples.
+        
         Returns:
-            List of example strings
-        """
-        if not docstring:
-            return []
-            
-        examples = []
-        lines = docstring.split('\n')
-        in_examples_section = False
-        current_example = []
-        
-        for line in lines:
-            # Check for Examples section
-            if line.strip().lower() == "examples:" or line.strip().lower() == "example:":
-                in_examples_section = True
-                continue
-                
-            # Check if we're exiting the Examples section
-            if in_examples_section and line.strip() and line.strip().lower().endswith(':') and not line.strip().lower() in ("example:", "examples:"):
-                in_examples_section = False
-                if current_example:
-                    examples.append('\n'.join(current_example))
-                    current_example = []
-                continue
-                
-            # Add the line to the current example
-            if in_examples_section:
-                if line.strip():
-                    current_example.append(line)
-                elif current_example:  # Empty line after content, possible example separation
-                    examples.append('\n'.join(current_example))
-                    current_example = []
-        
-        # Add the last example if there is one
-        if current_example:
-            examples.append('\n'.join(current_example))
-            
-        return examples
-
-    def _update_tool_description(self) -> None:
-        """
-        Update the tool description to include information about registered commands.
-        This helps LLMs understand how to use the tool with its various commands.
+            The generated description
         """
         if not self.commands:
-            return
+            return self._description
         
-        # Start with the original description
-        base_description = self.description if hasattr(self, 'description') else ""
+        # Start with the basic description
+        description = f"{self._description}\n\n"
         
-        # Add command information
-        command_details = []
-        all_examples = []
+        # Add information about available commands
+        description += f"This tool provides the following commands:\n\n"
         
+        # Process each command
         for cmd_name, cmd_func in self.commands.items():
-            # Extract function signature and docstring
+            # Get the function signature
             sig = inspect.signature(cmd_func)
-            doc = inspect.getdoc(cmd_func) or ""
             
-            # Extract examples from the docstring
-            examples = self._extract_examples_from_docstring(doc)
-            if examples:
-                for example in examples:
-                    # Format the example to clearly show which command it's for
-                    formatted_example = f"Example for `{cmd_name}`:\n```python\n{example}\n```"
-                    all_examples.append(formatted_example)
+            # Get the docstring
+            docstring = cmd_func.__doc__ or ""
+            docstring = inspect.cleandoc(docstring) if docstring else ""
             
-            # Parse docstring to extract parameter descriptions and return info
+            # Extract parameter descriptions from docstring
             param_descriptions = {}
             return_description = ""
-            if doc:
-                # Simple docstring parser to extract parameter descriptions
-                lines = doc.split('\n')
+            current_param = None
+            
+            if docstring:
+                lines = docstring.split('\n')
                 in_args_section = False
                 in_returns_section = False
-                current_param = None
                 
                 for line in lines:
-                    line = line.strip()
-                    
+                    # Skip empty lines
+                    if not line:
+                        continue
+                        
                     # Check for Args section
-                    if line.lower() == "args:" or line.lower() == "parameters:":
+                    if line.lower() in ("args:", "parameters:"):
                         in_args_section = True
                         in_returns_section = False
                         continue
@@ -349,104 +329,143 @@ class Tool(AutogenTool):
                     type_name = "Any"
                 
                 if param.default is param.empty:
-                    params.append(f"{param_name}: {type_name}")
+                    default_str = ""
                 else:
-                    default_val = repr(param.default)
-                    params.append(f"{param_name}: {type_name} = {default_val}")
+                    default_str = f" = {repr(param.default)}"
+                
+                # Skip 'self' parameter for methods
+                if param_name == 'self':
+                    continue
+                
+                param_str = f"{param_name}: {type_name}{default_str}"
+                params.append(param_str)
             
-            param_str = ", ".join(params)
+            # Create the command signature
+            signature = f"{cmd_name}({', '.join(params)})"
             
-            # Format the return type if available
-            if sig.return_annotation is not sig.empty:
-                try:
-                    if hasattr(sig.return_annotation, "__name__"):
-                        return_type = sig.return_annotation.__name__
-                    elif hasattr(sig.return_annotation, "_name"):
-                        return_type = sig.return_annotation._name
-                    else:
-                        return_type = str(sig.return_annotation).replace("typing.", "")
-                except Exception:
-                    return_type = "Any"
-            else:
-                return_type = "Any"
+            # Add primary command indicator
+            primary_indicator = " (primary command)" if cmd_name == self.primary_command else ""
             
-            # Create command description
-            cmd_desc = f"- `{cmd_name}({param_str})` -> {return_type}"
+            # Add the command to the description
+            description += f"## {signature}{primary_indicator}\n\n"
             
-            # Add the brief description from the first line of the docstring
-            if doc:
-                brief_doc = doc.split('\n')[0].strip()
-                cmd_desc += f": {brief_doc}"
+            # Add the command description (first line of docstring)
+            if docstring:
+                first_line = docstring.split('\n')[0].strip()
+                description += f"{first_line}\n\n"
             
-            command_details.append(cmd_desc)
-            
-            # Add parameter descriptions if available
+            # Add parameter descriptions
             if param_descriptions:
-                param_details = []
-                for p_name, p_desc in param_descriptions.items():
-                    if p_name in sig.parameters:
-                        param_details.append(f"  - `{p_name}`: {p_desc}")
-                
-                if param_details:
-                    command_details.append("  Parameters:")
-                    command_details.extend(param_details)
+                description += "Parameters:\n"
+                for param_name, param in sig.parameters.items():
+                    if param_name == 'self':
+                        continue
+                    
+                    param_desc = param_descriptions.get(param_name, "No description available")
+                    description += f"- {param_name}: {param_desc}\n"
+                description += "\n"
             
-            # Add return value description if available
+            # Add return description
             if return_description:
-                command_details.append(f"  Returns: {return_description}")
-                
-            # Add a blank line after each command for better readability
-            command_details.append("")
-        
-        # Build the full description
-        commands_section = "\n\nAvailable commands:\n" + "\n".join(command_details)
-        
-        # Add information about primary command
-        primary_command_info = ""
-        if self.primary_command:
-            primary_command_info = f"\n\nPrimary Command: `{self.primary_command}` (used if no command is specified)"
-        
-        usage_section = f"{primary_command_info}\n\nUsage: Call this tool with `command='{self.primary_command}'` (or another command name) and any required parameters for that command."
-        
-        # Add examples section if any examples were found
-        examples_section = ""
-        if all_examples:
-            examples_section = "\n\nExamples:\n" + "\n".join(all_examples)
-        else:
-            # Safely get the tool name
-            tool_name = None
-            if hasattr(self, '_name') and self._name:
-                tool_name = self._name
-            elif hasattr(self, 'name') and self.name:
-                tool_name = self.name
-            else:
-                # Try even deeper access for autogen Tool
-                try:
-                    # From autogen.tool.Tool
-                    if hasattr(self, '_function') and hasattr(self._function, '__self__') and hasattr(self._function.__self__, 'name'):
-                        tool_name = self._function.__self__.name
-                except:
-                    pass
-                
-            # Fallback to class name if all else fails
-            if not tool_name:
-                tool_name = self.__class__.__name__.lower()
+                description += f"Returns: {return_description}\n\n"
             
-            # Fix for FileSystemTool special case
-            if self.__class__.__name__ == "FileSystemTool":
-                tool_name = "filesystem"
+            # Add examples if available
+            examples = self._extract_examples_from_docstring(docstring)
+            if examples:
+                description += "Examples:\n"
+                for example in examples:
+                    description += f"{example}\n"
+                description += "\n"
+        
+        # Add usage guidance
+        description += "\n## Usage\n\n"
+        description += f"To use this tool, specify a command and its parameters. "
+        if self.primary_command:
+            description += f"If no command is specified, the primary command '{self.primary_command}' will be used."
+        description += "\n\n"
+        
+        return description
+    
+    def _extract_examples_from_docstring(self, docstring: str) -> List[str]:
+        """
+        Extract example usages from a function's docstring.
+        
+        Args:
+            docstring: The function's docstring
+            
+        Returns:
+            List of example strings
+        """
+        if not docstring:
+            return []
+            
+        examples = []
+        lines = docstring.split('\n')
+        in_examples_section = False
+        current_example = []
+        
+        for line in lines:
+            # Check for Examples section
+            if line.strip().lower() == "examples:" or line.strip().lower() == "example:":
+                in_examples_section = True
+                continue
                 
-            examples_section = f"\n\nExample: `{tool_name}(command='{self.primary_command}', param1='value', param2=42)`"
+            # Check if we're exiting the Examples section
+            if in_examples_section and line.strip() and line.strip().lower().endswith(':') and not line.strip().lower() in ("example:", "examples:"):
+                in_examples_section = False
+                if current_example:
+                    examples.append('\n'.join(current_example))
+                    current_example = []
+                continue
+                
+            # Add the line to the current example
+            if in_examples_section:
+                if line.strip():
+                    current_example.append(line)
+                elif current_example:  # Empty line after content, possible example separation
+                    examples.append('\n'.join(current_example))
+                    current_example = []
         
-        # Set the updated description
-        full_description = base_description + commands_section + usage_section + examples_section
+        # Add the last example if there is one
+        if current_example:
+            examples.append('\n'.join(current_example))
+            
+        return examples
+
+    def register_commands(self, commands: Dict[str, Callable]) -> None:
+        """
+        Register multiple commands with the tool.
         
-        # Update the description in parent class
-        if hasattr(self, '_description'):
-            self._description = full_description
-        # For compatibility with different AutogenTool versions
-        elif hasattr(self, 'description'):
-            self.description = full_description
+        Args:
+            commands: Dictionary mapping command names to functions
+        """
+        for cmd_name, cmd_func in commands.items():
+            self.register_command(cmd_name, cmd_func)
+        
+        # After registering all commands, update the description
+        self._description = self._generate_description()
+    
+    def register_command(self, command_name: str, command_func: Callable) -> None:
+        """
+        Register a single command with the tool.
+        
+        Args:
+            command_name: Name of the command
+            command_func: Function to execute for the command
+        """
+        if command_name in self.commands:
+            logger.warning(f"Command {command_name} already registered, overwriting")
+        
+        self.commands[command_name] = command_func
+        
+        # If this is the first command, set it as primary
+        if self.primary_command is None:
+            self.primary_command = command_name
+            
+        logger.debug(f"Registered command: {command_name}")
+        
+        # Update the description after registering a command
+        self._description = self._generate_description()
     
     def execute_command(self, command: str = None, **kwargs) -> Any:
         """
@@ -502,70 +521,270 @@ class Tool(AutogenTool):
             logger.error(f"Error executing command {command}: {e}")
             return {
                 "success": False,
-                "error": str(e),
+                "error": f"Error executing command {command}: {str(e)}",
                 "command": command
             }
     
-    def register_with_agents(self, caller_agent: Any, executor_agent: Any) -> None:
+    def register_with_agents(self, *agents, executor_agent=None) -> None:
         """
-        Register this tool with a caller agent and an executor agent.
-        
-        This follows AG2's pattern of having a caller agent (that suggests the tool)
-        and an executor agent (that executes the tool).
+        Register this tool with one or more agents.
         
         Args:
-            caller_agent: The agent that will suggest using the tool
-            executor_agent: The agent that will execute the tool
+            *agents: One or more agents to register with
+            executor_agent: Optional executor agent for the tool. If None, the first agent is used as executor.
         """
-        try:
-            # Register the tool with both agents
-            self.register_for_llm(caller_agent)
-            self.register_for_execution(executor_agent)
+        # If no executor_agent is provided, use the first agent as executor
+        if executor_agent is None and agents:
+            executor_agent = agents[0]
             
-            # Check if the function was registered correctly
-            if hasattr(executor_agent, "_function_map") and self.name in executor_agent._function_map:
-                logger.debug(f"{self.name} function successfully registered with executor agent")
-            else:
-                logger.warning(f"{self.name} function not found in executor_agent._function_map after registration")
+        for agent in agents:
+            if agent in self.registered_with_agents:
+                logger.debug(f"Tool {self.name} already registered with agent {agent.name}")
+                continue
                 
-            logger.info(f"Registered {self.name} from {self.__class__.__name__}")
-        except Exception as e:
-            logger.error(f"Error registering {self.name}: {e}")
+            try:
+                # Check if the agent has a register_tool method
+                if hasattr(agent, 'register_tool'):
+                    # Register the main tool function first
+                    func = self.func
+                    func.__name__ = self.name  # Set the name attribute for logging
+                    
+                    # Check if the agent has a valid llm_config
+                    if hasattr(agent, 'llm_config') and agent.llm_config:
+                        # Register the main function
+                        agent.register_tool(func, executor_agent)
+                        
+                        # Register individual commands as separate functions
+                        for cmd_name, cmd_func in self.commands.items():
+                            # Create a wrapper function that calls the command with proper parameter mapping
+                            def create_command_wrapper(command_name, command_func):
+                                # Get the signature of the command function to understand its parameters
+                                sig = inspect.signature(command_func)
+                                param_names = list(sig.parameters.keys())
+                                
+                                # Skip 'self' if it's the first parameter
+                                if param_names and param_names[0] == 'self':
+                                    param_names = param_names[1:]
+                                
+                                @functools.wraps(command_func)
+                                def wrapper(*args, **kwargs):
+                                    # Handle different ways agents might call the function
+                                    processed_kwargs = {}
+                                    
+                                    # Case 1: Agent passes a single dict with 'args' and 'kwargs' keys
+                                    if len(args) == 1 and isinstance(args[0], dict):
+                                        agent_args = args[0].get('args', [])
+                                        agent_kwargs = args[0].get('kwargs', {})
+                                        
+                                        # If agent_args is not empty, map positional args to named parameters
+                                        for i, arg in enumerate(agent_args):
+                                            if i < len(param_names):
+                                                processed_kwargs[param_names[i]] = arg
+                                        
+                                        # Add any explicitly named parameters from agent_kwargs
+                                        processed_kwargs.update(agent_kwargs)
+                                    else:
+                                        # Case 2: Regular function call with args/kwargs
+                                        # Map positional args to named parameters
+                                        for i, arg in enumerate(args):
+                                            if i < len(param_names):
+                                                processed_kwargs[param_names[i]] = arg
+                                        
+                                        # Add any explicitly named parameters
+                                        processed_kwargs.update(kwargs)
+                                    
+                                    # Call the command with the processed parameters
+                                    return self.execute_command(command=command_name, **processed_kwargs)
+                                
+                                # Set the function name for proper registration
+                                wrapper.__name__ = f"{self.name}_{command_name}"
+                                
+                                # Add proper parameter annotations for the wrapper
+                                # This helps avoid the "missing annotations" warning
+                                sig_params = list(sig.parameters.values())
+                                if sig_params and sig_params[0].name == 'self':
+                                    sig_params = sig_params[1:]
+                                
+                                # Create new parameters without 'self' but with proper annotations
+                                wrapper.__annotations__ = {p.name: p.annotation for p in sig_params 
+                                                         if p.annotation is not inspect.Parameter.empty}
+                                
+                                return wrapper
+                            
+                            # Register the command wrapper
+                            cmd_wrapper = create_command_wrapper(cmd_name, cmd_func)
+                            agent.register_tool(cmd_wrapper, executor_agent)
+                            logger.info(f"Registered function {cmd_name} with caller {agent.name} and executor {executor_agent.name}")
+                        
+                        self.registered_with_agents.add(agent)
+                        logger.debug(f"Registered tool {self.name} with agent {agent.name} using register_tool")
+                    else:
+                        # For agents without llm_config, register the function directly
+                        if hasattr(agent, '_function_map'):
+                            agent._function_map[self.name] = self.func
+                            
+                            # Also register individual commands
+                            for cmd_name, cmd_func in self.commands.items():
+                                def create_command_wrapper(command_name, command_func):
+                                    # Get the signature of the command function to understand its parameters
+                                    sig = inspect.signature(command_func)
+                                    param_names = list(sig.parameters.keys())
+                                    
+                                    # Skip 'self' if it's the first parameter
+                                    if param_names and param_names[0] == 'self':
+                                        param_names = param_names[1:]
+                                    
+                                    @functools.wraps(command_func)
+                                    def wrapper(*args, **kwargs):
+                                        # Handle different ways agents might call the function
+                                        processed_kwargs = {}
+                                        
+                                        # Case 1: Agent passes a single dict with 'args' and 'kwargs' keys
+                                        if len(args) == 1 and isinstance(args[0], dict):
+                                            agent_args = args[0].get('args', [])
+                                            agent_kwargs = args[0].get('kwargs', {})
+                                            
+                                            # If agent_args is not empty, map positional args to named parameters
+                                            for i, arg in enumerate(agent_args):
+                                                if i < len(param_names):
+                                                    processed_kwargs[param_names[i]] = arg
+                                            
+                                            # Add any explicitly named parameters from agent_kwargs
+                                            processed_kwargs.update(agent_kwargs)
+                                        else:
+                                            # Case 2: Regular function call with args/kwargs
+                                            # Map positional args to named parameters
+                                            for i, arg in enumerate(args):
+                                                if i < len(param_names):
+                                                    processed_kwargs[param_names[i]] = arg
+                                            
+                                            # Add any explicitly named parameters
+                                            processed_kwargs.update(kwargs)
+                                        
+                                        # Call the command with the processed parameters
+                                        return self.execute_command(command=command_name, **processed_kwargs)
+                                    
+                                    # Set the function name for proper registration
+                                    wrapper.__name__ = f"{self.name}_{command_name}"
+                                    
+                                    # Add proper parameter annotations for the wrapper
+                                    # This helps avoid the "missing annotations" warning
+                                    sig_params = list(sig.parameters.values())
+                                    if sig_params and sig_params[0].name == 'self':
+                                        sig_params = sig_params[1:]
+                                    
+                                    # Create new parameters without 'self' but with proper annotations
+                                    wrapper.__annotations__ = {p.name: p.annotation for p in sig_params 
+                                                             if p.annotation is not inspect.Parameter.empty}
+                                    
+                                    return wrapper
+                                
+                                # Register the command wrapper
+                                cmd_wrapper = create_command_wrapper(cmd_name, cmd_func)
+                                agent._function_map[f"{self.name}_{cmd_name}"] = cmd_wrapper
+                                logger.debug(f"Directly registered command {cmd_name} with agent {agent.name}")
+                            
+                            self.registered_with_agents.add(agent)
+                            logger.debug(f"Directly registered tool {self.name} with agent {agent.name}")
+                        else:
+                            logger.warning(f"Agent {agent.name} does not have llm_config or _function_map, skipping registration")
+                # Check if the agent has a register_function method (autogen compatibility)
+                elif hasattr(agent, 'register_function'):
+                    try:
+                        # Create a function map with all commands
+                        function_map = {self.name: self.func}
+                        description_map = {self.name: self._description if hasattr(self, '_description') else self.description}
+                        
+                        # Add individual commands
+                        for cmd_name, cmd_func in self.commands.items():
+                            def create_command_wrapper(command_name, command_func):
+                                # Get the signature of the command function to understand its parameters
+                                sig = inspect.signature(command_func)
+                                param_names = list(sig.parameters.keys())
+                                
+                                # Skip 'self' if it's the first parameter
+                                if param_names and param_names[0] == 'self':
+                                    param_names = param_names[1:]
+                                
+                                @functools.wraps(command_func)
+                                def wrapper(*args, **kwargs):
+                                    # Handle different ways agents might call the function
+                                    processed_kwargs = {}
+                                    
+                                    # Case 1: Agent passes a single dict with 'args' and 'kwargs' keys
+                                    if len(args) == 1 and isinstance(args[0], dict):
+                                        agent_args = args[0].get('args', [])
+                                        agent_kwargs = args[0].get('kwargs', {})
+                                        
+                                        # If agent_args is not empty, map positional args to named parameters
+                                        for i, arg in enumerate(agent_args):
+                                            if i < len(param_names):
+                                                processed_kwargs[param_names[i]] = arg
+                                        
+                                        # Add any explicitly named parameters from agent_kwargs
+                                        processed_kwargs.update(agent_kwargs)
+                                    else:
+                                        # Case 2: Regular function call with args/kwargs
+                                        # Map positional args to named parameters
+                                        for i, arg in enumerate(args):
+                                            if i < len(param_names):
+                                                processed_kwargs[param_names[i]] = arg
+                                        
+                                        # Add any explicitly named parameters
+                                        processed_kwargs.update(kwargs)
+                                    
+                                    # Call the command with the processed parameters
+                                    return self.execute_command(command=command_name, **processed_kwargs)
+                                
+                                # Set the function name for proper registration
+                                wrapper.__name__ = f"{self.name}_{command_name}"
+                                
+                                # Add proper parameter annotations for the wrapper
+                                # This helps avoid the "missing annotations" warning
+                                sig_params = list(sig.parameters.values())
+                                if sig_params and sig_params[0].name == 'self':
+                                    sig_params = sig_params[1:]
+                                
+                                # Create new parameters without 'self' but with proper annotations
+                                wrapper.__annotations__ = {p.name: p.annotation for p in sig_params 
+                                                         if p.annotation is not inspect.Parameter.empty}
+                                
+                                return wrapper
+                            
+                            # Register the command wrapper
+                            cmd_wrapper = create_command_wrapper(cmd_name, cmd_func)
+                            function_map[f"{self.name}_{cmd_name}"] = cmd_wrapper
+                            description_map[f"{self.name}_{cmd_name}"] = f"Execute the {cmd_name} command of the {self.name} tool"
+                        
+                        agent.register_function(
+                            function_map=function_map,
+                            description=description_map
+                        )
+                        self.registered_with_agents.add(agent)
+                        logger.debug(f"Registered tool {self.name} with agent {agent.name} using register_function")
+                    except Exception as e:
+                        logger.warning(f"Failed to register tool {self.name} with agent {agent.name}: {e}")
+                else:
+                    logger.warning(f"Agent {agent.name} does not have register_tool or register_function method")
+            except Exception as e:
+                logger.warning(f"Error registering tool {self.name} with agent {agent.name}: {e}")
     
-    @classmethod
-    def discover_methods(cls, instance: Any, prefix: str = "", exclude: Set[str] = None) -> Dict[str, Callable]:
+    @property
+    def name(self) -> str:
         """
-        Discover all methods in an instance that match a prefix and are not in the exclude set.
+        Get the name of the tool.
         
-        This is a utility method to help with auto-registering methods as commands.
-        
-        Args:
-            instance: The instance to inspect
-            prefix: Only include methods starting with this prefix
-            exclude: Set of method names to exclude
-            
         Returns:
-            Dictionary mapping method names to method functions
+            The tool name
         """
-        if exclude is None:
-            exclude = set()
-            
-        methods = {}
+        return self._name
+    
+    @property
+    def description(self) -> str:
+        """
+        Get the tool description.
         
-        for name, method in inspect.getmembers(instance, predicate=inspect.ismethod):
-            # Skip methods that start with _ (private/special methods)
-            if name.startswith('_'):
-                continue
-                
-            # Skip methods that don't start with the prefix
-            if prefix and not name.startswith(prefix):
-                continue
-                
-            # Skip methods in the exclude set
-            if name in exclude:
-                continue
-                
-            # Add the method to the result
-            methods[name] = method
-            
-        return methods
+        Returns:
+            The tool description, enhanced with command information if available
+        """
+        return self._description

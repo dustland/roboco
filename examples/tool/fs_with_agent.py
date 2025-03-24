@@ -18,7 +18,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")
 
 from roboco.tools.fs import FileSystemTool
 from roboco.core.agent import Agent
-from roboco.agents.human import HumanProxy
+from roboco.agents import HumanProxy
 
 # Configure logging
 logger.remove()

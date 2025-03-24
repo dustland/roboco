@@ -17,6 +17,7 @@ from loguru import logger
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 
 from roboco.tools.fs import FileSystemTool
+from roboco.domain.models.project_manifest import ProjectManifest, ProjectFile
 
 # Configure logging
 logger.remove()
@@ -31,162 +32,110 @@ async def main():
         logger.info(f"Created test directory: {test_dir}")
     
     # Initialize the FileSystemTool
-    logger.info("\n=== FileSystemTool with Enhanced Description Generation ===")
-    logger.info("This example demonstrates the new auto-generated rich tool descriptions.")
-    logger.info("These descriptions help LLMs better understand how to use tools with multiple commands.")
+    logger.info("\n=== FileSystemTool with Command Decorator Pattern ===")
+    logger.info("This example demonstrates the new command decorator pattern for tool methods.")
+    logger.info("Methods marked with @command are automatically registered as commands.")
     fs_tool = FileSystemTool()
     logger.info(f"Available commands: {', '.join(fs_tool.commands.keys())}")
+    logger.info(f"Primary command: {fs_tool.primary_command}")
     
     # Display the auto-generated tool description
     logger.info("\n=== Auto-generated Tool Description ===")
-    if hasattr(fs_tool, '_description'):
-        description = fs_tool._description
-    else:
-        description = fs_tool.description
-    
-    # Print the description with proper formatting
-    for line in description.split('\n'):
-        logger.info(line)
+    logger.info(fs_tool.description)
     
     # Create test files
-    test_files = {
-        "hello.txt": "Hello, World!",
-        "data.json": '{"name": "Test Data", "values": [1, 2, 3, 4, 5]}',
-        "note.md": "# Test Note\n\nThis is a test note created by the FileSystemTool."
-    }
+    logger.info("\n=== Testing File Operations ===")
     
-    # Test save_file command
-    logger.info("\n=== Testing save_file command ===")
-    for filename, content in test_files.items():
-        file_path = test_dir / filename
-        result = fs_tool.execute_command(
-            command="save_file",
-            content=content,
-            file_path=str(file_path)
-        )
-        logger.info(f"Saved {filename}: {result}")
+    # Test save_file (primary command)
+    test_file = test_dir / "test.txt"
+    result = fs_tool.execute_command(
+        command="save_file",
+        content="This is a test file created by the FileSystemTool.",
+        file_path=str(test_file)
+    )
+    logger.info(f"save_file result: {result}")
     
-    # Test list_directory command
-    logger.info("\n=== Testing list_directory command ===")
+    # Test read_file
+    result = fs_tool.execute_command(
+        command="read_file",
+        file_path=str(test_file)
+    )
+    logger.info(f"read_file result: {result}")
+    
+    # Test list_directory
     result = fs_tool.execute_command(
         command="list_directory",
         directory_path=str(test_dir)
     )
+    logger.info(f"list_directory result: {result}")
     
-    if result["success"]:
-        logger.info(f"Directory contents ({result['count']} items):")
-        for item in result["contents"]:
-            logger.info(f" - {item['name']} ({item['type']})")
-    else:
-        logger.error(f"Failed to list directory: {result['error']}")
-    
-    # Test read_file command
-    logger.info("\n=== Testing read_file command ===")
-    for filename in test_files.keys():
-        file_path = test_dir / filename
-        result = fs_tool.execute_command(
-            command="read_file",
-            file_path=str(file_path)
-        )
-        
-        if result["success"]:
-            # Truncate content if too long
-            content = result["content"]
-            if len(content) > 100:
-                content = content[:97] + "..."
-            logger.info(f"Read {filename}: {content}")
-        else:
-            logger.error(f"Failed to read {filename}: {result['error']}")
-    
-    # Test primary command (default command when none specified)
-    logger.info("\n=== Testing primary command ===")
-    # First, let's find out what the primary command is
-    primary_command = fs_tool.primary_command
-    logger.info(f"Primary command is: {primary_command}")
-    
-    # Now test it with appropriate parameters
-    if primary_command == "save_file":
-        primary_file = test_dir / "primary_test.txt"
-        result = fs_tool.execute_command(
-            content="This file was created using the primary command.",
-            file_path=str(primary_file)
-        )
-        logger.info(f"Primary command result: {result}")
-    elif primary_command == "read_file":
-        # Pick an existing file to read
-        primary_file = test_dir / "hello.txt"
-        result = fs_tool.execute_command(
-            file_path=str(primary_file)
-        )
-        logger.info(f"Primary command result: {result}")
-    elif primary_command == "list_directory":
-        result = fs_tool.execute_command(
-            directory_path=str(test_dir)
-        )
-        logger.info(f"Primary command result: {result}")
-    else:
-        logger.warning(f"Unexpected primary command: {primary_command}, skipping test")
-    
-    # Test error handling
-    logger.info("\n=== Testing error handling ===")
-    
-    # Non-existent command
-    try:
-        result = fs_tool.execute_command(
-            command="delete_file",  # This command doesn't exist
-            file_path=str(primary_file)
-        )
-    except ValueError as e:
-        logger.info(f"Expected error (non-existent command): {e}")
-    
-    # Missing parameters
-    try:
-        result = fs_tool.execute_command(
-            command="save_file"  # Missing required parameters
-        )
-    except Exception as e:
-        logger.info(f"Expected error (missing parameters): {e}")
-    
-    # Non-existent file
+    # Test create_directory
+    nested_dir = test_dir / "nested"
     result = fs_tool.execute_command(
-        command="read_file",
-        file_path=str(test_dir / "non_existent.txt")
+        command="create_directory",
+        directory_path=str(nested_dir)
     )
-    logger.info(f"Non-existent file result: {result}")
+    logger.info(f"create_directory result: {result}")
     
-    # Add an LLM prompt example
-    logger.info("\n=== Example LLM prompt with enhanced tool description ===")
-    logger.info("This shows how much easier it is for LLMs to use tools with enhanced descriptions")
-    llm_prompt = f"""
-    You have access to the {fs_tool.name} tool with the following description:
+    # Test primary command (without specifying command name)
+    test_file2 = test_dir / "primary_command_test.txt"
+    result = fs_tool.execute_command(
+        content="This file was created using the primary command (without specifying command name).",
+        file_path=str(test_file2)
+    )
+    logger.info(f"Primary command result: {result}")
     
-    {description}
+    # Test ProjectManifest with execute_project_manifest
+    logger.info("\n=== Testing ProjectManifest with Pydantic Models ===")
     
-    Use the tool to:
-    1. Create a file named 'test_prompt.txt' with the content "This file was created via an LLM prompt"
-    2. List the contents of the directory
-    3. Read the newly created file
-    """
+    # Create a test manifest using Pydantic models
+    manifest = ProjectManifest(
+        name="test-project",
+        directories=["examples/tool/data/project/src", "examples/tool/data/project/docs"],
+        files=[
+            ProjectFile(
+                path="examples/tool/data/project/README.md",
+                content="# Test Project\n\nThis project was created using the ProjectManifest model."
+            ),
+            ProjectFile(
+                path="examples/tool/data/project/src/main.py",
+                content="print('Hello from the test project!')"
+            ),
+            ProjectFile(
+                path="examples/tool/data/project/docs/index.md",
+                content="# Documentation\n\nThis is the documentation for the test project."
+            )
+        ]
+    )
     
-    for line in llm_prompt.split('\n'):
-        logger.info(line)
+    # Execute the project manifest
+    result = fs_tool.execute_command(
+        command="execute_project_manifest",
+        manifest=manifest,
+        base_path=""  # Use empty string as base path since paths in manifest are already relative
+    )
+    logger.info(f"execute_project_manifest result: {result}")
     
-    # Highlight key description features
-    logger.info("\n=== Key Enhanced Description Features ===")
-    logger.info("The new description generator automatically provides:")
-    logger.info("1. Detailed command signatures with parameter types and defaults")
-    logger.info("2. Comprehensive parameter descriptions from docstrings")
-    logger.info("3. Clear return value information")
-    logger.info("4. Primary command indication")
-    logger.info("5. Usage examples for each command")
-    logger.info("6. Overall guidance on how to use commands")
-    logger.info(f"Description size: {len(description)} characters")
-    logger.info("\nEnhanced descriptions like this make it much easier for LLMs")
-    logger.info("to correctly use tools with multiple commands without guessing.")
+    # Test with dictionary input (backward compatibility)
+    manifest_dict = {
+        "name": "dict-project",
+        "directories": ["examples/tool/data/dict_project/src"],
+        "files": [
+            {
+                "path": "examples/tool/data/dict_project/README.md",
+                "content": "# Dict Project\n\nThis project was created using a dictionary input."
+            }
+        ]
+    }
     
-    logger.info("\n=== Test completed successfully ===")
-    logger.info("Files are kept in examples/tool/data for inspection.")
-    logger.info("You can delete them manually if needed.")
+    result = fs_tool.execute_command(
+        command="execute_project_manifest",
+        manifest=manifest_dict,
+        base_path=""
+    )
+    logger.info(f"execute_project_manifest with dict result: {result}")
+    
+    logger.info("\n=== All tests completed successfully ===")
 
 if __name__ == "__main__":
     asyncio.run(main())

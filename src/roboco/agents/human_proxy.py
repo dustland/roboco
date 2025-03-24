@@ -29,6 +29,7 @@ class HumanProxy(UserProxyAgent):
         human_input_mode: str = "NEVER",
         code_execution_config: Optional[Dict[str, Any]] = None,
         llm_provider: str = "llm",
+        terminate_msg: str = "TERMINATE",
         **kwargs
     ):
         """Initialize a human proxy agent.
@@ -60,6 +61,7 @@ class HumanProxy(UserProxyAgent):
             name=name,
             system_message=system_message,
             human_input_mode=human_input_mode,
+            is_termination_msg=lambda x: terminate_msg in (x.get("content", "") or ""),
             code_execution_config=code_execution_config,
             **kwargs
         )
