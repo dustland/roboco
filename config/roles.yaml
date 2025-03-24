@@ -49,7 +49,333 @@ roles:
     name: RoboticsScientist
     type: agent
     llm:
-      provider: "openai" # Uses OpenAI for scientific reasoning
-      model: "gpt-4o"
-      temperature: 0.4 # Balanced temperature for reasoned but flexible thinking
+      provider: "llm"
+      temperature: 0.5
+      max_tokens: 3000
+
+  # Document Writing Roles
+  research_lead:
+    description: "Coordinates research efforts and identifies key information needs"
+    name: ResearchLead
+    type: agent
+    llm:
+      provider: "llm"
+      temperature: 0.7
       max_tokens: 4000
+  
+  fact_checker:
+    description: "Verifies accuracy of information and sources"
+    name: FactChecker
+    type: agent
+    llm:
+      provider: "llm"
+      temperature: 0.3
+      max_tokens: 3000
+  
+  document_architect:
+    description: "Creates overall document structure and organization"
+    name: DocumentArchitect
+    type: agent
+    llm:
+      provider: "llm"
+      temperature: 0.6
+      max_tokens: 3500
+  
+  outline_specialist:
+    description: "Develops detailed outlines with section hierarchies"
+    name: OutlineSpecialist
+    type: agent
+    llm:
+      provider: "llm"
+      temperature: 0.5
+      max_tokens: 3000
+  
+  content_strategist:
+    description: "Ensures content aligns with document goals and audience needs"
+    name: ContentStrategist
+    type: agent
+    llm:
+      provider: "llm"
+      temperature: 0.7
+      max_tokens: 4000
+  
+  content_writer:
+    description: "Creates initial draft content based on outlines"
+    name: ContentWriter
+    type: agent
+    llm:
+      provider: "llm"
+      temperature: 0.7
+      max_tokens: 4000
+  
+  narrative_specialist:
+    description: "Ensures coherent flow and storytelling"
+    name: NarrativeSpecialist
+    type: agent
+    llm:
+      provider: "llm"
+      temperature: 0.8
+      max_tokens: 4000
+  
+  technical_writer:
+    description: "Handles specialized technical content and terminology"
+    name: TechnicalWriter
+    type: agent
+    llm:
+      provider: "llm"
+      temperature: 0.5
+      max_tokens: 3500
+  
+  copy_editor:
+    description: "Corrects grammar, spelling, and punctuation"
+    name: CopyEditor
+    type: agent
+    llm:
+      provider: "llm"
+      temperature: 0.3
+      max_tokens: 3000
+  
+  style_specialist:
+    description: "Ensures consistent tone, voice, and style"
+    name: StyleSpecialist
+    type: agent
+    llm:
+      provider: "llm"
+      temperature: 0.6
+      max_tokens: 3500
+  
+  clarity_expert:
+    description: "Improves readability and comprehension"
+    name: ClarityExpert
+    type: agent
+    llm:
+      provider: "llm"
+      temperature: 0.5
+      max_tokens: 3000
+  
+  content_reviewer:
+    description: "Evaluates overall document quality and completeness"
+    name: ContentReviewer
+    type: agent
+    llm:
+      provider: "llm"
+      temperature: 0.4
+      max_tokens: 3500
+  
+  domain_expert:
+    description: "Verifies technical accuracy and domain-specific content"
+    name: DomainExpert
+    type: agent
+    llm:
+      provider: "llm"
+      temperature: 0.4
+      max_tokens: 4000
+  
+  quality_assurance:
+    description: "Ensures document meets all requirements and standards"
+    name: QualityAssurance
+    type: agent
+    llm:
+      provider: "llm"
+      temperature: 0.3
+      max_tokens: 3000
+  
+  # Web Development Roles
+  requirements_analyst:
+    description: "Identifies and documents functional requirements"
+    name: RequirementsAnalyst
+    type: agent
+    llm:
+      provider: "llm"
+      temperature: 0.6
+      max_tokens: 3500
+  
+  user_researcher:
+    description: "Focuses on user needs and experience requirements"
+    name: UserResearcher
+    type: agent
+    llm:
+      provider: "llm"
+      temperature: 0.7
+      max_tokens: 4000
+  
+  business_analyst:
+    description: "Aligns requirements with business objectives"
+    name: BusinessAnalyst
+    type: agent
+    llm:
+      provider: "llm"
+      temperature: 0.5
+      max_tokens: 3500
+  
+  system_architect:
+    description: "Designs overall system architecture and components"
+    name: SystemArchitect
+    type: agent
+    llm:
+      provider: "llm"
+      temperature: 0.5
+      max_tokens: 4000
+  
+  database_designer:
+    description: "Creates database schema and data models"
+    name: DatabaseDesigner
+    type: agent
+    llm:
+      provider: "deepseek"
+      model: "deepseek-coder"
+      temperature: 0.4
+      max_tokens: 3500
+  
+  security_specialist:
+    description: "Ensures security considerations in architecture"
+    name: SecuritySpecialist
+    type: agent
+    llm:
+      provider: "llm"
+      temperature: 0.4
+      max_tokens: 3500
+  
+  ui_designer:
+    description: "Creates visual design elements and interfaces"
+    name: UIDesigner
+    type: agent
+    llm:
+      provider: "llm"
+      temperature: 0.7
+      max_tokens: 4000
+  
+  ux_specialist:
+    description: "Focuses on user flows and experience"
+    name: UXSpecialist
+    type: agent
+    llm:
+      provider: "llm"
+      temperature: 0.7
+      max_tokens: 4000
+  
+  interaction_designer:
+    description: "Designs interactive elements and behaviors"
+    name: InteractionDesigner
+    type: agent
+    llm:
+      provider: "llm"
+      temperature: 0.7
+      max_tokens: 4000
+  
+  frontend_developer:
+    description: "Implements UI components and client-side logic"
+    name: FrontendDeveloper
+    type: agent
+    llm:
+      provider: "deepseek"
+      model: "deepseek-coder"
+      temperature: 0.5
+      max_tokens: 3500
+  
+  ui_implementer:
+    description: "Translates designs into functional interfaces"
+    name: UIImplementer
+    type: agent
+    llm:
+      provider: "deepseek"
+      model: "deepseek-coder"
+      temperature: 0.5
+      max_tokens: 3500
+  
+  frontend_tester:
+    description: "Tests UI functionality and responsiveness"
+    name: FrontendTester
+    type: agent
+    llm:
+      provider: "llm"
+      temperature: 0.4
+      max_tokens: 3000
+  
+  backend_developer:
+    description: "Implements server-side logic and services"
+    name: BackendDeveloper
+    type: agent
+    llm:
+      provider: "deepseek"
+      model: "deepseek-coder"
+      temperature: 0.5
+      max_tokens: 3500
+  
+  api_specialist:
+    description: "Designs and implements APIs"
+    name: APISpecialist
+    type: agent
+    llm:
+      provider: "deepseek"
+      model: "deepseek-coder"
+      temperature: 0.5
+      max_tokens: 3500
+  
+  database_engineer:
+    description: "Handles database interactions and optimization"
+    name: DatabaseEngineer
+    type: agent
+    llm:
+      provider: "deepseek"
+      model: "deepseek-coder"
+      temperature: 0.5
+      max_tokens: 3500
+  
+  test_engineer:
+    description: "Creates and executes test cases"
+    name: TestEngineer
+    type: agent
+    llm:
+      provider: "deepseek"
+      model: "deepseek-coder"
+      temperature: 0.5
+      max_tokens: 3500
+  
+  qa_specialist:
+    description: "Ensures quality standards and identifies bugs"
+    name: QASpecialist
+    type: agent
+    llm:
+      provider: "llm"
+      temperature: 0.4
+      max_tokens: 3000
+  
+  performance_tester:
+    description: "Tests application performance and load handling"
+    name: PerformanceTester
+    type: agent
+    llm:
+      provider: "deepseek"
+      model: "deepseek-coder"
+      temperature: 0.5
+      max_tokens: 3500
+  
+  devops_engineer:
+    description: "Handles deployment automation and infrastructure"
+    name: DevOpsEngineer
+    type: agent
+    llm:
+      provider: "deepseek"
+      model: "deepseek-coder"
+      temperature: 0.5
+      max_tokens: 3500
+  
+  cloud_specialist:
+    description: "Manages cloud resources and configurations"
+    name: CloudSpecialist
+    type: agent
+    llm:
+      provider: "deepseek"
+      model: "deepseek-coder"
+      temperature: 0.5
+      max_tokens: 3500
+  
+  deployment_manager:
+    description: "Coordinates deployment process and monitoring"
+    name: DeploymentManager
+    type: agent
+    llm:
+      provider: "llm"
+      temperature: 0.5
+      max_tokens: 3500

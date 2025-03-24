@@ -73,21 +73,279 @@ teams:
   # Research team configuration
   research:
     name: "ResearchTeam"
-    description: "A team focused on research and innovation"
+    description: "A team focused on research and analysis"
     output_dir: "workspace/research"
     roles:
-      - executive
-      - robotics_scientist
-      - software_engineer
+      - data_analyst
+      - report_writer
       - human_proxy
     workflow:
-      - from: executive
-        to: robotics_scientist
-      - from: robotics_scientist
-        to: software_engineer
-      - from: software_engineer
-        to: executive
+      - from: data_analyst
+        to: report_writer
+      - from: report_writer
+        to: data_analyst
     tools:
       - fs
       - browser_use
+    tool_executor: human_proxy
+
+  # Document Writing Teams
+  research_team:
+    name: "DocumentResearchTeam"
+    description: "A team focused on gathering information and research for documents"
+    output_dir: "workspace/doc_research"
+    roles:
+      - research_lead
+      - data_analyst
+      - fact_checker
+      - human_proxy
+    workflow:
+      - from: research_lead
+        to: data_analyst
+      - from: data_analyst
+        to: fact_checker
+      - from: fact_checker
+        to: research_lead
+    tools:
+      - fs
+      - browser_use
+      - document_analysis
+    tool_executor: human_proxy
+
+  content_planning_team:
+    name: "ContentPlanningTeam"
+    description: "A team focused on planning document structure and organization"
+    output_dir: "workspace/content_planning"
+    roles:
+      - document_architect
+      - outline_specialist
+      - content_strategist
+      - human_proxy
+    workflow:
+      - from: document_architect
+        to: outline_specialist
+      - from: outline_specialist
+        to: content_strategist
+      - from: content_strategist
+        to: document_architect
+    tools:
+      - fs
+      - document_structure
+    tool_executor: human_proxy
+
+  drafting_team:
+    name: "DraftingTeam"
+    description: "A team focused on writing initial document drafts"
+    output_dir: "workspace/drafts"
+    roles:
+      - content_writer
+      - narrative_specialist
+      - technical_writer
+      - human_proxy
+    workflow:
+      - from: content_writer
+        to: narrative_specialist
+      - from: narrative_specialist
+        to: technical_writer
+      - from: technical_writer
+        to: content_writer
+    tools:
+      - fs
+      - document_generation
+      - markdown_editor
+    tool_executor: human_proxy
+
+  editing_team:
+    name: "EditingTeam"
+    description: "A team focused on refining and improving document drafts"
+    output_dir: "workspace/editing"
+    roles:
+      - copy_editor
+      - style_specialist
+      - clarity_expert
+      - human_proxy
+    workflow:
+      - from: copy_editor
+        to: style_specialist
+      - from: style_specialist
+        to: clarity_expert
+      - from: clarity_expert
+        to: copy_editor
+    tools:
+      - fs
+      - grammar_checker
+    tool_executor: human_proxy
+
+  review_team:
+    name: "ReviewTeam"
+    description: "A team focused on reviewing and providing feedback on documents"
+    output_dir: "workspace/review"
+    roles:
+      - content_reviewer
+      - domain_expert
+      - quality_assurance
+      - human_proxy
+    workflow:
+      - from: content_reviewer
+        to: domain_expert
+      - from: domain_expert
+        to: quality_assurance
+      - from: quality_assurance
+        to: content_reviewer
+    tools:
+      - fs
+      - document_comparison
+    tool_executor: human_proxy
+
+  # Web Application Development Teams
+  requirements_team:
+    name: "RequirementsTeam"
+    description: "A team focused on gathering and analyzing web application requirements"
+    output_dir: "workspace/requirements"
+    roles:
+      - requirements_analyst
+      - user_researcher
+      - business_analyst
+      - human_proxy
+    workflow:
+      - from: requirements_analyst
+        to: user_researcher
+      - from: user_researcher
+        to: business_analyst
+      - from: business_analyst
+        to: requirements_analyst
+    tools:
+      - fs
+      - browser_use
+    tool_executor: human_proxy
+
+  architecture_team:
+    name: "ArchitectureTeam"
+    description: "A team focused on designing web application architecture"
+    output_dir: "workspace/architecture"
+    roles:
+      - system_architect
+      - database_designer
+      - security_specialist
+      - human_proxy
+    workflow:
+      - from: system_architect
+        to: database_designer
+      - from: database_designer
+        to: security_specialist
+      - from: security_specialist
+        to: system_architect
+    tools:
+      - fs
+      - browser_use
+    tool_executor: human_proxy
+
+  uiux_team:
+    name: "UIUXTeam"
+    description: "A team focused on user interface and experience design"
+    output_dir: "workspace/uiux"
+    roles:
+      - ui_designer
+      - ux_specialist
+      - interaction_designer
+      - human_proxy
+    workflow:
+      - from: ui_designer
+        to: ux_specialist
+      - from: ux_specialist
+        to: interaction_designer
+      - from: interaction_designer
+        to: ui_designer
+    tools:
+      - fs
+      - browser_use
+      - wireframing
+    tool_executor: human_proxy
+
+  frontend_team:
+    name: "FrontendTeam"
+    description: "A team focused on frontend web development"
+    output_dir: "workspace/frontend"
+    roles:
+      - frontend_developer
+      - ui_implementer
+      - frontend_tester
+      - human_proxy
+    workflow:
+      - from: frontend_developer
+        to: ui_implementer
+      - from: ui_implementer
+        to: frontend_tester
+      - from: frontend_tester
+        to: frontend_developer
+    tools:
+      - fs
+      - browser_use
+      - code_generation
+    tool_executor: human_proxy
+
+  backend_team:
+    name: "BackendTeam"
+    description: "A team focused on backend web development"
+    output_dir: "workspace/backend"
+    roles:
+      - backend_developer
+      - api_specialist
+      - database_engineer
+      - human_proxy
+    workflow:
+      - from: backend_developer
+        to: api_specialist
+      - from: api_specialist
+        to: database_engineer
+      - from: database_engineer
+        to: backend_developer
+    tools:
+      - fs
+      - browser_use
+      - code_generation
+    tool_executor: human_proxy
+
+  testing_team:
+    name: "TestingTeam"
+    description: "A team focused on testing web applications"
+    output_dir: "workspace/testing"
+    roles:
+      - test_engineer
+      - qa_specialist
+      - performance_tester
+      - human_proxy
+    workflow:
+      - from: test_engineer
+        to: qa_specialist
+      - from: qa_specialist
+        to: performance_tester
+      - from: performance_tester
+        to: test_engineer
+    tools:
+      - fs
+      - browser_use
+      - automated_testing
+    tool_executor: human_proxy
+
+  deployment_team:
+    name: "DeploymentTeam"
+    description: "A team focused on deploying web applications"
+    output_dir: "workspace/deployment"
+    roles:
+      - devops_engineer
+      - cloud_specialist
+      - deployment_manager
+      - human_proxy
+    workflow:
+      - from: devops_engineer
+        to: cloud_specialist
+      - from: cloud_specialist
+        to: deployment_manager
+      - from: deployment_manager
+        to: devops_engineer
+    tools:
+      - fs
+      - browser_use
+      - containerization
     tool_executor: human_proxy
