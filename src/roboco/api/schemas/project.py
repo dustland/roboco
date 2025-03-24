@@ -9,8 +9,7 @@ from typing import List, Optional, Dict, Any
 from datetime import datetime
 from pydantic import BaseModel, Field
 
-from roboco.api.schemas.sprint import Sprint
-from roboco.api.schemas.todo import TodoItem
+from roboco.api.schemas.task import Task
 from roboco.core.schema import ProjectConfig as CoreProjectConfig
 
 
@@ -35,7 +34,6 @@ class ProjectUpdate(BaseModel):
     description: Optional[str] = None
     teams: Optional[List[str]] = None
     tags: Optional[List[str]] = None
-    current_sprint: Optional[str] = None
 
 
 class Project(ProjectBase):
@@ -45,9 +43,7 @@ class Project(ProjectBase):
     updated_at: datetime
     directory: str
     jobs: List[str] = []
-    sprints: List[Sprint] = []
-    current_sprint: Optional[str] = None
-    todos: List[TodoItem] = []
+    tasks: List[Task] = []
     source_code_dir: str
     docs_dir: str
     
@@ -58,59 +54,27 @@ class Project(ProjectBase):
     @classmethod
     def from_core_model(cls, project: CoreProjectConfig, project_id: str):
         """Create an API Project from a core ProjectConfig model."""
-        from roboco.api.schemas.sprint import Sprint
-        from roboco.api.schemas.todo import TodoItem
+        from roboco.api.schemas.task import Task
         
-        # Convert sprints and todos
-        sprints = []
-        for sprint in project.sprints:
-            todos = [
-                TodoItem(
-                    id=todo.id,
-                    title=todo.title,
-                    description=todo.description,
-                    status=todo.status,
-                    assigned_to=todo.assigned_to,
-                    priority=todo.priority,
-                    created_at=todo.created_at,
-                    updated_at=todo.updated_at,
-                    completed_at=todo.completed_at,
-                    depends_on=todo.depends_on,
-                    tags=todo.tags,
-                    sprint_name=sprint.name,
-                    project_id=project_id
-                )
-                for todo in sprint.todos
-            ]
-            
-            sprints.append(Sprint(
-                name=sprint.name,
-                description=sprint.description,
-                start_date=sprint.start_date,
-                end_date=sprint.end_date,
-                status=sprint.status,
-                todos=todos,
-                project_id=project_id
-            ))
-        
-        # Convert project-level todos
-        todos = [
-            TodoItem(
-                id=todo.id,
-                title=todo.title,
-                description=todo.description,
-                status=todo.status,
-                assigned_to=todo.assigned_to,
-                priority=todo.priority,
-                created_at=todo.created_at,
-                updated_at=todo.updated_at,
-                completed_at=todo.completed_at,
-                depends_on=todo.depends_on,
-                tags=todo.tags,
+        # Convert tasks
+        tasks = [
+            Task(
+                id=task.id,
+                title=task.title,
+                description=task.description,
+                status=task.status,
+                assigned_to=task.assigned_to,
+                priority=task.priority,
+                created_at=task.created_at,
+                updated_at=task.updated_at,
+                completed_at=task.completed_at,
+                due_date=getattr(task, 'due_date', None),
+                tags=task.tags,
+                metadata=getattr(task, 'metadata', {}),
                 sprint_name=None,
                 project_id=project_id
             )
-            for todo in project.todos
+            for task in project.tasks
         ]
         
         return cls(
@@ -122,9 +86,7 @@ class Project(ProjectBase):
             directory=project.directory,
             teams=project.teams,
             jobs=project.jobs,
-            sprints=sprints,
-            current_sprint=project.current_sprint,
-            todos=todos,
+            tasks=tasks,
             tags=project.tags,
             source_code_dir=project.source_code_dir,
             docs_dir=project.docs_dir

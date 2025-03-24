@@ -2,14 +2,14 @@
 """
 Project Management Example
 
-This script demonstrates how to use the RoboCo API to manage projects, todos, and sprints.
+This script demonstrates how to use the RoboCo API to manage projects, tasks, and sprints.
 It shows the process of:
 1. Creating a new project
 2. Creating a sprint for the project
-3. Adding todos to the project and sprint
-4. Updating todo status
+3. Adding tasks to the project and sprint
+4. Updating task status
 5. Creating a job associated with the project
-6. Retrieving the project's todo.md file
+6. Retrieving the project's task.md file
 """
 
 import os
@@ -84,47 +84,58 @@ def create_sprint(project_id):
         print(response.text)
         return None
 
-def create_todo(project_id, title, description, status="TODO", assigned_to=None, sprint_name=None):
-    """Create a todo item for a project or sprint."""
-    todo_data = {
+def create_task(project_id, title, description, status="TODO", assigned_to=None, sprint_name=None):
+    """Create a task item for a project or sprint."""
+    print_section(f"Creating Task: {title}")
+    
+    task_data = {
         "title": title,
         "description": description,
         "status": status,
         "assigned_to": assigned_to,
+        "sprint_name": sprint_name,
         "priority": "medium",
-        "tags": [],
-        "sprint_name": sprint_name
+        "tags": ["demo"]
     }
     
-    response = requests.post(f"{API_BASE_URL}/projects/{project_id}/todos", json=todo_data)
+    response = requests.post(f"{API_BASE_URL}/projects/{project_id}/tasks", json=task_data)
     
-    if response.status_code == 200:
-        todo = response.json()
-        print(f"Todo '{title}' created successfully:")
-        pretty_print_json(todo)
-        return todo["id"]
+    if response.status_code == 201:
+        task = response.json()
+        print("Task created successfully:")
+        pretty_print_json(task)
+        return task
     else:
-        print(f"Error creating todo: {response.status_code}")
+        print(f"Error creating task: {response.status_code}")
         print(response.text)
         return None
 
-def update_todo_status(project_id, todo_title, new_status):
-    """Update the status of a todo item."""
-    update_data = {
-        "status": new_status
-    }
+def update_task_status(project_id, task_title, new_status):
+    """Update the status of a task item."""
+    print_section(f"Updating Task Status: {task_title} -> {new_status}")
     
-    response = requests.patch(f"{API_BASE_URL}/projects/{project_id}/todos/{todo_title}", json=update_data)
+    # First, get the task ID
+    response = requests.get(f"{API_BASE_URL}/projects/{project_id}/tasks")
+    tasks = response.json()
+    task_id = next((task["id"] for task in tasks if task["title"] == task_title), None)
+    
+    if not task_id:
+        print(f"Task with title '{task_title}' not found")
+        return None
+    
+    # Now update the task
+    update_data = {"status": new_status}
+    response = requests.put(f"{API_BASE_URL}/projects/{project_id}/tasks/{task_id}", json=update_data)
     
     if response.status_code == 200:
-        todo = response.json()
-        print(f"Todo '{todo_title}' updated successfully:")
-        pretty_print_json(todo)
-        return True
+        task = response.json()
+        print("Task updated successfully:")
+        pretty_print_json(task)
+        return task
     else:
-        print(f"Error updating todo: {response.status_code}")
+        print(f"Error updating task: {response.status_code}")
         print(response.text)
-        return False
+        return None
 
 def create_job(project_id, team="research_team", query="What are the latest advances in transformer models?"):
     """Create a job associated with a project."""
@@ -149,86 +160,89 @@ def create_job(project_id, team="research_team", query="What are the latest adva
         print(response.text)
         return None
 
-def get_todo_markdown(project_id):
-    """Get the todo.md markdown file for a project."""
-    print_section("Retrieving Todo Markdown")
+def get_task_markdown(project_id):
+    """Get the task.md markdown file for a project."""
+    print_section("Getting Task Markdown")
     
-    response = requests.get(f"{API_BASE_URL}/projects/{project_id}/todo.md")
+    response = requests.get(f"{API_BASE_URL}/projects/{project_id}/task-md")
     
     if response.status_code == 200:
         markdown = response.text
-        print("Todo.md content:")
-        print("-" * 80)
-        print(markdown)
-        print("-" * 80)
+        print("Task markdown retrieved successfully:")
+        print("\n" + markdown)
         return markdown
     else:
-        print(f"Error getting todo.md: {response.status_code}")
+        print(f"Error getting task markdown: {response.status_code}")
         print(response.text)
         return None
 
 def main():
     """Run the example workflow."""
-    # Create a new project
+    print_section("RoboCo API Example: Project Management")
+    
+    # Step 1: Create a project
     project_id = create_project()
     if not project_id:
-        print("Failed to create project, exiting.")
+        print("Failed to create project. Exiting.")
         return
     
-    # Create a sprint for the project
-    sprint_name = create_sprint(project_id)
+    # Step 2: Create a sprint
+    sprint = create_sprint(project_id)
+    if not sprint:
+        print("Failed to create sprint. Exiting.")
+        return
     
-    # Create some backlog todos (not in a sprint)
-    print_section("Creating Backlog Todos")
-    create_todo(
+    # Step 3: Create tasks
+    tasks = []
+    
+    # Task 1: Research task
+    research_task = create_task(
         project_id=project_id,
-        title="Research competitive solutions",
-        description="Investigate existing solutions in the market and compare their approaches"
+        title="Research transformer models",
+        description="Investigate the latest advances in transformer models for NLP",
+        status="TODO",
+        assigned_to="researcher",
+        sprint_name=sprint
     )
+    tasks.append(research_task)
     
-    create_todo(
+    # Task 2: Implementation task
+    implementation_task = create_task(
         project_id=project_id,
-        title="Prepare dataset requirements",
-        description="Document the necessary datasets and their properties for the ML model"
+        title="Implement prototype model",
+        description="Create a prototype implementation of the selected model architecture",
+        status="TODO",
+        assigned_to="developer"
     )
+    tasks.append(implementation_task)
     
-    # Create some todos in the sprint
-    print_section("Creating Sprint Todos")
-    create_todo(
+    # Task 3: Documentation task
+    documentation_task = create_task(
         project_id=project_id,
-        title="Set up development environment",
-        description="Configure the necessary tools and libraries for development",
-        sprint_name=sprint_name
+        title="Document API",
+        description="Create comprehensive API documentation for the model interface",
+        status="TODO",
+        assigned_to="technical_writer"
     )
+    tasks.append(documentation_task)
     
-    create_todo(
-        project_id=project_id,
-        title="Define initial model architecture",
-        description="Design the first version of the ML model architecture",
-        sprint_name=sprint_name
-    )
+    # Step 4: Update task status
+    if research_task:
+        updated_task = update_task_status(project_id, research_task["title"], "IN_PROGRESS")
     
-    # Update a todo status
-    print_section("Updating Todo Status")
-    update_todo_status(
-        project_id=project_id,
-        todo_title="Set up development environment",
-        new_status="IN_PROGRESS"
-    )
+    # Step 5: Create a job
+    job = create_job(project_id)
     
-    # Create a job associated with the project
-    job_id = create_job(project_id)
-    
-    # Retrieve the todo.md file
-    get_todo_markdown(project_id)
+    # Step 6: Get task markdown
+    markdown = get_task_markdown(project_id)
     
     print_section("Example Complete")
-    print(f"Project created with ID: {project_id}")
-    if job_id:
-        print(f"Job created with ID: {job_id}")
-    print("\nTry exploring the project through the API:")
-    print(f"- GET {API_BASE_URL}/projects/{project_id}")
-    print(f"- GET {API_BASE_URL}/projects/{project_id}/todo.md")
+    print("The example has completed successfully. You now have:")
+    print(f"- A project: {project_id}")
+    print(f"- A sprint: {sprint}")
+    print(f"- {len(tasks)} tasks")
+    print(f"- A job: {job if job else 'None'}")
+    print("\nYou can now explore the project through the API or UI.")
 
 if __name__ == "__main__":
-    main() 
+    main()

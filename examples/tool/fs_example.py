@@ -17,7 +17,7 @@ from loguru import logger
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 
 from roboco.tools.fs import FileSystemTool
-from roboco.domain.models.project_manifest import ProjectManifest, ProjectFile
+from roboco.core.models.project_manifest import ProjectManifest, ProjectFile
 
 # Configure logging
 logger.remove()

@@ -20,7 +20,7 @@ from autogen import (
 )
 
 from roboco.core.config import load_config, get_llm_config
-from roboco.core.schema import TodoItem
+from roboco.core.schema import Task
 
 
 class Team(ABC):
@@ -260,7 +260,7 @@ class BaseExecutionTeam(Team):
         return None
     
     @abstractmethod
-    async def execute_tasks(self, tasks: List[TodoItem]) -> Dict[str, Any]:
+    async def execute_tasks(self, tasks: List[Task]) -> Dict[str, Any]:
         """Execute the given tasks using this team's agents.
         
         Args:
@@ -275,7 +275,7 @@ class BaseExecutionTeam(Team):
 class SequentialExecutionTeam(BaseExecutionTeam):
     """Team that executes tasks sequentially."""
     
-    async def execute_tasks(self, tasks: List[TodoItem]) -> Dict[str, Any]:
+    async def execute_tasks(self, tasks: List[Task]) -> Dict[str, Any]:
         """Execute tasks in sequence."""
         results = {
             "tasks": [],
@@ -311,7 +311,7 @@ class SequentialExecutionTeam(BaseExecutionTeam):
 class ParallelExecutionTeam(BaseExecutionTeam):
     """Team that executes tasks in parallel."""
     
-    async def execute_tasks(self, tasks: List[TodoItem]) -> Dict[str, Any]:
+    async def execute_tasks(self, tasks: List[Task]) -> Dict[str, Any]:
         """Execute tasks in parallel."""
         results = {
             "tasks": [],
@@ -337,7 +337,7 @@ class ParallelExecutionTeam(BaseExecutionTeam):
 class IterativeExecutionTeam(BaseExecutionTeam):
     """Team that executes tasks iteratively with feedback loops."""
     
-    async def execute_tasks(self, tasks: List[TodoItem]) -> Dict[str, Any]:
+    async def execute_tasks(self, tasks: List[Task]) -> Dict[str, Any]:
         """Execute tasks iteratively."""
         results = {
             "tasks": [],
@@ -363,7 +363,7 @@ class IterativeExecutionTeam(BaseExecutionTeam):
 class GenericExecutionTeam(BaseExecutionTeam):
     """Generic team for when no specialized team is available."""
     
-    async def execute_tasks(self, tasks: List[TodoItem]) -> Dict[str, Any]:
+    async def execute_tasks(self, tasks: List[Task]) -> Dict[str, Any]:
         """Execute tasks with a generic approach."""
         results = {
             "tasks": [],

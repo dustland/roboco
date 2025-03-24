@@ -9,10 +9,9 @@ domain-driven design while maintaining backward compatibility with the API layer
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 
-from roboco.core.schema import ProjectConfig, TodoItem as PydanticTodoItem, Sprint as PydanticSprint, Task
+from roboco.core.schema import ProjectConfig, Sprint as PydanticSprint, Task as PydanticTask
 from roboco.core.models.project import Project
-from roboco.core.models.sprint import Sprint
-from roboco.core.models.todo_item import TodoItem
+from roboco.core.models.task import Task
 
 
 def project_to_pydantic(project: Project) -> ProjectConfig:
@@ -33,7 +32,7 @@ def project_to_pydantic(project: Project) -> ProjectConfig:
         jobs=project.jobs,
         sprints=[sprint_to_pydantic(sprint) for sprint in project.sprints],
         current_sprint=project.current_sprint,
-        todos=[todo_to_pydantic(todo) for todo in project.todos],
+        tasks=[task_to_pydantic(task) for task in project.tasks],
         tags=project.tags,
         source_code_dir=project.source_code_dir,
         docs_dir=project.docs_dir,
@@ -58,9 +57,9 @@ def pydantic_to_project(project_config: ProjectConfig) -> Project:
         directory=project_config.directory,
         teams=project_config.teams,
         jobs=project_config.jobs,
-        sprints=[pydantic_to_sprint(sprint) for sprint in project_config.sprints],
+        sprints=[],  # Simplified as Sprint model is being removed
         current_sprint=project_config.current_sprint,
-        todos=[pydantic_to_todo(todo) for todo in project_config.todos],
+        tasks=[pydantic_to_task(task) for task in project_config.tasks],
         tags=project_config.tags,
         source_code_dir=project_config.source_code_dir,
         docs_dir=project_config.docs_dir,
@@ -69,7 +68,7 @@ def pydantic_to_project(project_config: ProjectConfig) -> Project:
     )
 
 
-def sprint_to_pydantic(sprint: Sprint) -> PydanticSprint:
+def sprint_to_pydantic(sprint: Any) -> PydanticSprint:
     """Convert a domain Sprint to a Pydantic Sprint.
     
     Args:
@@ -78,6 +77,7 @@ def sprint_to_pydantic(sprint: Sprint) -> PydanticSprint:
     Returns:
         Pydantic Sprint model
     """
+    # Simplified as Sprint model is being removed
     return PydanticSprint(
         id=sprint.id,
         name=sprint.name,
@@ -85,12 +85,12 @@ def sprint_to_pydantic(sprint: Sprint) -> PydanticSprint:
         start_date=sprint.start_date,
         end_date=sprint.end_date,
         status=sprint.status,
-        todos=[todo_to_pydantic(todo) for todo in sprint.todos],
+        tasks=[task_to_pydantic(task) for task in getattr(sprint, 'tasks', [])],
         tags=sprint.tags
     )
 
 
-def pydantic_to_sprint(sprint_config: PydanticSprint) -> Sprint:
+def pydantic_to_sprint(sprint_config: PydanticSprint) -> Any:
     """Convert a Pydantic Sprint to a domain Sprint.
     
     Args:
@@ -99,61 +99,64 @@ def pydantic_to_sprint(sprint_config: PydanticSprint) -> Sprint:
     Returns:
         Domain Sprint model
     """
-    return Sprint(
-        id=sprint_config.id,
-        name=sprint_config.name,
-        description=sprint_config.description,
-        start_date=sprint_config.start_date,
-        end_date=sprint_config.end_date,
-        status=sprint_config.status,
-        todos=[pydantic_to_todo(todo) for todo in sprint_config.todos],
-        tags=sprint_config.tags
+    # Simplified as Sprint model is being removed
+    return {
+        "id": sprint_config.id,
+        "name": sprint_config.name,
+        "description": sprint_config.description,
+        "start_date": sprint_config.start_date,
+        "end_date": sprint_config.end_date,
+        "status": sprint_config.status,
+        "tasks": [pydantic_to_task(task) for task in sprint_config.tasks],
+        "tags": sprint_config.tags
+    }
+
+
+def task_to_pydantic(task: Task) -> PydanticTask:
+    """Convert a domain Task to a Pydantic Task.
+    
+    Args:
+        task: Domain Task model
+        
+    Returns:
+        Pydantic Task model
+    """
+    return PydanticTask(
+        id=task.id,
+        title=task.title,
+        description=task.description,
+        status=task.status,
+        assigned_to=task.assigned_to,
+        priority=task.priority,
+        created_at=task.created_at,
+        updated_at=task.updated_at,
+        completed_at=task.completed_at,
+        due_date=task.due_date,
+        tags=task.tags,
+        metadata=task.metadata
     )
 
 
-def todo_to_pydantic(todo: TodoItem) -> PydanticTodoItem:
-    """Convert a domain TodoItem to a Pydantic TodoItem.
+def pydantic_to_task(task_config: PydanticTask) -> Task:
+    """Convert a Pydantic Task to a domain Task.
     
     Args:
-        todo: Domain TodoItem model
+        task_config: Pydantic Task model
         
     Returns:
-        Pydantic TodoItem model
+        Domain Task model
     """
-    return PydanticTodoItem(
-        id=todo.id,
-        title=todo.title,
-        description=todo.description,
-        status=todo.status,
-        assigned_to=todo.assigned_to,
-        priority=todo.priority,
-        created_at=todo.created_at,
-        updated_at=todo.updated_at,
-        completed_at=todo.completed_at,
-        depends_on=todo.depends_on,
-        tags=todo.tags
-    )
-
-
-def pydantic_to_todo(todo_config: PydanticTodoItem) -> TodoItem:
-    """Convert a Pydantic TodoItem to a domain TodoItem.
-    
-    Args:
-        todo_config: Pydantic TodoItem model
-        
-    Returns:
-        Domain TodoItem model
-    """
-    return TodoItem(
-        id=todo_config.id,
-        title=todo_config.title,
-        description=todo_config.description,
-        status=todo_config.status,
-        assigned_to=todo_config.assigned_to,
-        priority=todo_config.priority,
-        created_at=todo_config.created_at,
-        updated_at=todo_config.updated_at,
-        completed_at=todo_config.completed_at,
-        depends_on=todo_config.depends_on,
-        tags=todo_config.tags
+    return Task(
+        id=task_config.id,
+        title=task_config.title,
+        description=task_config.description,
+        status=task_config.status,
+        assigned_to=task_config.assigned_to,
+        priority=task_config.priority,
+        created_at=task_config.created_at,
+        updated_at=task_config.updated_at,
+        completed_at=task_config.completed_at,
+        due_date=task_config.due_date,
+        tags=task_config.tags,
+        metadata=task_config.metadata
     )

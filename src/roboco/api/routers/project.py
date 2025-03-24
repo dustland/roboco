@@ -10,8 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import ValidationError
 
 from roboco.api.models.project import Project, ProjectCreate, ProjectUpdate
-from roboco.api.schemas.sprint import Sprint, SprintCreate, SprintUpdate
-from roboco.api.schemas.todo import TodoItem, TodoItemCreate, TodoItemUpdate
+from roboco.api.schemas.task import Task, TaskCreate, TaskUpdate
 from roboco.infrastructure.repositories.file_project_repository import FileProjectRepository
 from roboco.services.project_service import ProjectService
 from roboco.api.dependencies import get_api_service
@@ -71,6 +70,8 @@ async def create_project(
     """
     try:
         return await api_service.create_project(project_create)
+    except ValidationError as e:
+        raise HTTPException(status_code=422, detail=f"Validation error: {str(e)}")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error creating project: {str(e)}")
 
@@ -88,10 +89,15 @@ async def get_project(
     
     Returns the project.
     """
-    project = await api_service.get_project(project_id)
-    if not project:
-        raise HTTPException(status_code=404, detail=f"Project with ID {project_id} not found")
-    return project
+    try:
+        project = await api_service.get_project(project_id)
+        if not project:
+            raise HTTPException(status_code=404, detail=f"Project {project_id} not found")
+        return project
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error retrieving project: {str(e)}")
 
 
 @router.put("/{project_id}", response_model=Project)
@@ -110,14 +116,17 @@ async def update_project(
     Returns the updated project.
     """
     try:
-        return await api_service.update_project(project_id, project_update)
-    except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+        project = await api_service.update_project(project_id, project_update)
+        if not project:
+            raise HTTPException(status_code=404, detail=f"Project {project_id} not found")
+        return project
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error updating project: {str(e)}")
 
 
-@router.delete("/{project_id}", response_model=dict)
+@router.delete("/{project_id}")
 async def delete_project(
     project_id: str,
     api_service: ApiService = Depends(get_api_service)
@@ -130,107 +139,112 @@ async def delete_project(
     
     Returns a success message.
     """
-    success = await api_service.delete_project(project_id)
-    if not success:
-        raise HTTPException(status_code=404, detail=f"Project with ID {project_id} not found")
-    return {"message": f"Project with ID {project_id} deleted successfully"}
+    try:
+        success = await api_service.delete_project(project_id)
+        if not success:
+            raise HTTPException(status_code=404, detail=f"Project {project_id} not found")
+        return {"message": f"Project {project_id} deleted successfully"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error deleting project: {str(e)}")
 
 
-# Sprint-related endpoints
+# Task-related endpoints
 
-@router.post("/{project_id}/sprints", response_model=Sprint, status_code=201)
-async def create_sprint(
+@router.post("/{project_id}/tasks", response_model=Task, status_code=201)
+async def create_task(
     project_id: str,
-    sprint_create: SprintCreate,
+    task_create: TaskCreate,
     api_service: ApiService = Depends(get_api_service)
 ):
     """
-    Create a new sprint.
+    Create a new task.
     
     Parameters:
     - project_id: ID of the project
-    - sprint_create: Sprint data
+    - task_create: Task data
     
-    Returns the created sprint.
+    Returns the created task.
     """
     try:
-        return await api_service.create_sprint(project_id, sprint_create)
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        task = await api_service.create_task(project_id, task_create)
+        if not task:
+            raise HTTPException(status_code=404, detail=f"Project {project_id} not found")
+        return task
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error creating sprint: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error creating task: {str(e)}")
 
 
-@router.put("/{project_id}/sprints/{sprint_name}", response_model=Sprint)
-async def update_sprint(
+@router.put("/{project_id}/tasks/{task_id}", response_model=Task)
+async def update_task(
     project_id: str,
-    sprint_name: str,
-    sprint_update: SprintUpdate,
+    task_id: str,
+    task_update: TaskUpdate,
     api_service: ApiService = Depends(get_api_service)
 ):
     """
-    Update a sprint.
+    Update a task.
     
     Parameters:
     - project_id: ID of the project
-    - sprint_name: Name of the sprint to update
-    - sprint_update: Fields to update
+    - task_id: ID of the task to update
+    - task_update: Fields to update
     
-    Returns the updated sprint.
+    Returns the updated task.
     """
     try:
-        return await api_service.update_sprint(project_id, sprint_name, sprint_update)
-    except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+        task = await api_service.update_task(project_id, task_id, task_update)
+        if not task:
+            raise HTTPException(status_code=404, detail=f"Task {task_id} not found in project {project_id}")
+        return task
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error updating sprint: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error updating task: {str(e)}")
 
 
-# Todo-related endpoints
-
-@router.post("/{project_id}/todos", response_model=TodoItem, status_code=201)
-async def create_todo(
+@router.get("/{project_id}/tasks", response_model=List[Task])
+async def list_tasks(
     project_id: str,
-    todo_create: TodoItemCreate,
     api_service: ApiService = Depends(get_api_service)
 ):
     """
-    Create a new todo item.
+    List all tasks for a project.
     
     Parameters:
     - project_id: ID of the project
-    - todo_create: Todo item data
     
-    Returns the created todo item.
+    Returns a list of tasks.
     """
     try:
-        return await api_service.create_todo(project_id, todo_create)
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        tasks = await api_service.list_tasks(project_id)
+        return tasks
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error creating todo: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error listing tasks: {str(e)}")
 
 
-@router.put("/{project_id}/todos/{todo_id}", response_model=TodoItem)
-async def update_todo(
+@router.get("/{project_id}/task-md")
+async def get_task_markdown(
     project_id: str,
-    todo_id: str,
-    todo_update: TodoItemUpdate,
     api_service: ApiService = Depends(get_api_service)
 ):
     """
-    Update a todo item.
+    Get the task.md file for a project.
     
     Parameters:
     - project_id: ID of the project
-    - todo_id: ID of the todo to update
-    - todo_update: Fields to update
     
-    Returns the updated todo item.
+    Returns the markdown content.
     """
     try:
-        return await api_service.update_todo(project_id, todo_id, todo_update)
-    except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+        markdown = await api_service.get_task_markdown(project_id)
+        if not markdown:
+            raise HTTPException(status_code=404, detail=f"Task markdown not found for project {project_id}")
+        return markdown
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error updating todo: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error retrieving task markdown: {str(e)}")
