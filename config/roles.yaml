@@ -62,7 +62,7 @@ roles:
       provider: "llm"
       temperature: 0.7
       max_tokens: 4000
-  
+
   fact_checker:
     description: "Verifies accuracy of information and sources"
     name: FactChecker
@@ -71,7 +71,7 @@ roles:
       provider: "llm"
       temperature: 0.3
       max_tokens: 3000
-  
+
   document_architect:
     description: "Creates overall document structure and organization"
     name: DocumentArchitect
@@ -80,7 +80,7 @@ roles:
       provider: "llm"
       temperature: 0.6
       max_tokens: 3500
-  
+
   outline_specialist:
     description: "Develops detailed outlines with section hierarchies"
     name: OutlineSpecialist
@@ -89,7 +89,7 @@ roles:
       provider: "llm"
       temperature: 0.5
       max_tokens: 3000
-  
+
   content_strategist:
     description: "Ensures content aligns with document goals and audience needs"
     name: ContentStrategist
@@ -98,7 +98,7 @@ roles:
       provider: "llm"
       temperature: 0.7
       max_tokens: 4000
-  
+
   content_writer:
     description: "Creates initial draft content based on outlines"
     name: ContentWriter
@@ -107,7 +107,7 @@ roles:
       provider: "llm"
       temperature: 0.7
       max_tokens: 4000
-  
+
   narrative_specialist:
     description: "Ensures coherent flow and storytelling"
     name: NarrativeSpecialist
@@ -116,7 +116,7 @@ roles:
       provider: "llm"
       temperature: 0.8
       max_tokens: 4000
-  
+
   technical_writer:
     description: "Handles specialized technical content and terminology"
     name: TechnicalWriter
@@ -125,7 +125,7 @@ roles:
       provider: "llm"
       temperature: 0.5
       max_tokens: 3500
-  
+
   copy_editor:
     description: "Corrects grammar, spelling, and punctuation"
     name: CopyEditor
@@ -134,7 +134,7 @@ roles:
       provider: "llm"
       temperature: 0.3
       max_tokens: 3000
-  
+
   style_specialist:
     description: "Ensures consistent tone, voice, and style"
     name: StyleSpecialist
@@ -143,7 +143,7 @@ roles:
       provider: "llm"
       temperature: 0.6
       max_tokens: 3500
-  
+
   clarity_expert:
     description: "Improves readability and comprehension"
     name: ClarityExpert
@@ -152,7 +152,7 @@ roles:
       provider: "llm"
       temperature: 0.5
       max_tokens: 3000
-  
+
   content_reviewer:
     description: "Evaluates overall document quality and completeness"
     name: ContentReviewer
@@ -161,7 +161,7 @@ roles:
       provider: "llm"
       temperature: 0.4
       max_tokens: 3500
-  
+
   domain_expert:
     description: "Verifies technical accuracy and domain-specific content"
     name: DomainExpert
@@ -170,7 +170,7 @@ roles:
       provider: "llm"
       temperature: 0.4
       max_tokens: 4000
-  
+
   quality_assurance:
     description: "Ensures document meets all requirements and standards"
     name: QualityAssurance
@@ -179,7 +179,7 @@ roles:
       provider: "llm"
       temperature: 0.3
       max_tokens: 3000
-  
+
   # Web Development Roles
   requirements_analyst:
     description: "Identifies and documents functional requirements"
@@ -189,7 +189,7 @@ roles:
       provider: "llm"
       temperature: 0.6
       max_tokens: 3500
-  
+
   user_researcher:
     description: "Focuses on user needs and experience requirements"
     name: UserResearcher
@@ -198,7 +198,7 @@ roles:
       provider: "llm"
       temperature: 0.7
       max_tokens: 4000
-  
+
   business_analyst:
     description: "Aligns requirements with business objectives"
     name: BusinessAnalyst
@@ -207,7 +207,7 @@ roles:
       provider: "llm"
       temperature: 0.5
       max_tokens: 3500
-  
+
   system_architect:
     description: "Designs overall system architecture and components"
     name: SystemArchitect
@@ -216,7 +216,7 @@ roles:
       provider: "llm"
       temperature: 0.5
       max_tokens: 4000
-  
+
   database_designer:
     description: "Creates database schema and data models"
     name: DatabaseDesigner
@@ -226,7 +226,7 @@ roles:
       model: "deepseek-coder"
       temperature: 0.4
       max_tokens: 3500
-  
+
   security_specialist:
     description: "Ensures security considerations in architecture"
     name: SecuritySpecialist
@@ -235,7 +235,7 @@ roles:
       provider: "llm"
       temperature: 0.4
       max_tokens: 3500
-  
+
   ui_designer:
     description: "Creates visual design elements and interfaces"
     name: UIDesigner
@@ -244,7 +244,7 @@ roles:
       provider: "llm"
       temperature: 0.7
       max_tokens: 4000
-  
+
   ux_specialist:
     description: "Focuses on user flows and experience"
     name: UXSpecialist
@@ -253,7 +253,7 @@ roles:
       provider: "llm"
       temperature: 0.7
       max_tokens: 4000
-  
+
   interaction_designer:
     description: "Designs interactive elements and behaviors"
     name: InteractionDesigner
@@ -262,7 +262,7 @@ roles:
       provider: "llm"
       temperature: 0.7
       max_tokens: 4000
-  
+
   frontend_developer:
     description: "Implements UI components and client-side logic"
     name: FrontendDeveloper
@@ -272,7 +272,7 @@ roles:
       model: "deepseek-coder"
       temperature: 0.5
       max_tokens: 3500
-  
+
   ui_implementer:
     description: "Translates designs into functional interfaces"
     name: UIImplementer
@@ -282,7 +282,7 @@ roles:
       model: "deepseek-coder"
       temperature: 0.5
       max_tokens: 3500
-  
+
   frontend_tester:
     description: "Tests UI functionality and responsiveness"
     name: FrontendTester
@@ -291,7 +291,7 @@ roles:
       provider: "llm"
       temperature: 0.4
       max_tokens: 3000
-  
+
   backend_developer:
     description: "Implements server-side logic and services"
     name: BackendDeveloper
@@ -301,7 +301,7 @@ roles:
       model: "deepseek-coder"
       temperature: 0.5
       max_tokens: 3500
-  
+
   api_specialist:
     description: "Designs and implements APIs"
     name: APISpecialist
@@ -311,7 +311,7 @@ roles:
       model: "deepseek-coder"
       temperature: 0.5
       max_tokens: 3500
-  
+
   database_engineer:
     description: "Handles database interactions and optimization"
     name: DatabaseEngineer
@@ -321,7 +321,7 @@ roles:
       model: "deepseek-coder"
       temperature: 0.5
       max_tokens: 3500
-  
+
   test_engineer:
     description: "Creates and executes test cases"
     name: TestEngineer
@@ -331,7 +331,7 @@ roles:
       model: "deepseek-coder"
       temperature: 0.5
       max_tokens: 3500
-  
+
   qa_specialist:
     description: "Ensures quality standards and identifies bugs"
     name: QASpecialist
@@ -340,7 +340,7 @@ roles:
       provider: "llm"
       temperature: 0.4
       max_tokens: 3000
-  
+
   performance_tester:
     description: "Tests application performance and load handling"
     name: PerformanceTester
@@ -350,7 +350,7 @@ roles:
       model: "deepseek-coder"
       temperature: 0.5
       max_tokens: 3500
-  
+
   devops_engineer:
     description: "Handles deployment automation and infrastructure"
     name: DevOpsEngineer
@@ -360,7 +360,7 @@ roles:
       model: "deepseek-coder"
       temperature: 0.5
       max_tokens: 3500
-  
+
   cloud_specialist:
     description: "Manages cloud resources and configurations"
     name: CloudSpecialist
@@ -370,7 +370,7 @@ roles:
       model: "deepseek-coder"
       temperature: 0.5
       max_tokens: 3500
-  
+
   deployment_manager:
     description: "Coordinates deployment process and monitoring"
     name: DeploymentManager
@@ -379,3 +379,70 @@ roles:
       provider: "llm"
       temperature: 0.5
       max_tokens: 3500
+
+  # VersatileTeam Roles
+  architect:
+    description: "Designs solutions and oversees the big picture"
+    name: Architect
+    type: agent
+    prompt_file: prompts/architect.md
+    llm:
+      provider: "llm"
+      model: "gpt-4o"
+      temperature: 0.6
+      max_tokens: 4000
+
+  strategist:
+    description: "Plans execution and identifies resources"
+    name: Strategist
+    type: agent
+    prompt_file: prompts/strategist.md
+    llm:
+      provider: "llm"
+      model: "gpt-4o"
+      temperature: 0.5
+      max_tokens: 3500
+
+  explorer:
+    description: "Researches and discovers relevant information"
+    name: Explorer
+    type: agent
+    prompt_file: prompts/explorer.md
+    llm:
+      provider: "llm"
+      model: "gpt-4o"
+      temperature: 0.7
+      max_tokens: 4000
+
+  creator:
+    description: "Implements solutions and produces deliverables"
+    name: Creator
+    type: agent
+    prompt_file: prompts/creator.md
+    llm:
+      provider: "llm"
+      model: "gpt-4o"
+      temperature: 0.6
+      max_tokens: 4000
+
+  evaluator:
+    description: "Reviews, tests, and refines solutions"
+    name: Evaluator
+    type: agent
+    prompt_file: prompts/evaluator.md
+    llm:
+      provider: "llm"
+      model: "gpt-4o"
+      temperature: 0.4
+      max_tokens: 3500
+
+  synthesizer:
+    description: "Integrates components and creates final deliverables"
+    name: Synthesizer
+    type: agent
+    prompt_file: prompts/synthesizer.md
+    llm:
+      provider: "llm"
+      model: "gpt-4o"
+      temperature: 0.5
+      max_tokens: 4000

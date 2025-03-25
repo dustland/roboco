@@ -16,6 +16,8 @@ from roboco.core.team import Team
 from roboco.core.agent import Agent
 from roboco.core.schema import Task
 from roboco.agents.human_proxy import HumanProxy
+from roboco.core.agent_factory import AgentFactory
+from autogen import AfterWork, AfterWorkOption, OnCondition, register_hand_off
 
 
 class VersatileTeam(Team):
@@ -23,6 +25,9 @@ class VersatileTeam(Team):
     A flexible and adaptable team with specialized roles that can handle any type of task.
     This team is designed to work effectively on task phases that don't clearly
     fit into specific categories like research, development, or design.
+    
+    Uses the AG2 swarm pattern for agent orchestration, allowing agents to collaborate
+    with automatic handoffs based on conditions.
     """
     
     def __init__(
@@ -45,121 +50,51 @@ class VersatileTeam(Team):
         # Register tools with agents
         self._register_tools()
         
+        # Enable swarm capabilities
+        self.enable_swarm()
+        
+        # Register handoffs for the swarm
+        self._register_handoffs()
+        
         logger.info(f"Initialized VersatileTeam with specialized roles in workspace: {workspace_dir}")
     
     def _initialize_agents(self):
         """Initialize agents with specialized roles for the team."""
+        agent_factory = AgentFactory()
         
-        # Architect - Designs solutions and oversees the big picture
-        architect = Agent(
-            name="architect",
-            system_message="""You are the Architect of the team, responsible for designing solutions and overseeing the big picture.
-            Your primary responsibilities include:
-            1. Understanding the task requirements in depth
-            2. Creating high-level designs and architectural frameworks
-            3. Making key decisions about approach and methodology
-            4. Ensuring all components work together cohesively
-            5. Balancing technical constraints with business needs
-            
-            You excel at systems thinking, creating elegant solutions, and communicating complex concepts clearly.
-            Your aim is to design solutions that are robust, scalable, and maintainable.
-            """,
+        # Initialize each agent using the role configurations from roles.yaml
+        architect = agent_factory.create_agent(
+            role_key="architect",
             human_input_mode="NEVER",
             terminate_msg="ARCHITECTURE_COMPLETE"
         )
         
-        # Strategist - Plans execution and identifies resources
-        strategist = Agent(
-            name="strategist",
-            system_message="""You are the Strategist of the team, responsible for planning execution and identifying resources.
-            Your primary responsibilities include:
-            1. Breaking down complex tasks into actionable steps
-            2. Creating detailed execution plans with clear milestones
-            3. Identifying required resources and potential constraints
-            4. Prioritizing tasks and establishing dependencies
-            5. Developing contingency plans for potential obstacles
-            
-            You excel at analytical thinking, resource optimization, and structured planning.
-            Your aim is to create practical, efficient plans that maximize chances of success.
-            """,
+        strategist = agent_factory.create_agent(
+            role_key="strategist", 
             human_input_mode="NEVER",
             terminate_msg="STRATEGY_COMPLETE"
         )
         
-        # Explorer - Researches and discovers relevant information
-        explorer = Agent(
-            name="explorer",
-            system_message="""You are the Explorer of the team, responsible for researching and discovering relevant information.
-            Your primary responsibilities include:
-            1. Conducting comprehensive research on the task domain
-            2. Gathering relevant data, evidence, and context
-            3. Identifying existing solutions and best practices
-            4. Exploring innovative approaches and alternatives
-            5. Validating information sources and assessing credibility
-            
-            You excel at information gathering, pattern recognition, and knowledge synthesis.
-            Your aim is to provide well-researched, accurate insights that expand the team's understanding.
-            """,
+        explorer = agent_factory.create_agent(
+            role_key="explorer",
             human_input_mode="NEVER",
             terminate_msg="EXPLORATION_COMPLETE"
         )
         
-        # Creator - Implements solutions and produces deliverables
-        creator = Agent(
-            name="creator",
-            system_message="""You are the Creator of the team, responsible for implementing solutions and producing deliverables.
-            Your primary responsibilities include:
-            1. Transforming designs and plans into concrete outputs
-            2. Creating high-quality deliverables that meet specifications
-            3. Developing prototypes and functional implementations
-            4. Bringing concepts to life with attention to detail
-            5. Adapting to feedback and iterating on solutions
-            
-            You excel at execution, craftsmanship, and technical problem-solving.
-            For programming tasks, you can write code in multiple languages and ensure it works correctly.
-            Use available code tools to generate, validate, and execute code as needed.
-            
-            Your aim is to produce well-crafted, functional outputs that fulfill requirements.
-            """,
+        creator = agent_factory.create_agent(
+            role_key="creator",
             human_input_mode="NEVER",
             terminate_msg="CREATION_COMPLETE"
         )
         
-        # Evaluator - Reviews, tests, and refines solutions
-        evaluator = Agent(
-            name="evaluator",
-            system_message="""You are the Evaluator of the team, responsible for reviewing, testing, and refining solutions.
-            Your primary responsibilities include:
-            1. Critically assessing deliverables against requirements
-            2. Identifying potential issues, risks, and improvements
-            3. Testing functionality and validating assumptions
-            4. Providing constructive feedback with specific recommendations
-            5. Ensuring quality standards are met or exceeded
-            
-            For code evaluation, you can use available tools to validate code and identify issues.
-            Focus on ensuring code is functional, efficient, and meets requirements.
-            
-            You excel at critical thinking, quality assessment, and solution refinement.
-            Your aim is to ensure deliverables are robust, effective, and meet all requirements.
-            """,
+        evaluator = agent_factory.create_agent(
+            role_key="evaluator",
             human_input_mode="NEVER",
             terminate_msg="EVALUATION_COMPLETE"
         )
         
-        # Synthesizer - Integrates components and creates final deliverables
-        synthesizer = Agent(
-            name="synthesizer",
-            system_message="""You are the Synthesizer of the team, responsible for integrating components and creating final deliverables.
-            Your primary responsibilities include:
-            1. Combining individual contributions into cohesive deliverables
-            2. Ensuring consistency across all components
-            3. Resolving conflicts and addressing feedback
-            4. Creating polished, professional final outputs
-            5. Communicating results effectively to stakeholders
-            
-            You excel at integration, refinement, and clear communication.
-            Your aim is to produce comprehensive, unified deliverables that exceed expectations.
-            """,
+        synthesizer = agent_factory.create_agent(
+            role_key="synthesizer",
             human_input_mode="NEVER",
             terminate_msg="SYNTHESIS_COMPLETE"
         )
@@ -237,9 +172,65 @@ class VersatileTeam(Team):
         except Exception as e:
             logger.error(f"Error registering tools: {str(e)}")
     
+    def _register_handoffs(self):
+        """Register handoffs between agents for the swarm pattern."""
+        architect = self.get_agent("architect")
+        strategist = self.get_agent("strategist")
+        explorer = self.get_agent("explorer")
+        creator = self.get_agent("creator")
+        evaluator = self.get_agent("evaluator")
+        synthesizer = self.get_agent("synthesizer")
+        human_proxy = self.get_agent("human_proxy")
+        
+        # Register explicit, sequential handoffs for each agent
+        # with minimal conditional logic to ensure proper flow
+        
+        # Architect always hands off to Strategist
+        register_hand_off(architect, [
+            # No conditions needed - always go to Strategist after Architecture is complete
+            AfterWork(agent=strategist)
+        ])
+        
+        # Strategist always hands off to Explorer 
+        register_hand_off(strategist, [
+            # No conditions needed - always go to Explorer after Strategy is complete
+            AfterWork(agent=explorer)
+        ])
+        
+        # Explorer always hands off to Creator
+        register_hand_off(explorer, [
+            # No conditions needed - always go to Creator after Exploration is complete
+            AfterWork(agent=creator)
+        ])
+        
+        # Creator always hands off to Evaluator
+        register_hand_off(creator, [
+            # No conditions needed - always go to Evaluator after Creation is complete
+            AfterWork(agent=evaluator)
+        ])
+        
+        # Evaluator always hands off to Synthesizer
+        register_hand_off(evaluator, [
+            # No conditions needed - always go to Synthesizer after Evaluation is complete
+            AfterWork(agent=synthesizer)
+        ])
+        
+        # Synthesizer ends the swarm when finished
+        register_hand_off(synthesizer, [
+            # No conditions needed - end the swarm after Synthesis is complete
+            AfterWork(AfterWorkOption.TERMINATE)
+        ])
+        
+        # Human proxy should defer to architect if something goes wrong
+        register_hand_off(human_proxy, [
+            AfterWork(agent=architect)
+        ])
+        
+        logger.info("Registered handoffs for swarm pattern with linear flow")
+    
     async def execute_task(self, task: Task) -> Dict[str, Any]:
         """
-        Execute a single task using the team's specialized roles.
+        Execute a single task using the swarm pattern for agent orchestration.
         
         Args:
             task: The task to execute
@@ -247,16 +238,21 @@ class VersatileTeam(Team):
         Returns:
             Dict containing the task execution results
         """
-        logger.info(f"Starting execution of task: {task.title}")
+        logger.info(f"Starting execution of task: {task.description[:40]}...")
         
-        architect = self.get_agent("architect")
-        strategist = self.get_agent("strategist")
-        explorer = self.get_agent("explorer")
-        creator = self.get_agent("creator")
-        evaluator = self.get_agent("evaluator")
-        synthesizer = self.get_agent("synthesizer")
+        # Prepare task context
+        task_context = {
+            "task": {
+                "description": task.description,
+                "expected_outcome": task.expected_outcome if hasattr(task, 'expected_outcome') else 'Complete the task successfully'
+            },
+            "workspace_dir": self.workspace_dir,
+            "phase_results": {},
+            "current_phase": "architecture"
+        }
         
-        task_prompt = f"""
+        # Prepare the initial query
+        query = f"""
         # Task Description
         {task.description}
         
@@ -265,185 +261,80 @@ class VersatileTeam(Team):
         
         # Resources
         Workspace directory: {self.workspace_dir}
+        
+        # Process
+        This is a collaborative effort where team members will work together through different phases:
+        1. Architecture: Design a solution framework
+        2. Strategy: Develop an execution plan
+        3. Exploration: Gather necessary information and research
+        4. Creation: Implement the solution
+        5. Evaluation: Review and identify improvements
+        6. Synthesis: Integrate everything into a final deliverable
+        
+        # Important Instructions for All Agents
+        - When you complete your phase, ALWAYS end your message with your assigned terminate message.
+        - For example, Architect ends with "ARCHITECTURE_COMPLETE", Strategist with "STRATEGY_COMPLETE", etc.
+        - Do not use these terminate messages in the middle of your contribution, only at the very end.
+        - After your terminate message, the next appropriate agent will automatically be selected to continue.
+        
+        Start by designing the architecture for this task.
         """
         
         try:
-            # Phase 1: Architecture
-            logger.info(f"Starting architecture phase for task: {task.title}")
-            architecture_message = f"""
-            We need to design a solution for the following task:
-            
-            {task_prompt}
-            
-            Please analyze the requirements, identify the core components needed, 
-            and create a high-level architecture or framework to guide our approach.
-            """
-            
-            architecture_result = architect.initiate_chat(
-                recipient=architect,
-                message=architecture_message,
-                max_turns=5
-            )
-            
-            # Phase 2: Strategy
-            logger.info(f"Starting strategy phase for task: {task.title}")
-            strategy_message = f"""
-            Based on our architectural design:
-            
-            {architecture_result.summary}
-            
-            Please create a detailed execution plan for this task. Break it down into 
-            clear steps, identify resources needed, and establish milestones.
-            """
-            
-            strategy_result = architect.initiate_chat(
-                recipient=strategist,
-                message=strategy_message,
-                max_turns=5
-            )
-            
-            # Phase 3: Exploration
-            logger.info(f"Starting exploration phase for task: {task.title}")
-            exploration_message = f"""
-            Based on our architecture and strategy:
-            
-            Architecture: {architecture_result.summary}
-            
-            Strategy: {strategy_result.summary}
-            
-            Please conduct research to gather all necessary information for this task.
-            Identify relevant context, best practices, and potential approaches.
-            """
-            
-            exploration_result = strategist.initiate_chat(
-                recipient=explorer,
-                message=exploration_message,
-                max_turns=8
-            )
-            
-            # Phase 4: Creation
-            logger.info(f"Starting creation phase for task: {task.title}")
-            creation_message = f"""
-            Based on our architecture, strategy, and exploration:
-            
-            Architecture: {architecture_result.summary}
-            
-            Strategy: {strategy_result.summary}
-            
-            Exploration: {exploration_result.summary}
-            
-            Please implement the solution for this task. Focus on creating high-quality deliverables
-            that meet the requirements and align with our design.
-            
-            If this task involves coding, you have access to the CodeTool which allows you to:
-            1. Generate code files in various languages
-            2. Validate that code compiles correctly
-            3. Fix code that has compilation errors
-            4. Run code and see the output
-            5. Get summaries of code files
-            
-            Use these capabilities to ensure any code you create works properly.
-            """
-            
-            creation_result = explorer.initiate_chat(
-                recipient=creator,
-                message=creation_message,
-                max_turns=10
-            )
-            
-            # Phase 5: Evaluation
-            logger.info(f"Starting evaluation phase for task: {task.title}")
-            evaluation_message = f"""
-            Please evaluate the implementation for this task:
-            
-            {creation_result.summary}
-            
-            Compare it against the original requirements:
-            
-            {task_prompt}
-            
-            And our architecture and strategy:
-            
-            Architecture: {architecture_result.summary}
-            Strategy: {strategy_result.summary}
-            
-            Identify any issues, suggest improvements, and assess overall quality.
-            
-            If the implementation includes code, use the CodeTool to validate and test the code,
-            ensuring it works as expected.
-            """
-            
-            evaluation_result = creator.initiate_chat(
-                recipient=evaluator,
-                message=evaluation_message,
-                max_turns=5
-            )
-            
-            # Phase 6: Synthesis
-            logger.info(f"Starting synthesis phase for task: {task.title}")
-            synthesis_message = f"""
-            Based on the implementation and evaluation:
-            
-            Implementation: {creation_result.summary}
-            
-            Evaluation: {evaluation_result.summary}
-            
-            Please synthesize the final solution, addressing any issues identified in the evaluation.
-            Create a polished, comprehensive deliverable that fulfills all requirements.
-            
-            If there are code components, ensure all code is working correctly and is well-integrated
-            into the final solution. Use the CodeTool as needed for final validation.
-            """
-            
-            synthesis_result = evaluator.initiate_chat(
-                recipient=synthesizer,
-                message=synthesis_message,
-                max_turns=5
+            # Run the swarm with the architect as the initial agent
+            swarm_result = self.run_swarm(
+                initial_agent_name="architect",
+                query=query,
+                context_variables=task_context,
+                max_rounds=30
             )
             
             # Save the results
-            results_path = os.path.join(self.workspace_dir, f"{task.title}_results.md")
-            with open(results_path, "w") as f:
-                f.write(f"# Task Results: {task.title}\n\n")
-                f.write(f"## Task Description\n{task.description}\n\n")
-                f.write(f"## Architecture\n{architecture_result.summary}\n\n")
-                f.write(f"## Strategy\n{strategy_result.summary}\n\n")
-                f.write(f"## Exploration\n{exploration_result.summary}\n\n")
-                f.write(f"## Creation\n{creation_result.summary}\n\n")
-                f.write(f"## Evaluation\n{evaluation_result.summary}\n\n")
-                f.write(f"## Final Solution\n{synthesis_result.summary}\n\n")
+            # Create a file name based on the first few words of the description
+            task_file_name = "_".join(task.description.split()[:5]).lower()
+            task_file_name = "".join(c if c.isalnum() or c == "_" else "_" for c in task_file_name)
+            results_path = os.path.join(self.workspace_dir, f"{task_file_name}_results.md")
             
-            logger.info(f"Task completed and results saved to {results_path}")
-            
-            # Return the results
-            return {
-                "status": "completed",
-                "task_name": task.title,
-                "results_path": results_path,
-                "summary": synthesis_result.summary,
-                "phases": {
-                    "architecture": architecture_result.summary,
-                    "strategy": strategy_result.summary,
-                    "exploration": exploration_result.summary,
-                    "creation": creation_result.summary,
-                    "evaluation": evaluation_result.summary,
-                    "synthesis": synthesis_result.summary
-                },
-                "chat_history": {
-                    "architecture": architecture_result.chat_history,
-                    "strategy": strategy_result.chat_history,
-                    "exploration": exploration_result.chat_history,
-                    "creation": creation_result.chat_history,
-                    "evaluation": evaluation_result.chat_history,
-                    "synthesis": synthesis_result.chat_history
+            if "error" not in swarm_result:
+                chat_result = swarm_result.get("chat_result", "")
+                final_context = swarm_result.get("context_variables", {})
+                
+                with open(results_path, "w") as f:
+                    f.write(f"# Task Results\n\n")
+                    f.write(f"## Task Description\n{task.description}\n\n")
+                    
+                    # Include phase results if they exist in the context
+                    phase_results = final_context.get("phase_results", {})
+                    for phase, result in phase_results.items():
+                        f.write(f"## {phase.capitalize()}\n{result}\n\n")
+                    
+                    # Add the final summary
+                    f.write(f"## Final Solution\n{chat_result}\n\n")
+                
+                logger.info(f"Task completed and results saved to {results_path}")
+                
+                # Return the results
+                return {
+                    "status": "completed",
+                    "task_description": task.description[:50] + "..." if len(task.description) > 50 else task.description,
+                    "results_path": results_path,
+                    "summary": chat_result,
+                    "phase_results": phase_results,
+                    "chat_history": swarm_result.get("messages", [])
                 }
-            }
+            else:
+                logger.error(f"Error in swarm execution: {swarm_result.get('error')}")
+                return {
+                    "status": "failed",
+                    "task_description": task.description[:50] + "..." if len(task.description) > 50 else task.description,
+                    "error": swarm_result.get("error", "Unknown error in swarm execution")
+                }
             
         except Exception as e:
-            logger.error(f"Error executing task {task.title}: {str(e)}")
+            logger.error(f"Error executing task {task.description[:40]}...: {str(e)}")
             return {
                 "status": "failed",
-                "task_name": task.title,
+                "task_description": task.description[:50] + "..." if len(task.description) > 50 else task.description,
                 "error": str(e)
             }
     
@@ -484,11 +375,7 @@ class VersatileTeam(Team):
         # Convert string to Task if needed
         if isinstance(task, str):
             from roboco.core.schema import Task
-            task = Task(title="collaborative_task", description=task)
-        
-        # Enable swarm for collaboration
-        self.enable_swarm()
-        self.register_handoffs()
+            task = Task(description=task)
         
         # Prepare the initial query
         query = f"""
@@ -509,6 +396,12 @@ class VersatileTeam(Team):
         5. The Evaluator will review and identify improvements
         6. The Synthesizer will integrate everything into a final deliverable
         
+        # Important Instructions for All Agents
+        - When you complete your phase, ALWAYS end your message with your assigned terminate message.
+        - For example, Architect ends with "ARCHITECTURE_COMPLETE", Strategist with "STRATEGY_COMPLETE", etc.
+        - Do not use these terminate messages in the middle of your contribution, only at the very end.
+        - After your terminate message, the next appropriate agent will automatically be selected to continue.
+        
         Let's work together to complete this task successfully.
         """
         
@@ -516,17 +409,20 @@ class VersatileTeam(Team):
         swarm_result = self.run_swarm(
             initial_agent_name="architect",
             query=query,
-            context_variables={"task": task.dict() if hasattr(task, 'dict') else {"title": task.title, "description": task.description}},
+            context_variables={"task": task.dict() if hasattr(task, 'dict') else {"description": task.description}},
             max_rounds=25
         )
         
         # Save the results
-        results_path = os.path.join(self.workspace_dir, f"{task.title}_collaborative_results.md")
+        # Create a file name based on the first few words of the description
+        task_file_name = "_".join(task.description.split()[:5]).lower()
+        task_file_name = "".join(c if c.isalnum() or c == "_" else "_" for c in task_file_name)
+        results_path = os.path.join(self.workspace_dir, f"{task_file_name}_collaborative_results.md")
         
         if "error" not in swarm_result:
             chat_result = swarm_result.get("chat_result", "")
             with open(results_path, "w") as f:
-                f.write(f"# Collaborative Task Results: {task.title}\n\n")
+                f.write(f"# Collaborative Task Results\n\n")
                 f.write(f"## Task Description\n{task.description}\n\n")
                 f.write(f"## Solution\n{chat_result}\n\n")
             
@@ -538,4 +434,4 @@ class VersatileTeam(Team):
             logger.error(f"Error in collaborative session: {swarm_result.get('error')}")
             swarm_result["status"] = "failed"
         
-        return swarm_result 
+        return swarm_result

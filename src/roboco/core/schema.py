@@ -117,9 +117,8 @@ class LLMConfig(BaseModel):
 
 
 class Task(BaseModel):
-    """A single task in a project."""
-    title: str = Field(..., description="Title of the task")
-    description: Optional[str] = Field(None, description="Detailed description of the task")
+    """A single task in a project or todo list."""
+    description: str = Field(..., description="Description of the task to complete")
     status: str = Field(default="TODO", description="Status of the task (TODO, IN_PROGRESS, DONE)")
     assigned_to: Optional[str] = Field(None, description="Agent or person assigned to the task")
     priority: str = Field(default="medium", description="Priority level (low, medium, high, critical)")

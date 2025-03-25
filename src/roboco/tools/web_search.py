@@ -140,7 +140,7 @@ class WebSearchTool(Tool):
         self.logger.info("Initialized WebSearchTool")
         
     @command(primary=True)
-    async def web_search(self, query: str, max_results: Optional[int] = None) -> Dict[str, Any]:
+    def web_search(self, query: str, max_results: Optional[int] = None) -> Dict[str, Any]:
         """
         Search the web for information on a topic.
         
@@ -187,18 +187,4 @@ class WebSearchTool(Tool):
                         "error": str(e),
                         "query": query,
                         "results": []
-                    }
-
-    @classmethod
-    def create_with_config(cls, config: Optional[Dict[str, Any]] = None) -> "WebSearchTool":
-        """Create a new instance of the WebSearchTool with the given configuration.
-        
-        Args:
-            config: Configuration for the tool.
-            
-        Returns:
-            A new WebSearchTool instance.
-        """
-        if config is None:
-            config = {}
-        return cls(config=WebSearchConfig(**config)) 
+                    } 

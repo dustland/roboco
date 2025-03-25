@@ -349,3 +349,35 @@ teams:
       - browser_use
       - containerization
     tool_executor: human_proxy
+
+  # Versatile Team configuration
+  versatile:
+    name: "VersatileTeam"
+    description: "A flexible and adaptable team with specialized roles that can handle any type of task"
+    output_dir: "workspace/versatile"
+    roles:
+      - architect
+      - strategist
+      - explorer
+      - creator
+      - evaluator
+      - synthesizer
+      - human_proxy
+    workflow:
+      - from: architect
+        to: strategist
+      - from: strategist
+        to: explorer
+      - from: explorer
+        to: creator
+      - from: creator
+        to: evaluator
+      - from: evaluator
+        to: synthesizer
+      - from: synthesizer
+        to: architect
+    tools:
+      - fs
+      - web_search
+      - code
+    tool_executor: human_proxy

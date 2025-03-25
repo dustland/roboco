@@ -38,7 +38,6 @@ async def run_simple_task(workspace_dir: str, task_description: str):
     try:
         # Create the task
         task = Task(
-            title="simple_task",
             description=task_description,
             expected_outcome="Successfully complete the requested task"
         )
@@ -76,7 +75,6 @@ async def run_collaborative_task(workspace_dir: str, task_description: str):
     try:
         # Create the task
         task = Task(
-            title="collaborative_task",
             description=task_description,
             expected_outcome="Successfully complete the requested task"
         )
@@ -121,17 +119,14 @@ async def run_multiple_tasks(workspace_dir: str):
         # Create a list of tasks
         tasks = [
             Task(
-                title="task1",
                 description="Research the key components of a successful blog post",
                 expected_outcome="A list of key components and best practices"
             ),
             Task(
-                title="task2",
                 description="Create an outline for a blog post about artificial intelligence trends",
                 expected_outcome="A detailed outline with sections and key points"
             ),
             Task(
-                title="task3", 
                 description="Identify potential visual elements to enhance the blog post",
                 expected_outcome="A list of image ideas, charts, and other visual elements"
             )
@@ -154,8 +149,8 @@ async def run_multiple_tasks(workspace_dir: str):
         print("----------------------")
         for i, task_result in enumerate(result.get("task_results", [])):
             status = "✅ Completed" if task_result.get("status") == "completed" else "❌ Failed"
-            task_name = task_result.get("task_name", f"Task {i+1}")
-            print(f"{task_name}: {status}")
+            task_desc = task_result.get("task_description", f"Task {i+1}")
+            print(f"{task_desc}: {status}")
             if task_result.get("status") == "completed":
                 print(f"  Results: {task_result.get('results_path')}")
             else:
