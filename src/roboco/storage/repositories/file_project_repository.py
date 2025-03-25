@@ -108,8 +108,8 @@ class FileProjectRepository(ProjectRepository):
         with open(config_path, "w") as f:
             json.dump(project.to_dict(), f, indent=2)
         
-        # Update todo.md
-        await self._update_todo_markdown(project)
+        # Update task.md
+        await self._update_task_markdown(project)
         
         logger.info(f"Saved project {project.name} (ID: {project.id})")
         
@@ -181,51 +181,34 @@ class FileProjectRepository(ProjectRepository):
         projects = await self.list_all()
         return [p for p in projects if tag in p.tags]
     
-    async def _update_todo_markdown(self, project: Project) -> None:
-        """Update the todo.md file for a project.
+    async def _update_task_markdown(self, project: Project) -> None:
+        """Update the task.md file for a project.
         
         Args:
-            project: The project to update the todo.md for
+            project: The project to update the task.md for
         """
-        todo_path = os.path.join(self.projects_dir, project.id, "todo.md")
+        task_path = os.path.join(self.projects_dir, project.id, "task.md")
         
-        content = f"# {project.name} - Todo List\n\n"
+        content = f"# {project.name} - Task List\n\n"
         
-        # Add project-level todos
-        if project.todos:
-            content += "## Project Todos\n\n"
-            for todo in project.todos:
-                status_marker = "- [x]" if todo.status == "DONE" else "- [ ]"
-                content += f"{status_marker} **{todo.title}**"
-                if todo.priority:
-                    content += f" (Priority: {todo.priority})"
+        # Add project-level tasks
+        if project.tasks:
+            content += "## Project Tasks\n\n"
+            for task in project.tasks:
+                status_marker = "- [x]" if task.status == "DONE" else "- [ ]"
+                content += f"{status_marker} **{task.description}**"
+                if task.priority:
+                    content += f" (Priority: {task.priority})"
                 content += "\n"
-                if todo.description:
-                    content += f"  - {todo.description}\n"
-                if todo.assigned_to:
-                    content += f"  - Assigned to: {todo.assigned_to}\n"
+                if task.assigned_to:
+                    content += f"  - Assigned to: {task.assigned_to}\n"
+                if task.depends_on:
+                    content += f"  - Depends on: {', '.join(task.depends_on)}\n"
+                if task.tags:
+                    content += f"  - Tags: {', '.join(task.tags)}\n"
+                if task.completed_at:
+                    content += f"  - Completed at: {task.completed_at.isoformat()}\n"
                 content += "\n"
         
-        # Add sprint todos
-        for sprint in project.sprints:
-            if sprint.todos:
-                content += f"## Sprint: {sprint.name}\n\n"
-                if sprint.description:
-                    content += f"{sprint.description}\n\n"
-                    
-                content += f"Status: {sprint.status}\n\n"
-                
-                for todo in sprint.todos:
-                    status_marker = "- [x]" if todo.status == "DONE" else "- [ ]"
-                    content += f"{status_marker} **{todo.title}**"
-                    if todo.priority:
-                        content += f" (Priority: {todo.priority})"
-                    content += "\n"
-                    if todo.description:
-                        content += f"  - {todo.description}\n"
-                    if todo.assigned_to:
-                        content += f"  - Assigned to: {todo.assigned_to}\n"
-                    content += "\n"
-        
-        with open(todo_path, "w") as f:
+        with open(task_path, "w") as f:
             f.write(content)

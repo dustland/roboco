@@ -14,7 +14,7 @@ logger = get_logger(__name__)
 
 from roboco.core.team import Team
 from roboco.core.agent import Agent
-from roboco.core.schema import Task
+from roboco.core.models import Task
 from roboco.agents.human_proxy import HumanProxy
 from roboco.core.agent_factory import AgentFactory
 from autogen import AfterWork, AfterWorkOption, OnCondition, register_hand_off
@@ -247,9 +247,15 @@ class VersatileTeam(Team):
                 "expected_outcome": task.expected_outcome if hasattr(task, 'expected_outcome') else 'Complete the task successfully'
             },
             "workspace_dir": self.workspace_dir,
+            "src_dir": os.path.join(self.workspace_dir, "src"),
+            "docs_dir": os.path.join(self.workspace_dir, "docs"),
             "phase_results": {},
             "current_phase": "architecture"
         }
+        
+        # Create necessary directories if they don't exist
+        os.makedirs(task_context["src_dir"], exist_ok=True)
+        os.makedirs(task_context["docs_dir"], exist_ok=True)
         
         # Prepare the initial query
         query = f"""
@@ -261,6 +267,8 @@ class VersatileTeam(Team):
         
         # Resources
         Workspace directory: {self.workspace_dir}
+        Source code directory: {task_context["src_dir"]}
+        Documentation directory: {task_context["docs_dir"]}
         
         # Process
         This is a collaborative effort where team members will work together through different phases:
@@ -276,6 +284,8 @@ class VersatileTeam(Team):
         - For example, Architect ends with "ARCHITECTURE_COMPLETE", Strategist with "STRATEGY_COMPLETE", etc.
         - Do not use these terminate messages in the middle of your contribution, only at the very end.
         - After your terminate message, the next appropriate agent will automatically be selected to continue.
+        - All source code files should be created in the source code directory.
+        - All documentation and planning files should be created in the documentation directory.
         
         Start by designing the architecture for this task.
         """
@@ -293,7 +303,7 @@ class VersatileTeam(Team):
             # Create a file name based on the first few words of the description
             task_file_name = "_".join(task.description.split()[:5]).lower()
             task_file_name = "".join(c if c.isalnum() or c == "_" else "_" for c in task_file_name)
-            results_path = os.path.join(self.workspace_dir, f"{task_file_name}_results.md")
+            results_path = os.path.join(task_context["docs_dir"], f"{task_file_name}_results.md")
             
             if "error" not in swarm_result:
                 chat_result = swarm_result.get("chat_result", "")
@@ -359,23 +369,29 @@ class VersatileTeam(Team):
             "failed": len([r for r in results if r.get("status") == "failed"])
         }
     
-    async def run_collaborative_session(self, task: Union[Task, str]) -> Dict[str, Any]:
+    async def run_chat(self, query: str, teams: Optional[List[str]] = None) -> Dict[str, Any]:
         """
-        Run a collaborative session with all team members working together.
+        Run a chat session with all team members working together.
         
         This method uses swarm orchestration to enable all agents to collaborate
         on a task with automatic handoffs between agents.
         
         Args:
-            task: Task object or task description string
+            query: The user's query
+            teams: Optional list of teams to assign
             
         Returns:
             Dict containing the session results
         """
-        # Convert string to Task if needed
-        if isinstance(task, str):
-            from roboco.core.schema import Task
-            task = Task(description=task)
+        # Convert string to Task
+        from roboco.core.models import Task
+        task = Task(description=query)
+        
+        # Create necessary directories if they don't exist
+        src_dir = os.path.join(self.workspace_dir, "src")
+        docs_dir = os.path.join(self.workspace_dir, "docs")
+        os.makedirs(src_dir, exist_ok=True)
+        os.makedirs(docs_dir, exist_ok=True)
         
         # Prepare the initial query
         query = f"""
@@ -386,6 +402,11 @@ class VersatileTeam(Team):
         # Expected Outcome
         {task.expected_outcome if hasattr(task, 'expected_outcome') else 'Complete the task successfully'}
         
+        # Resources
+        Workspace directory: {self.workspace_dir}
+        Source code directory: {src_dir}
+        Documentation directory: {docs_dir}
+        
         # Process
         This is a collaborative effort where team members will work together:
         1. The Architect will design the overall solution framework
@@ -393,6 +414,7 @@ class VersatileTeam(Team):
         3. The Explorer will gather necessary information and research
         4. The Creator will implement the solution
            - For coding tasks, the Creator can use CodeTool to generate, validate, and execute code
+           - All source code should be created in the source code directory
         5. The Evaluator will review and identify improvements
         6. The Synthesizer will integrate everything into a final deliverable
         
@@ -401,6 +423,8 @@ class VersatileTeam(Team):
         - For example, Architect ends with "ARCHITECTURE_COMPLETE", Strategist with "STRATEGY_COMPLETE", etc.
         - Do not use these terminate messages in the middle of your contribution, only at the very end.
         - After your terminate message, the next appropriate agent will automatically be selected to continue.
+        - All source code files should be created in the source code directory.
+        - All documentation and planning files should be created in the documentation directory.
         
         Let's work together to complete this task successfully.
         """
@@ -409,7 +433,11 @@ class VersatileTeam(Team):
         swarm_result = self.run_swarm(
             initial_agent_name="architect",
             query=query,
-            context_variables={"task": task.dict() if hasattr(task, 'dict') else {"description": task.description}},
+            context_variables={
+                "task": task.dict() if hasattr(task, 'dict') else {"description": task.description},
+                "src_dir": src_dir,
+                "docs_dir": docs_dir
+            },
             max_rounds=25
         )
         
@@ -417,7 +445,7 @@ class VersatileTeam(Team):
         # Create a file name based on the first few words of the description
         task_file_name = "_".join(task.description.split()[:5]).lower()
         task_file_name = "".join(c if c.isalnum() or c == "_" else "_" for c in task_file_name)
-        results_path = os.path.join(self.workspace_dir, f"{task_file_name}_collaborative_results.md")
+        results_path = os.path.join(docs_dir, f"{task_file_name}_collaborative_results.md")
         
         if "error" not in swarm_result:
             chat_result = swarm_result.get("chat_result", "")
@@ -428,10 +456,16 @@ class VersatileTeam(Team):
             
             logger.info(f"Collaborative session completed and results saved to {results_path}")
             
-            swarm_result["results_path"] = results_path
-            swarm_result["status"] = "completed"
+            # Format the response to match PlanningTeam's run_chat format
+            return {
+                "response": chat_result,
+                "chat_history": swarm_result.get("messages", []),
+                "results_path": results_path,
+                "status": "completed"
+            }
         else:
             logger.error(f"Error in collaborative session: {swarm_result.get('error')}")
-            swarm_result["status"] = "failed"
-        
-        return swarm_result
+            return {
+                "error": swarm_result.get('error', "Unknown error in collaborative session"),
+                "status": "failed"
+            }

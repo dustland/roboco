@@ -10,12 +10,11 @@ from datetime import datetime
 from pydantic import BaseModel, Field
 import uuid
 
-from roboco.core.schema import Task as CoreTask
+from roboco.core.models import Task as CoreTask
 
 
 class TaskBase(BaseModel):
     """Base model for task data."""
-    title: str = Field(..., description="Title of the task")
     description: Optional[str] = Field(None, description="Detailed description of the task")
     status: str = Field(default="TODO", description="Status of the task (TODO, IN_PROGRESS, DONE)")
     assigned_to: Optional[str] = Field(None, description="Agent or person assigned to the task")
@@ -31,7 +30,6 @@ class TaskCreate(TaskBase):
 
 class TaskUpdate(BaseModel):
     """Request model for updating a task."""
-    title: Optional[str] = Field(None, description="Title of the task")
     description: Optional[str] = Field(None, description="Detailed description of the task")
     status: Optional[str] = Field(None, description="Status of the task (TODO, IN_PROGRESS, DONE)")
     assigned_to: Optional[str] = Field(None, description="Agent or person assigned to the task")
@@ -64,7 +62,6 @@ class Task(TaskBase):
         """
         return cls(
             id=getattr(task, 'id', str(uuid.uuid4())),
-            title=task.title,
             description=task.description,
             status=task.status,
             assigned_to=task.assigned_to,

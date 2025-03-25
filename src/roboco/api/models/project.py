@@ -68,7 +68,6 @@ class Project(ProjectBase):
         for task in project.tasks:
             tasks.append(Task(
                 id=getattr(task, 'id', str(len(tasks))),
-                title=task.title,
                 description=task.description,
                 status=task.status,
                 assigned_to=task.assigned_to,

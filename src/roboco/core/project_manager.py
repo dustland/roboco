@@ -19,7 +19,7 @@ from datetime import timedelta
 
 from loguru import logger
 
-from roboco.core.schema import ProjectConfig, Task
+from roboco.core.models import ProjectConfig, Task
 from roboco.core import config
 
 
@@ -113,7 +113,7 @@ class ProjectManager:
                 for task in in_progress_tasks:
                     assigned = f" (@{task.assigned_to})" if task.assigned_to else ""
                     priority_marker = {"low": "🔽", "medium": "⏺️", "high": "🔼", "critical": "‼️"}.get(task.priority.lower(), "")
-                    content += f"- [ ] {priority_marker} {task.title}{assigned} - {task.description or ''}\n"
+                    content += f"- [ ] {priority_marker} {task.description}{assigned} - {task.description or ''}\n"
                 content += "\n"
             
             if todo_tasks:
@@ -121,14 +121,14 @@ class ProjectManager:
                 for task in todo_tasks:
                     assigned = f" (@{task.assigned_to})" if task.assigned_to else ""
                     priority_marker = {"low": "🔽", "medium": "⏺️", "high": "🔼", "critical": "‼️"}.get(task.priority.lower(), "")
-                    content += f"- [ ] {priority_marker} {task.title}{assigned} - {task.description or ''}\n"
+                    content += f"- [ ] {priority_marker} {task.description}{assigned} - {task.description or ''}\n"
                 content += "\n"
             
             if done_tasks:
                 content += "## Completed\n\n"
                 for task in done_tasks:
                     assigned = f" (@{task.assigned_to})" if task.assigned_to else ""
-                    content += f"- [x] {task.title}{assigned} - {task.description or ''}\n"
+                    content += f"- [x] {task.description}{assigned} - {task.description or ''}\n"
                 content += "\n"
         
         # Write the task.md file
@@ -284,7 +284,7 @@ class ProjectManager:
         
         return True
     
-    def create_task(self, project_id: str, title: str, description: Optional[str] = None,
+    def create_task(self, project_id: str, description: Optional[str] = None,
                   status: str = "TODO", assigned_to: Optional[str] = None,
                   priority: str = "medium", depends_on: Optional[List[str]] = None,
                   tags: Optional[List[str]] = None) -> Optional[Task]:
@@ -292,7 +292,6 @@ class ProjectManager:
         
         Args:
             project_id: ID of the project
-            title: Title of the task
             description: Optional description
             status: Status (TODO, IN_PROGRESS, DONE)
             assigned_to: Optional assignee
@@ -309,7 +308,6 @@ class ProjectManager:
         
         # Create the task
         task = Task(
-            title=title,
             description=description,
             status=status,
             assigned_to=assigned_to,
@@ -329,12 +327,12 @@ class ProjectManager:
         
         return task
     
-    def update_task(self, project_id: str, task_title: str, **updates) -> bool:
+    def update_task(self, project_id: str, task_description: str, **updates) -> bool:
         """Update a task.
         
         Args:
             project_id: ID of the project
-            task_title: Title of the task to update
+            task_description: Description of the task to update
             **updates: Attributes to update
             
         Returns:
@@ -346,7 +344,7 @@ class ProjectManager:
         
         # Check project tasks
         for i, task in enumerate(project.tasks):
-            if task.title == task_title:
+            if task.description == task_description:
                 for field, value in updates.items():
                     if hasattr(task, field):
                         setattr(task, field, value)

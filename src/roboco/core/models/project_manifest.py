@@ -6,6 +6,7 @@ This module defines the schema and validation for project manifests.
 
 from typing import Dict, Any, List, Optional
 import json
+from datetime import datetime
 from pydantic import BaseModel, Field
 
 # Define Pydantic models for project manifest
@@ -15,10 +16,20 @@ class ProjectFile(BaseModel):
     content: str = Field(..., description="Content of the file")
 
 class ProjectManifest(BaseModel):
-    """Model representing a complete project manifest."""
-    name: str = Field(..., description="Project name in kebab-case (lowercase with hyphens)")
-    directories: List[str] = Field(..., description="List of directory paths to create")
-    files: List[ProjectFile] = Field(..., description="List of files to create with their content")
+    """Project manifest schema defining key project organization"""
+    name: str = Field(..., description="Name of the project")
+    description: str = Field(..., description="Description of the project")
+    directory_name: str = Field(..., description="Clean, normalized folder name (snake_case)")
+    structure: Dict[str, Any] = Field(..., description="Object describing the project's structure")
+    folder_structure: List[str] = Field(default=["src", "docs"], description="Subdirectories to create")
+    meta: Optional[Dict[str, Any]] = Field(None, description="Additional metadata about the project")
+    created_at: datetime = Field(default_factory=datetime.now, description="When the manifest was created")
+    task_file: str = Field(default="tasks.md", description="Name of the task file")
+    directories: Optional[List[str]] = Field(None, description="List of directory paths to create (legacy support)")
+    files: Optional[List[ProjectFile]] = Field(None, description="List of files to create (legacy support)")
+    
+    class Config:
+        arbitrary_types_allowed = True
 
 def validate_manifest(manifest: Dict[str, Any]) -> bool:
     """

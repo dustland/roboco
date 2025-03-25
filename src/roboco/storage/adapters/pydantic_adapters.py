@@ -9,9 +9,9 @@ domain-driven design while maintaining backward compatibility with the API layer
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 
-from roboco.core.schema import ProjectConfig, Task as PydanticTask
+from roboco.core.models import ProjectConfig, Task as PydanticTask
 from roboco.core.models.project import Project
-from roboco.core.schema import Task as DomainTask  # Import Task from schema.py instead of models/task.py
+from roboco.core.models import Task as DomainTask  # Import Task from models package
 
 
 def project_to_pydantic(project: Project) -> ProjectConfig:
@@ -77,7 +77,6 @@ def task_to_pydantic(task: DomainTask) -> PydanticTask:
     """
     return PydanticTask(
         id=getattr(task, 'id', None),
-        title=getattr(task, 'title', task.description),
         description=task.description,
         status=task.status,
         assigned_to=task.assigned_to,

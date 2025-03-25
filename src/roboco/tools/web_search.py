@@ -5,14 +5,22 @@ This module provides a tool for searching the web using the Tavily Search API.
 """
 
 import os
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional, List, Union, Literal
 from pydantic import BaseModel, Field
 from loguru import logger
+import json
+import asyncio
+from datetime import datetime
 
-from tavily import TavilyClient
+# Ensure tavily API is installed
+try:
+    from tavily import TavilyClient
+except ImportError:
+    logger.warning("Tavily API not found. Install with 'pip install tavily-python'")
+
+from roboco.core.models import ToolConfig
 from roboco.core.tool import Tool, command
 from roboco.core.logger import get_logger
-from roboco.core.schema import ToolConfig
 
 from langchain_core.tools import Tool as LangchainTool
 

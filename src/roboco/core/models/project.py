@@ -10,7 +10,7 @@ from datetime import datetime
 import uuid
 from loguru import logger
 
-from roboco.core.schema import Task
+from roboco.core.models.task import Task
 
 
 class Project:

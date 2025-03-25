@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 
 from roboco.core.tool import Tool
 from roboco.core.logger import get_logger
-from roboco.core.schema import ToolConfig
+from roboco.core.models import ToolConfig
 
 
 class TimeConfig(ToolConfig):

@@ -15,7 +15,7 @@ from langchain_openai import ChatOpenAI
 
 from roboco.core.tool import Tool
 from roboco.core.logger import get_logger
-from roboco.core.schema import ToolConfig
+from roboco.core.models import ToolConfig
 from roboco.utils.browser_utils import get_chrome_path, get_platform, is_chrome_installed
 
 import os

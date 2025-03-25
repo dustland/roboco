@@ -12,7 +12,7 @@ from pathlib import Path
 
 import sys
 from roboco.core import TeamBuilder
-from roboco.core.schema import TeamConfig
+from roboco.core.models import TeamConfig
 from roboco.teams.planning import PlanningTeam
 
 async def main():

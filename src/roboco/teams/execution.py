@@ -12,7 +12,7 @@ from roboco.core.value_objects.phase_status import PhaseStatus
 from roboco.core.value_objects.task_status import TaskStatus
 from roboco.core.models.execution import ExecutionState
 from roboco.core.value_objects.execution_status import ExecutionStatus
-from roboco.core.schema import Task
+from roboco.core.models import Task
 from roboco.core.task_manager import TaskManager
 from roboco.core.team_factory import TeamFactory
 
@@ -149,14 +149,14 @@ class ExecutionOrchestrator:
             # Skip completed tasks
             if task.status == TaskStatus.DONE:
                 phase_result["tasks"].append({
-                    "title": task.title,
+                    "description": task.description,
                     "status": "DONE",
                     "skipped": True
                 })
                 continue
             
             # Update state for UI
-            self.state.current_task = task.title
+            self.state.current_task = task.description
             self.state.last_updated = datetime.now()
             
             # Log task start
@@ -164,16 +164,16 @@ class ExecutionOrchestrator:
                 "timestamp": datetime.now().isoformat(),
                 "event": "TASK_STARTED",
                 "phase": phase.name,
-                "task": task.title
+                "task": task.description
             })
             
             # Execute task (placeholder for now)
             task_start_time = time.time()
-            logger.info(f"Executing task: {task.title}")
+            logger.info(f"Executing task: {task.description}")
             
             # This would be replaced with actual task execution
             task_success = True
-            task_output = f"Executed task: {task.title}"
+            task_output = f"Executed task: {task.description}"
             task_error = None
             
             task_execution_time = time.time() - task_start_time
@@ -188,7 +188,7 @@ class ExecutionOrchestrator:
                     "timestamp": datetime.now().isoformat(),
                     "event": "TASK_COMPLETED",
                     "phase": phase.name,
-                    "task": task.title,
+                    "task": task.description,
                     "execution_time": task_execution_time
                 })
             else:
@@ -199,7 +199,7 @@ class ExecutionOrchestrator:
                     "timestamp": datetime.now().isoformat(),
                     "event": "TASK_FAILED",
                     "phase": phase.name,
-                    "task": task.title,
+                    "task": task.description,
                     "error": task_error
                 })
             
@@ -208,7 +208,7 @@ class ExecutionOrchestrator:
             
             # Record result
             phase_result["tasks"].append({
-                "title": task.title,
+                "description": task.description,
                 "status": task.status,
                 "execution_time": task_execution_time,
                 "output": task_output,
@@ -224,7 +224,7 @@ class ExecutionOrchestrator:
                     "timestamp": datetime.now().isoformat(),
                     "event": "PHASE_FAILED",
                     "phase": phase.name,
-                    "task": task.title
+                    "task": task.description
                 })
                 
                 break
@@ -310,12 +310,12 @@ class ExecutionTeam:
         
         return results
     
-    async def execute_single_task(self, phase_name: str, task_title: str) -> Dict[str, Any]:
-        """Execute a single task by phase name and task title.
+    async def execute_single_task(self, phase_name: str, task_description: str) -> Dict[str, Any]:
+        """Execute a single task by phase name and task description.
         
         Args:
             phase_name: Name of the phase containing the task
-            task_title: Title of the task to execute
+            task_description: Description of the task to execute
             
         Returns:
             Dictionary with task execution results
@@ -332,13 +332,13 @@ class ExecutionTeam:
             return {"error": f"Phase '{phase_name}' not found"}
         
         # Find the specified task
-        task = next((t for t in phase.tasks if t.title.lower() == task_title.lower()), None)
+        task = next((t for t in phase.tasks if t.description.lower() == task_description.lower()), None)
         if not task:
-            return {"error": f"Task '{task_title}' not found in phase '{phase_name}'"}
+            return {"error": f"Task '{task_description}' not found in phase '{phase_name}'"}
         
         # Update state for UI
         self.orchestrator.state.current_phase = phase.name
-        self.orchestrator.state.current_task = task.title
+        self.orchestrator.state.current_task = task.description
         self.orchestrator.state.status = ExecutionStatus.RUNNING
         self.orchestrator.state.last_updated = datetime.now()
         
@@ -347,16 +347,16 @@ class ExecutionTeam:
             "timestamp": datetime.now().isoformat(),
             "event": "TASK_STARTED",
             "phase": phase.name,
-            "task": task.title
+            "task": task.description
         })
         
         # Execute task (placeholder for now)
         start_time = time.time()
-        logger.info(f"Executing single task: {task.title}")
+        logger.info(f"Executing single task: {task.description}")
         
         # This would be replaced with actual task execution
         task_success = True
-        task_output = f"Executed task: {task.title}"
+        task_output = f"Executed task: {task.description}"
         task_error = None
         
         execution_time = time.time() - start_time
@@ -371,7 +371,7 @@ class ExecutionTeam:
                 "timestamp": datetime.now().isoformat(),
                 "event": "TASK_COMPLETED",
                 "phase": phase.name,
-                "task": task.title,
+                "task": task.description,
                 "execution_time": execution_time
             })
         else:
@@ -382,7 +382,7 @@ class ExecutionTeam:
                 "timestamp": datetime.now().isoformat(),
                 "event": "TASK_FAILED",
                 "phase": phase.name,
-                "task": task.title,
+                "task": task.description,
                 "error": task_error
             })
         
@@ -395,7 +395,7 @@ class ExecutionTeam:
         
         return {
             "phase": phase_name,
-            "task": task_title,
+            "task": task_description,
             "success": task_success,
             "output": task_output,
             "error": task_error,

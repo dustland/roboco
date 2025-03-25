@@ -20,7 +20,7 @@ from autogen import (
 )
 
 from roboco.core.config import load_config, get_llm_config
-from roboco.core.schema import Task
+from roboco.core.models import Task
 
 
 class Team(ABC):
@@ -287,21 +287,21 @@ class SequentialExecutionTeam(BaseExecutionTeam):
             # Skip completed tasks
             if task.status == "DONE":
                 results["tasks"].append({
-                    "title": task.title,
+                    "description": task.description,
                     "status": "DONE",
                     "skipped": True
                 })
                 continue
             
             # Execute task (placeholder)
-            logger.info(f"SequentialTeam executing task: {task.title}")
+            logger.info(f"SequentialTeam executing task: {task.description}")
             
             # Record result (placeholder)
             results["tasks"].append({
-                "title": task.title,
+                "description": task.description,
                 "status": "DONE",
                 "execution_time": 0,
-                "output": f"Executed task: {task.title}",
+                "output": f"Executed task: {task.description}",
                 "error": None
             })
         
@@ -324,10 +324,10 @@ class ParallelExecutionTeam(BaseExecutionTeam):
         
         for task in tasks:
             results["tasks"].append({
-                "title": task.title,
+                "description": task.description,
                 "status": "DONE",
                 "execution_time": 0,
-                "output": f"Executed task: {task.title}",
+                "output": f"Executed task: {task.description}",
                 "error": None
             })
         
@@ -350,10 +350,10 @@ class IterativeExecutionTeam(BaseExecutionTeam):
         
         for task in tasks:
             results["tasks"].append({
-                "title": task.title,
+                "description": task.description,
                 "status": "DONE",
                 "execution_time": 0,
-                "output": f"Executed task: {task.title}",
+                "output": f"Executed task: {task.description}",
                 "error": None
             })
         
@@ -376,10 +376,10 @@ class GenericExecutionTeam(BaseExecutionTeam):
         
         for task in tasks:
             results["tasks"].append({
-                "title": task.title,
+                "description": task.description,
                 "status": "DONE",
                 "execution_time": 0,
-                "output": f"Executed task: {task.title}",
+                "output": f"Executed task: {task.description}",
                 "error": None
             })
         

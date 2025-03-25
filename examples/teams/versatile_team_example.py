@@ -16,7 +16,7 @@ from loguru import logger
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 
 from roboco.teams.versatile import VersatileTeam
-from roboco.core.schema import Task
+from roboco.core.models import Task
 
 
 def print_section(title):
@@ -64,19 +64,19 @@ async def run_simple_task(workspace_dir: str, task_description: str):
 
 
 async def run_collaborative_task(workspace_dir: str, task_description: str):
-    """Run a collaborative task session using the VersatileTeam's swarm capabilities.
+    """Run a collaborative task with all team members.
     
     Args:
         workspace_dir: Directory for workspace files
         task_description: Description of the task to execute
     """
-    print_section(f"Running Collaborative Task: {task_description[:40]}...")
+    print_section("Running Collaborative Task")
     
     try:
-        # Create the task
+        # Create a task
         task = Task(
             description=task_description,
-            expected_outcome="Successfully complete the requested task"
+            expected_outcome="Complete the task with high quality results"
         )
         
         # Create the team
@@ -84,21 +84,21 @@ async def run_collaborative_task(workspace_dir: str, task_description: str):
         
         # Execute the collaborative task
         print("Starting collaborative task session...")
-        result = await team.run_collaborative_session(task)
+        result = await team.run_chat(query=task_description)
         
         if result.get("status") == "completed":
             print("\n✅ Collaborative task completed successfully!")
             print(f"Results saved to: {result.get('results_path')}")
             
             # Show a snippet of the results
-            if "chat_result" in result:
+            if "response" in result:
                 print("\nResult Preview:")
                 print("--------------")
-                chat_result = result["chat_result"]
-                if isinstance(chat_result, str):
-                    print(chat_result[:500] + "...")
+                response = result["response"]
+                if isinstance(response, str):
+                    print(response[:500] + "...")
                 else:
-                    print(str(chat_result)[:500] + "...")
+                    print(str(response)[:500] + "...")
         else:
             print("\n❌ Collaborative task execution failed!")
             print(f"Error: {result.get('error', 'Unknown error')}")

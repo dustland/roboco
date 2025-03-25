@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Optional, Dict, Any, Union
 from dotenv import load_dotenv
 import yaml
-from .schema import RobocoConfig
+from roboco.core.models import RobocoConfig
 
 
 def load_env_vars() -> None:

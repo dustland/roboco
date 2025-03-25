@@ -16,10 +16,10 @@ import uuid
 # Add parent directory to path to allow importing from src
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 
-from src.roboco.services.project_service import ProjectService
-from src.roboco.services.api_service import ApiService
-from src.roboco.api.models.chat import ChatRequest, ChatResponse
-from src.roboco.infrastructure.repositories.file_project_repository import FileProjectRepository
+from roboco.services.project_service import ProjectService
+from roboco.services.api_service import ApiService
+from roboco.api.models.chat import ChatRequest, ChatResponse
+from roboco.storage.repositories.file_project_repository import FileProjectRepository
 
 
 async def start_chat(query: str, conversation_id: Optional[str] = None) -> Dict[str, Any]:

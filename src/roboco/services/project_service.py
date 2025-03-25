@@ -11,7 +11,7 @@ import uuid
 from loguru import logger
 
 from roboco.core.models.project import Project
-from roboco.core.schema import Task
+from roboco.core.models import Task
 from roboco.core.repositories.project_repository import ProjectRepository
 
 
@@ -133,7 +133,6 @@ class ProjectService:
     async def add_task_to_project(
         self,
         project_id: str,
-        title: str,
         description: Optional[str] = None,
         status: str = "TODO",
         assigned_to: Optional[str] = None,
@@ -144,7 +143,6 @@ class ProjectService:
         
         Args:
             project_id: ID of the project to add the task to
-            title: Title of the task
             description: Description of the task
             status: Status of the task (TODO, IN_PROGRESS, DONE)
             assigned_to: Agent or person assigned to the task
@@ -162,7 +160,6 @@ class ProjectService:
             raise ValueError(f"Project with ID {project_id} does not exist")
             
         task = Task(
-            title=title,
             description=description,
             status=status,
             assigned_to=assigned_to,

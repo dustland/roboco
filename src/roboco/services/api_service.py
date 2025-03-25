@@ -257,7 +257,6 @@ class ApiService:
         # Create the task using the domain service
         task = await self.task_service.create_task(
             project_id=project_id,
-            title=task_create.title,
             description=task_create.description,
             status=task_create.status,
             assigned_to=task_create.assigned_to,
@@ -289,7 +288,6 @@ class ApiService:
         task = await self.task_service.update_task(
             project_id=project_id,
             task_id=task_id,
-            title=task_update.title,
             description=task_update.description,
             status=task_update.status,
             assigned_to=task_update.assigned_to,

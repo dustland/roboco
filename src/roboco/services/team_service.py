@@ -14,7 +14,7 @@ from pathlib import Path
 from loguru import logger
 
 from roboco.core import TeamBuilder, config
-from roboco.core.config import load_config, get_llm_config
+from roboco.core.config import get_workspace, load_config, get_llm_config
 
 
 class TeamService:
@@ -31,7 +31,7 @@ class TeamService:
         self.config = load_config()
         
         # Set up workspace directory
-        self.workspace_dir = os.path.expanduser(self.config.get("workspace_dir", "~/roboco_workspace"))
+        self.workspace_dir = get_workspace()
         os.makedirs(self.workspace_dir, exist_ok=True)
         
         # Set up jobs directory

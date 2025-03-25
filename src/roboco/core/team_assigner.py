@@ -8,6 +8,7 @@ from typing import Any, Dict, List, Optional
 from roboco.core.logger import get_logger
 
 from roboco.core.models.phase import Phase
+from roboco.teams.versatile import VersatileTeam
 
 # Initialize logger
 logger = get_logger(__name__)
@@ -92,40 +93,10 @@ class TeamAssigner:
                 from roboco.teams.planning import PlanningTeam
                 return PlanningTeam(workspace_dir=self.workspace_dir)
                 
-            elif team_type == "development":
-                from roboco.teams.execution import ExecutionTeam
-                return ExecutionTeam(project_dir=self.workspace_dir)
-                
-            elif team_type == "research":
-                # Import research team if available, or fall back to VersatileTeam
-                try:
-                    from roboco.teams.research import ResearchTeam
-                    return ResearchTeam(workspace_dir=self.workspace_dir)
-                except ImportError:
-                    logger.warning(f"ResearchTeam not available, falling back to VersatileTeam")
-                    from roboco.teams.versatile import VersatileTeam
-                    return VersatileTeam(workspace_dir=self.workspace_dir)
-            
-            elif team_type == "versatile":
-                # Use the new VersatileTeam with specialized roles for generic phases
-                try:
-                    from roboco.teams.versatile import VersatileTeam
-                    return VersatileTeam(workspace_dir=self.workspace_dir)
-                except ImportError:
-                    logger.warning(f"VersatileTeam not available, falling back to ExecutionTeam")
-                    from roboco.teams.execution import ExecutionTeam
-                    return ExecutionTeam(project_dir=self.workspace_dir)
-                    
             else:
                 # Default to VersatileTeam instead of ExecutionTeam for better adaptability
                 logger.info(f"No specific team implementation for '{team_type}', using VersatileTeam")
-                try:
-                    from roboco.teams.versatile import VersatileTeam
-                    return VersatileTeam(workspace_dir=self.workspace_dir)
-                except ImportError:
-                    logger.warning(f"VersatileTeam not available, using ExecutionTeam")
-                    from roboco.teams.execution import ExecutionTeam
-                    return ExecutionTeam(project_dir=self.workspace_dir)
+                return VersatileTeam(workspace_dir=self.workspace_dir)
                 
         except Exception as e:
             logger.error(f"Error creating team of type '{team_type}': {e}")

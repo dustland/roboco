@@ -20,7 +20,7 @@ from pydantic import BaseModel, Field
 from roboco.core.tool import Tool
 from roboco.core.workspace import Workspace
 from roboco.core.logger import get_logger
-from roboco.core.schema import ToolConfig
+from roboco.core.models import ToolConfig
 
 # Initialize logger
 logger = get_logger(__name__)

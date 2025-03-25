@@ -13,7 +13,7 @@ from pathlib import Path
 from loguru import logger
 
 from roboco.core import Team, AgentFactory, TeamBuilder
-from roboco.core.schema import TeamConfig
+from roboco.core.models import TeamConfig
 from roboco.teams.planning import PlanningTeam
 
 async def main():

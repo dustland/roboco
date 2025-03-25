@@ -23,6 +23,13 @@ class ProjectExecutor:
             project_dir: Directory of the project containing tasks.md
         """
         self.project_dir = project_dir
+        self.src_dir = os.path.join(project_dir, "src")
+        self.docs_dir = os.path.join(project_dir, "docs")
+        
+        # Create directories if they don't exist
+        os.makedirs(self.src_dir, exist_ok=True)
+        os.makedirs(self.docs_dir, exist_ok=True)
+        
         self.task_manager = TaskManager()
         self.phase_executor = PhaseExecutor(project_dir)
         logger.debug(f"Initialized ProjectExecutor for project: {project_dir}")
@@ -69,7 +76,12 @@ class ProjectExecutor:
         # Execute each phase sequentially
         results = {
             "phases": {},
-            "overall_status": "success"
+            "overall_status": "success",
+            "directory_structure": {
+                "root": self.project_dir,
+                "src": self.src_dir,
+                "docs": self.docs_dir
+            }
         }
         
         logger.info(f"Starting execution of {len(phases)} phases")
@@ -89,14 +101,29 @@ class ProjectExecutor:
             if phase_result["status"] != "success":
                 results["overall_status"] = "partial_failure"
         
+        # Create a summary of files created in each directory
+        src_files = []
+        docs_files = []
+        
+        if os.path.exists(self.src_dir):
+            src_files = os.listdir(self.src_dir)
+        
+        if os.path.exists(self.docs_dir):
+            docs_files = os.listdir(self.docs_dir)
+        
+        results["files"] = {
+            "src": src_files,
+            "docs": docs_files
+        }
+        
         logger.info(f"Project execution completed with status: {results['overall_status']}")
         return results
         
-    async def execute_task(self, task_title: str) -> Dict[str, Any]:
-        """Execute a specific task by title.
+    async def execute_task(self, task_description: str) -> Dict[str, Any]:
+        """Execute a specific task by description.
         
         Args:
-            task_title: Title of the task to execute
+            task_description: Title of the task to execute
             
         Returns:
             Dictionary with execution results
@@ -121,8 +148,8 @@ class ProjectExecutor:
         # Find the task in any phase
         for phase in phases:
             for task in phase.tasks:
-                if task.title.lower() == task_title.lower():
-                    logger.info(f"Found task '{task_title}' in phase '{phase.name}'")
+                if task.description.lower() == task_description.lower():
+                    logger.info(f"Found task '{task_description}' in phase '{phase.name}'")
                     
                     # Create a temporary phase with just this task
                     temp_phase = Phase(
@@ -139,12 +166,12 @@ class ProjectExecutor:
                     )
                     
                     return {
-                        "task": task_title,
+                        "task": task.description,
                         "phase": phase.name,
                         "result": result
                     }
         
         # Task not found
-        error_msg = f"Task '{task_title}' not found in any phase"
+        error_msg = f"Task '{task_description}' not found in any phase"
         logger.error(error_msg)
         return {"error": error_msg} 

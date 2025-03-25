@@ -10,7 +10,7 @@ from typing import List, Optional
 from roboco.core.models.phase import Phase
 from roboco.core.value_objects.phase_status import PhaseStatus
 from roboco.core.value_objects.task_status import TaskStatus
-from roboco.core.schema import Task
+from roboco.core.models import Task
 
 logger = logging.getLogger(__name__)
 
@@ -71,16 +71,10 @@ class TaskManager:
                     )
                 
                 is_completed = line.startswith('- [x]')
-                task_content = line[5:].strip()
-                
-                # Extract task title and description
-                task_parts = task_content.split(':', 1)
-                task_title = task_parts[0].strip()
-                task_description = task_parts[1].strip() if len(task_parts) > 1 else ""
+                task_description = line[5:].strip()
                 
                 # Create Task
                 task = Task(
-                    title=task_title,
                     description=task_description,
                     status=TaskStatus.DONE if is_completed else TaskStatus.TODO,
                     completed_at=datetime.now() if is_completed else None
@@ -154,7 +148,7 @@ class TaskManager:
                 
                 for task in phase.tasks:
                     checkbox = "[x]" if task.status == TaskStatus.DONE else "[ ]"
-                    task_line = f"- {checkbox} {task.title}"
+                    task_line = f"- {checkbox} {task.description}"
                     
                     if task.description:
                         task_line += f": {task.description}"
@@ -185,18 +179,18 @@ class TaskManager:
                 return phase
         return None
     
-    def get_task_by_title(self, phases: List[Phase], task_title: str) -> Optional[Task]:
-        """Get a task by title.
+    def get_task_by_description(self, phases: List[Phase], task_description: str) -> Optional[Task]:
+        """Get a task by description.
         
         Args:
             phases: List of phases to search
-            task_title: Title of the task to find
+            task_description: Description of the task to find
             
         Returns:
             Task if found, None otherwise
         """
         for phase in phases:
             for task in phase.tasks:
-                if task.title.lower() == task_title.lower():
+                if task.description.lower() == task_description.lower():
                     return task
         return None

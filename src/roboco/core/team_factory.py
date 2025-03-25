@@ -143,28 +143,27 @@ class TeamFactory:
         
         # Analyze task descriptions to infer requirements
         for task in phase.tasks:
-            task_title = task.title.lower()
             task_description = task.description.lower() if task.description else ""
             
             # Check for tool requirements
-            if "api" in task_title or "endpoint" in task_title or "api" in task_description:
+            if "api" in task_description or "endpoint" in task_description or "api" in task_description:
                 capabilities.required_tools.add("api_tester")
             
-            if "database" in task_title or "data model" in task_title or "database" in task_description:
+            if "database" in task_description or "data model" in task_description or "database" in task_description:
                 capabilities.required_tools.add("database_manager")
             
-            if "ui" in task_title or "interface" in task_title or "ui" in task_description:
+            if "ui" in task_description or "interface" in task_description or "ui" in task_description:
                 capabilities.required_tools.add("ui_generator")
             
             # Check for complexity
-            if "complex" in task_title or "advanced" in task_title or "complex" in task_description:
+            if "complex" in task_description or "advanced" in task_description or "complex" in task_description:
                 capabilities.complexity = "high"
             
             # Extract domain knowledge requirements
-            if "authentication" in task_title or "auth" in task_title or "authentication" in task_description:
+            if "authentication" in task_description or "auth" in task_description or "authentication" in task_description:
                 capabilities.domain_knowledge.append("authentication")
             
-            if "payment" in task_title or "billing" in task_title or "payment" in task_description:
+            if "payment" in task_description or "billing" in task_description or "payment" in task_description:
                 capabilities.domain_knowledge.append("payment_processing")
         
         return capabilities

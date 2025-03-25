@@ -10,7 +10,7 @@ from datetime import datetime
 import uuid
 from loguru import logger
 
-from roboco.core.schema import Task
+from roboco.core.models import Task
 from roboco.core.task_manager import TaskManager
 from roboco.core.repositories.project_repository import ProjectRepository
 
@@ -80,7 +80,6 @@ class TaskService:
     async def create_task(
         self,
         project_id: str,
-        title: str,
         description: Optional[str] = None,
         status: str = "TODO",
         assigned_to: Optional[str] = None,
@@ -93,7 +92,6 @@ class TaskService:
         
         Args:
             project_id: ID of the project
-            title: Title of the task
             description: Description of the task
             status: Status of the task (TODO, IN_PROGRESS, DONE)
             assigned_to: Agent or person assigned to the task
@@ -113,7 +111,6 @@ class TaskService:
             
         task = Task(
             id=str(uuid.uuid4()),
-            title=title,
             description=description,
             status=status,
             assigned_to=assigned_to,
@@ -134,7 +131,6 @@ class TaskService:
         self,
         project_id: str,
         task_id: str,
-        title: Optional[str] = None,
         description: Optional[str] = None,
         status: Optional[str] = None,
         assigned_to: Optional[str] = None,
@@ -148,7 +144,6 @@ class TaskService:
         Args:
             project_id: ID of the project
             task_id: ID of the task to update
-            title: New title of the task
             description: New description of the task
             status: New status of the task
             assigned_to: New assignee of the task
@@ -178,10 +173,6 @@ class TaskService:
                 
         if not task_to_update:
             raise ValueError(f"Task with ID {task_id} does not exist in project {project_id}")
-            
-        # Update the task fields
-        if title is not None:
-            task_to_update.title = title
             
         if description is not None:
             task_to_update.description = description

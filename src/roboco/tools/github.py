@@ -1,7 +1,7 @@
 """
-GitHub Tool
+GitHub Tool Module
 
-This module provides tools for interacting with GitHub repositories, issues, and code.
+This module provides tools for interacting with GitHub.
 """
 
 import os
@@ -10,17 +10,17 @@ import base64
 import time
 import asyncio
 from pathlib import Path
-from typing import Dict, Any, List, Optional, Union
+from typing import Dict, Any, List, Optional, Union, Literal, Tuple, Callable, TypeVar
 from datetime import datetime
 
 from github import Github, Repository, ContentFile
 from github.GithubException import GithubException
 from pydantic import BaseModel, Field
 
-from roboco.core.tool import Tool
-from roboco.core.workspace import Workspace
+from roboco.core.tool import Tool, command
+from roboco.core.models import ToolConfig
+from roboco.core.config import get_workspace
 from roboco.core.logger import get_logger
-from roboco.core.schema import ToolConfig
 
 
 class GitHubConfig(ToolConfig):

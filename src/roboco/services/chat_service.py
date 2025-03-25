@@ -16,11 +16,11 @@ logger = get_logger(__name__)
 
 from roboco.core.models.project import Project
 from roboco.core.repositories.project_repository import ProjectRepository
-from roboco.core.config import load_config, get_llm_config
+from roboco.core.config import load_config, get_llm_config, get_workspace
 from roboco.teams.planning import PlanningTeam
 from roboco.teams.versatile import VersatileTeam
 from roboco.core.project_executor import ProjectExecutor
-from roboco.core.schema import Task
+from roboco.core.models import Task
 
 
 class ChatService:
@@ -46,9 +46,8 @@ class ChatService:
         self.config = load_config()
         self.llm_config = get_llm_config(self.config)
         
-        # Set workspace directory
-        self.workspace_dir = os.path.expanduser("~/roboco_workspace")
-        os.makedirs(self.workspace_dir, exist_ok=True)
+        # Set workspace directory from configuration
+        self.workspace_dir = str(get_workspace(self.config))
     
     async def start_chat(self, chat_request):
         """
@@ -150,14 +149,26 @@ class ChatService:
         # Import here to avoid circular dependency
         from roboco.api.models.chat import ChatResponse
         
+        # Create a meaningful project name from the query
+        project_name = self._generate_project_name(chat_request.query)
+        
         # Create a new project team for this conversation
         versatile_team = VersatileTeam(
             workspace_dir=self.workspace_dir
         )
         
-        # Create a project directory for this conversation
-        project_dir = os.path.join(self.workspace_dir, conversation_id)
+        # Create a proper project structure
+        project_dir = os.path.join(self.workspace_dir, project_name)
+        
+        # Create necessary directories
         os.makedirs(project_dir, exist_ok=True)
+        os.makedirs(os.path.join(project_dir, "src"), exist_ok=True)
+        os.makedirs(os.path.join(project_dir, "docs"), exist_ok=True)
+        
+        # Store conversation ID in a metadata file
+        with open(os.path.join(project_dir, ".metadata"), "w") as f:
+            f.write(f"conversation_id: {conversation_id}\n")
+            f.write(f"created_at: {datetime.now().isoformat()}\n")
         
         # Step 1: Use VersatileTeam to generate a project plan (tasks.md)
         planning_task = Task(
@@ -205,7 +216,6 @@ class ChatService:
                 f.write("- [ ] Document the solution\n")
         
         # Step 2: Register the project
-        project_name = f"Project: {chat_request.query[:50]}..."
         project = Project(
             name=project_name,
             description=chat_request.query,
@@ -214,7 +224,7 @@ class ChatService:
         )
         
         # Save the project
-        project_id = self.project_repository.create_project(project)
+        project_id = await self.project_repository.create(project)
         project.id = project_id
         
         # Update conversation with project ID
@@ -267,6 +277,29 @@ class ChatService:
             project_details=project_details,
             status=status
         )
+    
+    def _generate_project_name(self, query: str) -> str:
+        """
+        Generate a meaningful project name from the query.
+        
+        Args:
+            query: The user's query
+            
+        Returns:
+            A meaningful project name
+        """
+        # Clean and normalize the query to create a meaningful folder name
+        words = query.lower().split()[:5]  # Use first 5 words
+        name = "_".join(words)
+        name = "".join(c if c.isalnum() or c == "_" else "_" for c in name)
+        
+        # Ensure the name is not too long
+        if len(name) > 50:
+            name = name[:50]
+        
+        # Add a timestamp to ensure uniqueness
+        timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+        return f"{name}_{timestamp}"
     
     async def get_conversation_history(self, conversation_id: str) -> Optional[Dict[str, Any]]:
         """
