@@ -10,10 +10,12 @@ import shlex
 import asyncio
 import subprocess
 from typing import Dict, Any, List, Optional
-from loguru import logger
+from roboco.core.logger import get_logger
 
 from roboco.core.tool import Tool
 
+# Initialize logger
+logger = get_logger(__name__)
 
 class TerminalTool(Tool):
     """Tool for executing terminal commands with directory persistence."""

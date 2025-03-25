@@ -9,10 +9,12 @@ import os
 import asyncio
 import subprocess
 from typing import Dict, Any, Optional, Tuple
-from loguru import logger
+from roboco.core.logger import get_logger
 
 from roboco.core.tool import Tool
 
+# Initialize logger
+logger = get_logger(__name__)
 
 class BashTool(Tool):
     """Tool for executing bash commands in the terminal."""

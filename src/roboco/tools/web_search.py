@@ -16,6 +16,8 @@ from roboco.core.schema import ToolConfig
 
 from langchain_core.tools import Tool as LangchainTool
 
+# Initialize logger
+logger = get_logger(__name__)
 
 class WebSearchConfig(ToolConfig):
     """Configuration for WebSearchTool."""

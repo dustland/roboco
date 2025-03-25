@@ -5,10 +5,12 @@ This module provides functionality to assign appropriate teams for executing dif
 """
 
 from typing import Any, Dict, List, Optional
-from loguru import logger
+from roboco.core.logger import get_logger
 
 from roboco.core.models.phase import Phase
 
+# Initialize logger
+logger = get_logger(__name__)
 
 class TeamAssigner:
     """Assigns appropriate teams for executing different types of phases."""

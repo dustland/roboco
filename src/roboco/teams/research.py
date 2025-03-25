@@ -7,13 +7,15 @@ through a team of agents focused on information gathering and analysis.
 
 from typing import Dict, Any, List, Optional
 import os
-from loguru import logger
+from roboco.core.logger import get_logger
 import asyncio
 import json
 
 from roboco.core.agent import Agent
 from roboco.agents.human_proxy import HumanProxy
 
+# Initialize logger
+logger = get_logger(__name__)
 
 class ResearchTeam:
     """Team for conducting research and information gathering tasks."""

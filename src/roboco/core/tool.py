@@ -9,11 +9,14 @@ import inspect
 import functools
 import logging
 from typing import Any, Callable, Dict, List, Optional, Union, TypeVar, Set
-from loguru import logger
+from roboco.core.logger import get_logger
 
 from autogen.tools import Tool as AutogenTool
 
 T = TypeVar('T')
+
+# Initialize logger
+logger = get_logger(__name__)
 
 def command(primary: bool = False):
     """

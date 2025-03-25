@@ -8,7 +8,10 @@ with timeout control and output management.
 import asyncio
 import time
 from typing import Dict, Any, Optional, Tuple, Union
-from loguru import logger
+from roboco.core.logger import get_logger
+
+# Initialize logger
+logger = get_logger(__name__)
 
 from roboco.core.tool import Tool
 

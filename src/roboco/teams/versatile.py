@@ -7,7 +7,10 @@ with specialized roles designed to handle any type of task phase effectively.
 
 import os
 from typing import Dict, Any, List, Optional, Union
-from loguru import logger
+from roboco.core.logger import get_logger
+
+# Initialize logger
+logger = get_logger(__name__)
 
 from roboco.core.team import Team
 from roboco.core.agent import Agent

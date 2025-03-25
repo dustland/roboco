@@ -6,11 +6,17 @@ designed to be compatible with autogen's function calling mechanism.
 """
 
 import os
-from typing import Dict, Any, Union
-from loguru import logger
+import shutil
+import glob
+from pathlib import Path
+from typing import Dict, Any, List, Optional, Union, BinaryIO
 
 from roboco.core.tool import Tool, command
+from roboco.core.logger import get_logger
 from roboco.core.models.project_manifest import ProjectManifest, dict_to_project_manifest
+
+# Initialize logger
+logger = get_logger(__name__)
 
 class FileSystemTool(Tool):
     """Tool for file system operations including reading and writing files."""

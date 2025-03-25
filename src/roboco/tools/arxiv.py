@@ -22,6 +22,9 @@ from roboco.core.workspace import Workspace
 from roboco.core.logger import get_logger
 from roboco.core.schema import ToolConfig
 
+# Initialize logger
+logger = get_logger(__name__)
+
 
 class ArxivConfig(ToolConfig):
     """Configuration for ArxivTool."""
