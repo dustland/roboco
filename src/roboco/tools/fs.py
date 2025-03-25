@@ -15,8 +15,13 @@ from roboco.core.models.project_manifest import ProjectManifest, dict_to_project
 class FileSystemTool(Tool):
     """Tool for file system operations including reading and writing files."""
     
-    def __init__(self):
-        """Initialize the file system tool."""
+    def __init__(self, workspace_dir: str = "workspace"):
+        """Initialize the file system tool.
+        
+        Args:
+            workspace_dir: Base directory for all file operations
+        """
+        self.workspace_dir = workspace_dir
         super().__init__(
             name="filesystem",
             description="Tool for file system operations including reading and writing files.",
@@ -26,6 +31,17 @@ class FileSystemTool(Tool):
         
         logger.info(f"Initialized FileSystemTool with commands: {', '.join(self.commands.keys())}")
     
+    def _get_absolute_path(self, path: str) -> str:
+        """Convert a relative path to an absolute path within the workspace.
+        
+        Args:
+            path: Relative path to convert
+            
+        Returns:
+            Absolute path within the workspace
+        """
+        return os.path.join(self.workspace_dir, path)
+    
     @command(primary=True)
     def save_file(self, content: str, file_path: str, mode: str = "w") -> Dict[str, Any]:
         """
@@ -33,20 +49,23 @@ class FileSystemTool(Tool):
         
         Args:
             content: The content to save to the file
-            file_path: The path where the file should be saved
+            file_path: The path where the file should be saved (relative to workspace)
             mode: File opening mode ('w' for write, 'a' for append)
             
         Returns:
             Dictionary with operation result info
         """
         try:
+            # Convert to absolute path
+            abs_path = self._get_absolute_path(file_path)
+            
             # Ensure the directory exists
-            directory = os.path.dirname(file_path)
+            directory = os.path.dirname(abs_path)
             if directory and not os.path.exists(directory):
                 os.makedirs(directory)
             
             # Write to the file
-            with open(file_path, mode, encoding="utf-8") as file:
+            with open(abs_path, mode, encoding="utf-8") as file:
                 file.write(content)
             
             logger.info(f"Content saved to {file_path}")
@@ -69,14 +88,17 @@ class FileSystemTool(Tool):
         Read content from a file at the specified path.
         
         Args:
-            file_path: The path of the file to read
+            file_path: The path of the file to read (relative to workspace)
             
         Returns:
             Dictionary with file content and operation info
         """
         try:
+            # Convert to absolute path
+            abs_path = self._get_absolute_path(file_path)
+            
             # Check if file exists
-            if not os.path.exists(file_path):
+            if not os.path.exists(abs_path):
                 return {
                     "success": False,
                     "file_path": file_path,
@@ -84,7 +106,7 @@ class FileSystemTool(Tool):
                 }
             
             # Read the file
-            with open(file_path, "r", encoding="utf-8") as file:
+            with open(abs_path, "r", encoding="utf-8") as file:
                 content = file.read()
             
             logger.info(f"Content read from {file_path}")
@@ -107,14 +129,17 @@ class FileSystemTool(Tool):
         List contents of a directory.
         
         Args:
-            directory_path: The path of the directory to list
+            directory_path: The path of the directory to list (relative to workspace)
             
         Returns:
             Dictionary with directory contents and operation info
         """
         try:
+            # Convert to absolute path
+            abs_path = self._get_absolute_path(directory_path)
+            
             # Check if directory exists
-            if not os.path.exists(directory_path):
+            if not os.path.exists(abs_path):
                 return {
                     "success": False,
                     "directory_path": directory_path,
@@ -122,7 +147,7 @@ class FileSystemTool(Tool):
                 }
             
             # Check if path is a directory
-            if not os.path.isdir(directory_path):
+            if not os.path.isdir(abs_path):
                 return {
                     "success": False,
                     "directory_path": directory_path,
@@ -131,13 +156,13 @@ class FileSystemTool(Tool):
             
             # List contents
             contents = []
-            for item in os.listdir(directory_path):
-                item_path = os.path.join(directory_path, item)
+            for item in os.listdir(abs_path):
+                item_path = os.path.join(abs_path, item)
                 item_type = "directory" if os.path.isdir(item_path) else "file"
                 contents.append({
                     "name": item,
                     "type": item_type,
-                    "path": item_path
+                    "path": os.path.join(directory_path, item)  # Keep paths relative
                 })
             
             logger.info(f"Listed directory contents of {directory_path}")
@@ -161,14 +186,17 @@ class FileSystemTool(Tool):
         Create a directory at the specified path.
         
         Args:
-            directory_path: The path where the directory should be created
+            directory_path: The path where the directory should be created (relative to workspace)
             
         Returns:
             Dictionary with operation result info
         """
         try:
+            # Convert to absolute path
+            abs_path = self._get_absolute_path(directory_path)
+            
             # Check if directory already exists
-            if os.path.exists(directory_path):
+            if os.path.exists(abs_path):
                 return {
                     "success": True,
                     "directory_path": directory_path,
@@ -176,7 +204,7 @@ class FileSystemTool(Tool):
                 }
             
             # Create the directory
-            os.makedirs(directory_path, exist_ok=True)
+            os.makedirs(abs_path, exist_ok=True)
             
             logger.info(f"Created directory at {directory_path}")
             return {
@@ -193,12 +221,12 @@ class FileSystemTool(Tool):
             }
     
     @command()
-    def execute_project_manifest(self, manifest: Union[Dict[str, Any], ProjectManifest], base_path: str) -> Dict[str, Any]:
+    def execute_project_manifest(self, manifest: ProjectManifest, base_path: str = "") -> Dict[str, Any]:
         """Execute a project manifest to create a complete project structure.
         
         Args:
             manifest: Project manifest containing directories and files to create
-            base_path: Base path for the project
+            base_path: Base path for the project (relative to workspace)
             
         Returns:
             Dict containing results of the operation
@@ -237,7 +265,7 @@ class FileSystemTool(Tool):
                 
                 # Create parent directory if it doesn't exist
                 parent_dir = os.path.dirname(file_path)
-                if parent_dir and not os.path.exists(parent_dir):
+                if parent_dir and not os.path.exists(self._get_absolute_path(parent_dir)):
                     try:
                         self.create_directory(parent_dir)
                         if parent_dir.replace(base_path, "").strip("/"):  # Only add if not the base path

@@ -84,6 +84,8 @@ async def main():
     for msg in result.get("chat_history", []):
         role = msg.get("role", "unknown")
         content = msg.get("content", "")
+        if content is None:
+            content = ""
         print(f"{role.upper()}: {content[:100]}..." if len(content) > 100 else f"{role.upper()}: {content}")
     
     # List the created project structure

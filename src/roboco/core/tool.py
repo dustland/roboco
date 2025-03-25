@@ -545,15 +545,8 @@ class Tool(AutogenTool):
             try:
                 # Check if the agent has a register_tool method
                 if hasattr(agent, 'register_tool'):
-                    # Register the main tool function first
-                    func = self.func
-                    func.__name__ = self.name  # Set the name attribute for logging
-                    
                     # Check if the agent has a valid llm_config
                     if hasattr(agent, 'llm_config') and agent.llm_config:
-                        # Register the main function
-                        agent.register_tool(func, executor_agent)
-                        
                         # Register individual commands as separate functions
                         for cmd_name, cmd_func in self.commands.items():
                             # Create a wrapper function that calls the command with proper parameter mapping
@@ -597,10 +590,9 @@ class Tool(AutogenTool):
                                     return self.execute_command(command=command_name, **processed_kwargs)
                                 
                                 # Set the function name for proper registration
-                                wrapper.__name__ = f"{self.name}_{command_name}"
+                                wrapper.__name__ = f"{self.__class__.__name__.lower()}_{command_name}"
                                 
                                 # Add proper parameter annotations for the wrapper
-                                # This helps avoid the "missing annotations" warning
                                 sig_params = list(sig.parameters.values())
                                 if sig_params and sig_params[0].name == 'self':
                                     sig_params = sig_params[1:]
@@ -614,15 +606,12 @@ class Tool(AutogenTool):
                             # Register the command wrapper
                             cmd_wrapper = create_command_wrapper(cmd_name, cmd_func)
                             agent.register_tool(cmd_wrapper, executor_agent)
-                            logger.info(f"Registered function {cmd_name} with caller {agent.name} and executor {executor_agent.name}")
                         
                         self.registered_with_agents.add(agent)
                         logger.debug(f"Registered tool {self.name} with agent {agent.name} using register_tool")
                     else:
                         # For agents without llm_config, register the function directly
                         if hasattr(agent, '_function_map'):
-                            agent._function_map[self.name] = self.func
-                            
                             # Also register individual commands
                             for cmd_name, cmd_func in self.commands.items():
                                 def create_command_wrapper(command_name, command_func):
@@ -665,10 +654,9 @@ class Tool(AutogenTool):
                                         return self.execute_command(command=command_name, **processed_kwargs)
                                     
                                     # Set the function name for proper registration
-                                    wrapper.__name__ = f"{self.name}_{command_name}"
+                                    wrapper.__name__ = f"{self.__class__.__name__.lower()}_{command_name}"
                                     
                                     # Add proper parameter annotations for the wrapper
-                                    # This helps avoid the "missing annotations" warning
                                     sig_params = list(sig.parameters.values())
                                     if sig_params and sig_params[0].name == 'self':
                                         sig_params = sig_params[1:]
@@ -681,8 +669,8 @@ class Tool(AutogenTool):
                                 
                                 # Register the command wrapper
                                 cmd_wrapper = create_command_wrapper(cmd_name, cmd_func)
-                                agent._function_map[f"{self.name}_{cmd_name}"] = cmd_wrapper
-                                logger.debug(f"Directly registered command {cmd_name} with agent {agent.name}")
+                                agent._function_map[f"{self.__class__.__name__.lower()}_{cmd_name}"] = cmd_wrapper
+                                logger.debug(f"Directly registered command {self.__class__.__name__.lower()}_{cmd_name} with agent {agent.name}")
                             
                             self.registered_with_agents.add(agent)
                             logger.debug(f"Directly registered tool {self.name} with agent {agent.name}")
@@ -692,8 +680,8 @@ class Tool(AutogenTool):
                 elif hasattr(agent, 'register_function'):
                     try:
                         # Create a function map with all commands
-                        function_map = {self.name: self.func}
-                        description_map = {self.name: self._description if hasattr(self, '_description') else self.description}
+                        function_map = {}
+                        description_map = {}
                         
                         # Add individual commands
                         for cmd_name, cmd_func in self.commands.items():
@@ -737,10 +725,9 @@ class Tool(AutogenTool):
                                     return self.execute_command(command=command_name, **processed_kwargs)
                                 
                                 # Set the function name for proper registration
-                                wrapper.__name__ = f"{self.name}_{command_name}"
+                                wrapper.__name__ = f"{self.__class__.__name__.lower()}_{command_name}"
                                 
                                 # Add proper parameter annotations for the wrapper
-                                # This helps avoid the "missing annotations" warning
                                 sig_params = list(sig.parameters.values())
                                 if sig_params and sig_params[0].name == 'self':
                                     sig_params = sig_params[1:]
@@ -753,8 +740,8 @@ class Tool(AutogenTool):
                             
                             # Register the command wrapper
                             cmd_wrapper = create_command_wrapper(cmd_name, cmd_func)
-                            function_map[f"{self.name}_{cmd_name}"] = cmd_wrapper
-                            description_map[f"{self.name}_{cmd_name}"] = f"Execute the {cmd_name} command of the {self.name} tool"
+                            function_map[f"{self.__class__.__name__.lower()}_{cmd_name}"] = cmd_wrapper
+                            description_map[f"{self.__class__.__name__.lower()}_{cmd_name}"] = f"Execute the {cmd_name} command of the {self.name} tool"
                         
                         agent.register_function(
                             function_map=function_map,

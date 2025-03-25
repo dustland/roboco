@@ -87,19 +87,9 @@ class PlanningTeam:
         
         # Format the message to leverage the LLM's capabilities for project structure creation
         message = f"""
-I'd like to create a new project based on the following idea:
+I'd like to plan a project based on the following idea:
 
 {query}
-
-Please analyze this request and create an appropriate project structure with:
-- A well-organized directory structure that follows best practices for this type of project
-- All necessary files including configuration files, README, and initial code files
-- Appropriate file content that provides a solid starting point for development
-
-Create a workspace directory if it doesn't exist, and then create the project within it.
-Use the FileSystemTool to create the necessary directories and files.
-
-Focus on creating a comprehensive project structure that would be ready for immediate development.
         """
         
         # If teams were specified, add them to the message
