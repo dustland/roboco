@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 from loguru import logger
 
 from tavily import TavilyClient
-from roboco.core import Tool
+from roboco.core.tool import Tool
 from roboco.core.logger import get_logger
 from roboco.core.schema import ToolConfig
 

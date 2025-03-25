@@ -11,7 +11,8 @@ from pathlib import Path
 from typing import Dict, Any, List, Optional
 from datetime import datetime
 
-from roboco.core import get_logger, load_config
+from roboco.core.logger import get_logger
+from roboco.core.config import load_config
 
 logger = get_logger(__name__)
 

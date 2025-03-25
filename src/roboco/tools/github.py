@@ -17,7 +17,8 @@ from github import Github, Repository, ContentFile
 from github.GithubException import GithubException
 from pydantic import BaseModel, Field
 
-from roboco.core import Tool, get_workspace
+from roboco.core.tool import Tool
+from roboco.core.workspace import Workspace
 from roboco.core.logger import get_logger
 from roboco.core.schema import ToolConfig
 

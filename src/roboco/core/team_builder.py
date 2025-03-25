@@ -10,7 +10,10 @@ import yaml
 from typing import Dict, Any, List, Optional, Type, Set, Union, ClassVar
 from loguru import logger
 
-from roboco.core import Team, Agent, AgentFactory, Tool
+from roboco.core.team import Team
+from roboco.core.agent import Agent
+from roboco.core.agent_factory import AgentFactory
+from roboco.core.tool import Tool
 from roboco.tools.fs import FileSystemTool
 from roboco.tools.browser_use import BrowserUseTool
 
