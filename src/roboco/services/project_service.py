@@ -77,7 +77,7 @@ class ProjectService:
             tags=tags or []
         )
         
-        return await self.project_repository.save(project)
+        return await self.project_repository.create(project)
     
     async def update_project(self, project: Project) -> str:
         """Update an existing project.

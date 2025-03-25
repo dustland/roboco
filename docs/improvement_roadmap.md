@@ -1,6 +1,6 @@
 # RoboCo Improvement Roadmap
 
-*Created: March 22, 2025*
+_Created: March 22, 2025_
 
 This document outlines potential improvements to make RoboCo more powerful compared to similar platforms like Manus.im. It serves as a strategic roadmap for future development.
 
@@ -129,20 +129,20 @@ from roboco.domain.models.workflow import Workflow, Task, TaskStatus
 
 class CollaborationFramework:
     """Manages complex multi-agent collaboration workflows"""
-    
+
     def __init__(self, team: Team, workflow: Workflow):
         self.team = team
         self.workflow = workflow
         self.task_assignments = {}
-        
+
     async def assign_tasks(self):
         """Assign tasks to team members based on roles and capabilities"""
         pass
-        
+
     async def monitor_progress(self):
         """Track task progress and handle dependencies"""
         pass
-        
+
     async def handle_blockers(self):
         """Identify and resolve workflow blockers"""
         pass
@@ -152,23 +152,23 @@ class CollaborationFramework:
 
 ```python
 # Example knowledge graph integration
-from roboco.infrastructure.adapters.knowledge_graph import KnowledgeGraph
+from roboco.storage.adapters.knowledge_graph import KnowledgeGraph
 from roboco.domain.models.entity import Entity, Relationship
 
 class KnowledgeService:
     """Service for managing and querying the knowledge graph"""
-    
+
     def __init__(self, graph_provider: KnowledgeGraph):
         self.graph = graph_provider
-        
+
     async def add_entity(self, entity: Entity):
         """Add an entity to the knowledge graph"""
         pass
-        
+
     async def add_relationship(self, source: Entity, target: Entity, relationship: Relationship):
         """Add a relationship between entities"""
         pass
-        
+
     async def query_related(self, entity: Entity, relationship_type: str = None):
         """Find entities related to the given entity"""
         pass

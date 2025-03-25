@@ -18,14 +18,13 @@ from fastapi.staticfiles import StaticFiles
 from loguru import logger
 
 from roboco.api.routers import chat, job, project
-from roboco.services.api_service import ApiService
 from roboco.services.project_service import ProjectService
 from roboco.services.task_service import TaskService
 from roboco.services.team_service import TeamService
 from roboco.services.agent_service import AgentService
 from roboco.services.workspace_service import WorkspaceService
 from roboco.services.chat_service import ChatService
-from roboco.infrastructure.repositories.file_project_repository import FileProjectRepository
+from roboco.storage.repositories.file_project_repository import FileProjectRepository
 
 
 # Create the FastAPI app
@@ -58,7 +57,7 @@ app.include_router(chat.router, prefix="/chat", tags=["chat"])
 
 
 # Dependency for getting the API service
-def get_api_service() -> ApiService:
+def get_api_service():
     """
     Get the API service instance.
     
@@ -69,6 +68,9 @@ def get_api_service() -> ApiService:
     Returns:
         ApiService: The API service instance.
     """
+    # Import here to avoid circular dependency
+    from roboco.services.api_service import ApiService
+    
     # Create the project repository
     project_repository = FileProjectRepository()
     
@@ -88,7 +90,7 @@ def get_api_service() -> ApiService:
     workspace_service = WorkspaceService()
     
     # Create the chat service
-    chat_service = ChatService()
+    chat_service = ChatService(project_repository)
     
     # Create the API service with all the required services
     return ApiService(
@@ -97,7 +99,8 @@ def get_api_service() -> ApiService:
         agent_service=agent_service,
         task_service=task_service,
         workspace_service=workspace_service,
-        chat_service=chat_service
+        chat_service=chat_service,
+        project_repository=project_repository
     )
 
 

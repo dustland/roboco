@@ -7,12 +7,13 @@ These functions are used with FastAPI's dependency injection system.
 
 from typing import Optional
 
-from roboco.services.api_service import ApiService
+# Remove this import to avoid circular dependency
+# from roboco.services.api_service import ApiService
 from roboco.services.project_service import ProjectService
-from roboco.infrastructure.repositories.file_project_repository import FileProjectRepository
+from roboco.storage.repositories.file_project_repository import FileProjectRepository
 
 # Singleton instances
-_api_service: Optional[ApiService] = None
+_api_service = None
 
 
 def get_project_service() -> ProjectService:
@@ -25,12 +26,15 @@ def get_project_service() -> ProjectService:
     return ProjectService(project_repository)
 
 
-def get_api_service() -> ApiService:
+def get_api_service():
     """Get the API service instance.
     
     Returns:
         ApiService instance
     """
+    # Import here to avoid circular dependency
+    from roboco.services.api_service import ApiService
+    
     global _api_service
     
     if _api_service is None:

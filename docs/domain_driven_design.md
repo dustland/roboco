@@ -11,8 +11,9 @@ This document outlines how Domain-Driven Design (DDD) principles are applied in 
 A shared language between developers and domain experts that is used consistently in code, documentation, and conversation.
 
 **Implementation in Roboco:**
-- Domain models named to match business concepts: `Project`, `Sprint`, `TodoItem`
-- Methods named to reflect business operations: `create_project`, `assign_todo`, `complete_sprint`
+
+- Domain models named to match business concepts: `Project`, `Task`
+- Methods named to reflect business operations: `create_project`, `assign_task`, `complete_task`
 - Consistent terminology across all layers of the application
 
 ### Domain Model
@@ -20,6 +21,7 @@ A shared language between developers and domain experts that is used consistentl
 The heart of the software, representing the core business concepts, rules, and logic.
 
 **Implementation in Roboco:**
+
 - Domain models in `core/models/` contain business logic and invariants
 - Rich behavior methods that enforce business rules
 - Models represent real business entities rather than data structures
@@ -29,6 +31,7 @@ The heart of the software, representing the core business concepts, rules, and l
 Explicit boundaries between different parts of the system, each with its own ubiquitous language and domain model.
 
 **Implementation in Roboco:**
+
 - Project management as a bounded context
 - Agent orchestration as a separate bounded context
 - Each context has its own models, repositories, and services
@@ -40,6 +43,7 @@ Explicit boundaries between different parts of the system, each with its own ubi
 Contains the domain models, business logic, and domain services.
 
 **Implementation in Roboco:**
+
 - `core/models/`: Core business entities with behavior
 - `core/repositories/`: Interfaces defining persistence operations
 - `core/schema/`: Data validation schemas for domain objects
@@ -49,6 +53,7 @@ Contains the domain models, business logic, and domain services.
 Coordinates the application tasks and delegates work to the domain layer.
 
 **Implementation in Roboco:**
+
 - `services/`: Application services that orchestrate domain operations
 - `services/api_service.py`: Facade for the API layer to access domain functionality
 - `services/task_service.py`: Manages task-related operations
@@ -58,14 +63,16 @@ Coordinates the application tasks and delegates work to the domain layer.
 Provides technical capabilities to support the higher layers.
 
 **Implementation in Roboco:**
-- `infrastructure/repositories/`: Concrete implementations of repository interfaces
-- `infrastructure/adapters/`: Adapters to convert between domain and external models
+
+- `storage/repositories/`: Concrete implementations of repository interfaces
+- `storage/adapters/`: Adapters to convert between domain and external models
 
 ### Interface Layer
 
 Handles interaction with external systems or users.
 
 **Implementation in Roboco:**
+
 - `api/`: FastAPI endpoints for HTTP interaction
 - `api/schemas/`: Pydantic models for API validation and serialization
 - `api/routers/`: Organized API endpoints by domain concept
@@ -77,21 +84,24 @@ Handles interaction with external systems or users.
 Provides an abstraction layer between the domain and data mapping layers.
 
 **Implementation in Roboco:**
+
 - `core/repositories/project_repository.py`: Interface defining persistence operations
-- `infrastructure/repositories/file_project_repository.py`: Concrete implementation using file system
+- `storage/repositories/file_project_repository.py`: Concrete implementation using file system
 
 ### Adapter Pattern
 
 Converts interfaces between different components.
 
 **Implementation in Roboco:**
-- `infrastructure/adapters/pydantic_adapters.py`: Converts between domain models and Pydantic DTOs
+
+- `storage/adapters/pydantic_adapters.py`: Converts between domain models and Pydantic DTOs
 
 ### Dependency Injection
 
 Provides dependencies to a class instead of having the class create them.
 
 **Implementation in Roboco:**
+
 - FastAPI dependency injection for services in API routers
 - Service constructors accept repository interfaces
 
@@ -100,6 +110,7 @@ Provides dependencies to a class instead of having the class create them.
 Provides a simplified interface to a complex subsystem.
 
 **Implementation in Roboco:**
+
 - `services/api_service.py`: Provides a simplified interface to domain services for the API layer
 
 ## Benefits of DDD in Roboco

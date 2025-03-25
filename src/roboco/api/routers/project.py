@@ -10,11 +10,11 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import ValidationError
 
 from roboco.api.models.project import Project, ProjectCreate, ProjectUpdate
-from roboco.api.schemas.task import Task, TaskCreate, TaskUpdate
-from roboco.infrastructure.repositories.file_project_repository import FileProjectRepository
+from roboco.api.models.task import Task, TaskCreate, TaskUpdate
+from roboco.storage.repositories.file_project_repository import FileProjectRepository
 from roboco.services.project_service import ProjectService
 from roboco.api.dependencies import get_api_service
-from roboco.services.api_service import ApiService
+# from roboco.services.api_service import ApiService
 
 
 router = APIRouter(
@@ -26,6 +26,9 @@ router = APIRouter(
 # Dependency to get the API service
 async def get_api_service():
     """Get the API service instance."""
+    # Import here to avoid circular dependency
+    from roboco.services.api_service import ApiService
+    
     # Create the repository
     repository = FileProjectRepository()
     
@@ -39,7 +42,7 @@ async def get_api_service():
 
 
 @router.get("/", response_model=List[Project])
-async def list_projects(api_service: ApiService = Depends(get_api_service)):
+async def list_projects(api_service = Depends(get_api_service)):
     """
     List all projects.
     
@@ -54,7 +57,7 @@ async def list_projects(api_service: ApiService = Depends(get_api_service)):
 @router.post("/", response_model=Project, status_code=201)
 async def create_project(
     project_create: ProjectCreate,
-    api_service: ApiService = Depends(get_api_service)
+    api_service = Depends(get_api_service)
 ):
     """
     Create a new project.
@@ -79,7 +82,7 @@ async def create_project(
 @router.get("/{project_id}", response_model=Project)
 async def get_project(
     project_id: str,
-    api_service: ApiService = Depends(get_api_service)
+    api_service = Depends(get_api_service)
 ):
     """
     Get a project by ID.
@@ -104,7 +107,7 @@ async def get_project(
 async def update_project(
     project_id: str,
     project_update: ProjectUpdate,
-    api_service: ApiService = Depends(get_api_service)
+    api_service = Depends(get_api_service)
 ):
     """
     Update a project.
@@ -129,7 +132,7 @@ async def update_project(
 @router.delete("/{project_id}")
 async def delete_project(
     project_id: str,
-    api_service: ApiService = Depends(get_api_service)
+    api_service = Depends(get_api_service)
 ):
     """
     Delete a project.
@@ -156,7 +159,7 @@ async def delete_project(
 async def create_task(
     project_id: str,
     task_create: TaskCreate,
-    api_service: ApiService = Depends(get_api_service)
+    api_service = Depends(get_api_service)
 ):
     """
     Create a new task.
@@ -183,7 +186,7 @@ async def update_task(
     project_id: str,
     task_id: str,
     task_update: TaskUpdate,
-    api_service: ApiService = Depends(get_api_service)
+    api_service = Depends(get_api_service)
 ):
     """
     Update a task.
@@ -209,7 +212,7 @@ async def update_task(
 @router.get("/{project_id}/tasks", response_model=List[Task])
 async def list_tasks(
     project_id: str,
-    api_service: ApiService = Depends(get_api_service)
+    api_service = Depends(get_api_service)
 ):
     """
     List all tasks for a project.
@@ -229,7 +232,7 @@ async def list_tasks(
 @router.get("/{project_id}/task-md")
 async def get_task_markdown(
     project_id: str,
-    api_service: ApiService = Depends(get_api_service)
+    api_service = Depends(get_api_service)
 ):
     """
     Get the task.md file for a project.

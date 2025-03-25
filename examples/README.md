@@ -1,6 +1,55 @@
 # Roboco Examples
 
-This directory contains example scripts demonstrating how to use the Roboco library.
+This directory contains examples demonstrating how to use various features of Roboco.
+
+## Teams
+
+The `teams` directory contains examples of creating and using different types of teams:
+
+- `planning_team_example.py`: Demonstrates the use of the PlanningTeam for task execution with planning.
+- `development_team_example.py`: Shows how the DevelopmentTeam works for software development tasks.
+- `versatile_team_example.py`: Illustrates the VersatileTeam for flexible multi-role collaboration following the AG2 swarm pattern.
+
+## Services
+
+The `services` directory contains examples of wrapping teams in service layers for easier integration:
+
+- `chat_example.py`: Demonstrates how to use the chat API to process a query, which generates project tasks and executes them using VersatileTeam. Shows how to continue conversations with follow-up queries.
+
+## How to Run
+
+### Team Examples
+
+```bash
+# Run the planning team example
+python examples/teams/planning_team_example.py
+
+# Run the development team example
+python examples/teams/development_team_example.py
+
+# Run the versatile team example
+python examples/teams/versatile_team_example.py --task "Create a simple calculator with addition and subtraction functions"
+```
+
+### Service Examples
+
+```bash
+# Run the chat example with a default query
+python examples/services/chat_example.py
+
+# Run the chat example with a custom query
+python examples/services/chat_example.py --query "Create a simple blog application"
+
+# Continue an existing conversation
+python examples/services/chat_example.py --id <conversation_id> --query "Can you add a search feature?"
+
+```
+
+## Notes
+
+- Make sure to set up your environment variables with the required API keys before running examples.
+- The workspace directory will be created if it doesn't exist.
+- Results are typically stored in the workspace directory structure.
 
 ## Tool System Examples
 

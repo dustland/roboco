@@ -39,6 +39,18 @@ class ProjectRepository(ABC):
         pass
     
     @abstractmethod
+    async def create(self, project: Project) -> str:
+        """Create a new project.
+        
+        Args:
+            project: The project to create
+            
+        Returns:
+            The ID of the created project
+        """
+        pass
+    
+    @abstractmethod
     async def save(self, project: Project) -> str:
         """Save a project.
         

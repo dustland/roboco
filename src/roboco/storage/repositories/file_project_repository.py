@@ -7,9 +7,11 @@ It stores projects as JSON files on disk.
 
 import os
 import json
+import shutil
 from typing import List, Optional
 from datetime import datetime
 from loguru import logger
+import uuid
 
 from roboco.core.models.project import Project
 from roboco.core.repositories.project_repository import ProjectRepository
@@ -112,6 +114,26 @@ class FileProjectRepository(ProjectRepository):
         logger.info(f"Saved project {project.name} (ID: {project.id})")
         
         return project.id
+    
+    async def create(self, project: Project) -> str:
+        """Create a new project.
+        
+        Args:
+            project: The project to create
+            
+        Returns:
+            The ID of the created project
+        """
+        # Generate a unique ID if not provided
+        if not project.id:
+            project.id = f"proj_{str(uuid.uuid4())[:8]}"
+            
+        # Set creation timestamp if not set
+        if not project.created_at:
+            project.created_at = datetime.now()
+            
+        # Save the project
+        return await self.save(project)
     
     async def delete(self, project_id: str) -> bool:
         """Delete a project.

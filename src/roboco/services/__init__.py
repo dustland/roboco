@@ -12,3 +12,11 @@ from roboco.services.agent_service import AgentService
 from roboco.services.chat_service import ChatService
 from roboco.services.team_service import TeamService
 from roboco.services.workspace_service import WorkspaceService
+
+__all__ = [
+    "ProjectService",
+    "TaskService",
+    "ApiService",
+    "AgentService",
+    "ChatService",
+]

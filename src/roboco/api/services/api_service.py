@@ -9,25 +9,22 @@ from typing import List, Optional, Dict, Any, Union
 from datetime import datetime
 import uuid
 import os
-from loguru import logger
 
+from roboco.api.models.job import JobRequest
 from roboco.services.project_service import ProjectService
-from roboco.api.services.team_service import TeamService
-from roboco.api.services.agent_service import AgentService
-from roboco.api.services.sprint_service import SprintService
-from roboco.api.services.workspace_service import WorkspaceService
-from roboco.api.services.chat_service import ChatService
-from roboco.infrastructure.adapters.pydantic_adapters import (
+from roboco.services.team_service import TeamService
+from roboco.services.agent_service import AgentService
+from roboco.services.workspace_service import WorkspaceService
+from roboco.services.chat_service import ChatService
+from roboco.storage.adapters.pydantic_adapters import (
     project_to_pydantic, pydantic_to_project,
-    sprint_to_pydantic, pydantic_to_sprint,
-    todo_to_pydantic, pydantic_to_todo
+    task_to_pydantic, pydantic_to_task
 )
-from roboco.core.schema import ProjectConfig, TodoItem as PydanticTodoItem, Sprint as PydanticSprint
+from roboco.core.schema import ProjectConfig, Task as PydanticTask
 from roboco.api.schemas.project import Project as ApiProject, ProjectCreate, ProjectUpdate
-from roboco.api.schemas.sprint import Sprint as ApiSprint, SprintCreate, SprintUpdate
-from roboco.api.schemas.todo import TodoItem as ApiTodoItem, TodoItemCreate, TodoItemUpdate
-from roboco.api.schemas.job import JobRequest, JobStatus, AgentStatusUpdate, ToolRegistration
+from roboco.api.schemas.task import Task as ApiTask, TaskCreate, TaskUpdate
 from roboco.api.schemas.chat import ChatRequest, ChatResponse
+from roboco.storage.repositories.file_project_repository import FileProjectRepository
 
 
 class ApiService:
@@ -45,7 +42,6 @@ class ApiService:
         project_service: ProjectService,
         team_service: Optional[TeamService] = None,
         agent_service: Optional[AgentService] = None,
-        sprint_service: Optional[SprintService] = None,
         workspace_service: Optional[WorkspaceService] = None,
         chat_service: Optional[ChatService] = None,
         project_repository = None
@@ -57,7 +53,6 @@ class ApiService:
             project_service: Service for project-related operations
             team_service: Service for team-related operations
             agent_service: Service for agent-related operations
-            sprint_service: Service for sprint-related operations
             workspace_service: Service for workspace-related operations
             chat_service: Service for chat-related operations
             project_repository: Optional repository to use for sprint service
@@ -68,10 +63,8 @@ class ApiService:
         
         # If project_repository is not provided, try to get it from the router's dependency injection
         if project_repository is None:
-            from roboco.infrastructure.repositories.file_project_repository import FileProjectRepository
             project_repository = FileProjectRepository()
             
-        self.sprint_service = sprint_service or SprintService(project_repository)
         self.workspace_service = workspace_service or WorkspaceService()
         self.chat_service = chat_service or ChatService(project_repository)
         
@@ -178,9 +171,6 @@ class ApiService:
         if project_update.tags is not None:
             domain_project.tags = project_update.tags
         
-        if project_update.current_sprint is not None:
-            domain_project.current_sprint = project_update.current_sprint
-        
         # Update the project using the domain service
         await self.project_service.update_project(domain_project)
         
@@ -204,393 +194,117 @@ class ApiService:
         """
         return await self.project_service.delete_project(project_id)
     
-    async def create_sprint(self, project_id: str, sprint_create: SprintCreate) -> ApiSprint:
-        """
-        Create a new sprint.
+    async def create_task(self, project_id: str, task_create: TaskCreate) -> ApiTask:
+        """Create a new task.
         
         Args:
-            project_id: ID of the project
-            sprint_create: Sprint creation data
+            project_id: ID of the project to create the task in
+            task_create: Task creation data
             
         Returns:
-            API Sprint model
+            The created task in API format
         """
-        # Convert dates if provided
-        start_date = None
-        if sprint_create.start_date:
-            start_date = datetime.fromisoformat(sprint_create.start_date)
-            
-        end_date = None
-        if sprint_create.end_date:
-            end_date = datetime.fromisoformat(sprint_create.end_date)
-        
-        # Create the sprint using the sprint service
-        sprint = await self.sprint_service.create_sprint(
+        # Create the task using the domain service
+        task_id = await self.project_service.create_task(
             project_id=project_id,
-            name=sprint_create.name,
-            description=sprint_create.description,
-            start_date=start_date,
-            end_date=end_date,
-            status=sprint_create.status or "planned"
+            title=task_create.title,
+            description=task_create.description,
+            priority=task_create.priority,
+            assigned_to=task_create.assigned_to
         )
         
-        # Convert to API model
-        pydantic_sprint = sprint_to_pydantic(sprint)
-        api_sprint = ApiSprint.from_core_model(pydantic_sprint, project_id)
+        # Get the created task
+        domain_task = await self.project_service.get_task(project_id, task_id)
         
-        return api_sprint
+        # Convert domain task to API task
+        pydantic_task = task_to_pydantic(domain_task)
+        api_task = ApiTask.from_core_model(pydantic_task, domain_task.id)
+        
+        return api_task
     
-    async def get_sprint(self, project_id: str, sprint_name: str) -> ApiSprint:
-        """
-        Get a sprint by name.
+    async def update_task(self, project_id: str, task_id: str, task_update: TaskUpdate) -> ApiTask:
+        """Update a task.
         
         Args:
-            project_id: ID of the project
-            sprint_name: Name of the sprint
+            project_id: ID of the project containing the task
+            task_id: ID of the task to update
+            task_update: Task update data
             
         Returns:
-            API Sprint model
-        """
-        # Get the sprint using the sprint service
-        sprint = await self.sprint_service.get_sprint(project_id, sprint_name)
-        
-        # Convert to API model
-        pydantic_sprint = sprint_to_pydantic(sprint)
-        api_sprint = ApiSprint.from_core_model(pydantic_sprint, project_id)
-        
-        return api_sprint
-    
-    async def update_sprint(self, project_id: str, sprint_name: str, sprint_update: SprintUpdate) -> ApiSprint:
-        """
-        Update a sprint.
-        
-        Args:
-            project_id: ID of the project
-            sprint_name: Name of the sprint to update
-            sprint_update: Sprint update data
-            
-        Returns:
-            Updated API Sprint model
-        """
-        # Convert dates if provided
-        start_date = None
-        if sprint_update.start_date:
-            start_date = datetime.fromisoformat(sprint_update.start_date)
-            
-        end_date = None
-        if sprint_update.end_date:
-            end_date = datetime.fromisoformat(sprint_update.end_date)
-        
-        # Update the sprint using the sprint service
-        sprint = await self.sprint_service.update_sprint(
-            project_id=project_id,
-            sprint_name=sprint_name,
-            name=sprint_update.name,
-            description=sprint_update.description,
-            start_date=start_date,
-            end_date=end_date,
-            status=sprint_update.status
-        )
-        
-        # Convert to API model
-        pydantic_sprint = sprint_to_pydantic(sprint)
-        api_sprint = ApiSprint.from_core_model(pydantic_sprint, project_id)
-        
-        return api_sprint
-    
-    async def delete_sprint(self, project_id: str, sprint_name: str) -> bool:
-        """
-        Delete a sprint.
-        
-        Args:
-            project_id: ID of the project
-            sprint_name: Name of the sprint to delete
-            
-        Returns:
-            True if deleted, False otherwise
-        """
-        return await self.sprint_service.delete_sprint(project_id, sprint_name)
-    
-    async def list_sprints(self, project_id: str, status_filter: Optional[str] = None) -> List[ApiSprint]:
-        """
-        List all sprints for a project.
-        
-        Args:
-            project_id: ID of the project
-            status_filter: Optional status to filter by
-            
-        Returns:
-            List of API Sprint models
-        """
-        # Get sprints using the sprint service
-        sprints = await self.sprint_service.list_sprints(project_id, status_filter)
-        
-        # Convert to API models
-        api_sprints = []
-        for sprint in sprints:
-            pydantic_sprint = sprint_to_pydantic(sprint)
-            api_sprint = ApiSprint.from_core_model(pydantic_sprint, project_id)
-            api_sprints.append(api_sprint)
-        
-        return api_sprints
-    
-    async def start_sprint(self, project_id: str, sprint_name: str) -> ApiSprint:
-        """
-        Start a sprint.
-        
-        Args:
-            project_id: ID of the project
-            sprint_name: Name of the sprint
-            
-        Returns:
-            Updated API Sprint model
-        """
-        # Start the sprint using the sprint service
-        sprint = await self.sprint_service.start_sprint(project_id, sprint_name)
-        
-        # Convert to API model
-        pydantic_sprint = sprint_to_pydantic(sprint)
-        api_sprint = ApiSprint.from_core_model(pydantic_sprint, project_id)
-        
-        return api_sprint
-    
-    async def complete_sprint(self, project_id: str, sprint_name: str) -> ApiSprint:
-        """
-        Complete a sprint.
-        
-        Args:
-            project_id: ID of the project
-            sprint_name: Name of the sprint
-            
-        Returns:
-            Updated API Sprint model
-        """
-        # Complete the sprint using the sprint service
-        sprint = await self.sprint_service.complete_sprint(project_id, sprint_name)
-        
-        # Convert to API model
-        pydantic_sprint = sprint_to_pydantic(sprint)
-        api_sprint = ApiSprint.from_core_model(pydantic_sprint, project_id)
-        
-        return api_sprint
-    
-    async def get_sprint_progress(self, project_id: str, sprint_name: str) -> Dict[str, Any]:
-        """
-        Get progress statistics for a sprint.
-        
-        Args:
-            project_id: ID of the project
-            sprint_name: Name of the sprint
-            
-        Returns:
-            Dictionary with progress statistics
-        """
-        return await self.sprint_service.get_sprint_progress(project_id, sprint_name)
-    
-    async def get_sprint_todos(self, project_id: str, sprint_name: str, status_filter: Optional[str] = None) -> List[ApiTodoItem]:
-        """
-        Get all todo items for a sprint.
-        
-        Args:
-            project_id: ID of the project
-            sprint_name: Name of the sprint
-            status_filter: Optional status to filter by
-            
-        Returns:
-            List of API TodoItem models
-        """
-        # Get todos using the sprint service
-        todos = await self.sprint_service.get_sprint_todos(project_id, sprint_name, status_filter)
-        
-        # Convert to API models
-        api_todos = []
-        for todo in todos:
-            pydantic_todo = todo_to_pydantic(todo)
-            api_todo = ApiTodoItem.from_core_model(pydantic_todo, todo.id, sprint_name, project_id)
-            api_todos.append(api_todo)
-        
-        return api_todos
-    
-    async def move_todo_to_sprint(self, project_id: str, todo_title: str, target_sprint_name: str) -> ApiTodoItem:
-        """
-        Move a todo item to a different sprint.
-        
-        Args:
-            project_id: ID of the project
-            todo_title: Title of the todo item
-            target_sprint_name: Name of the target sprint
-            
-        Returns:
-            Updated API TodoItem model
-        """
-        # Move the todo using the sprint service
-        todo = await self.sprint_service.move_todo_to_sprint(project_id, todo_title, target_sprint_name)
-        
-        # Convert to API model
-        pydantic_todo = todo_to_pydantic(todo)
-        api_todo = ApiTodoItem.from_core_model(pydantic_todo, todo.id, target_sprint_name, project_id)
-        
-        return api_todo
-    
-    async def create_todo(self, project_id: str, todo_create: TodoItemCreate) -> ApiTodoItem:
-        """Create a new todo item.
-        
-        Args:
-            project_id: ID of the project to add the todo to
-            todo_create: Todo creation data
-            
-        Returns:
-            The created todo in API format
+            The updated task in API format
             
         Raises:
-            ValueError: If the project does not exist or the specified sprint does not exist
+            ValueError: If the task does not exist
         """
-        # Add the todo to the project using the domain service
-        await self.project_service.add_todo_to_project(
-            project_id=project_id,
-            title=todo_create.title,
-            description=todo_create.description,
-            status=todo_create.status,
-            assigned_to=todo_create.assigned_to,
-            priority=todo_create.priority,
-            sprint_name=todo_create.sprint_name,
-            tags=todo_create.tags
-        )
+        # Get the existing task
+        domain_task = await self.project_service.get_task(project_id, task_id)
         
-        # Get the updated project
-        domain_project = await self.project_service.get_project(project_id)
+        if not domain_task:
+            raise ValueError(f"Task with ID {task_id} does not exist in project {project_id}")
         
-        # Find the created todo
-        domain_todo = None
+        # Update the task fields
+        if task_update.title is not None:
+            domain_task.title = task_update.title
         
-        if todo_create.sprint_name:
-            # Find the sprint
-            domain_sprint = next((s for s in domain_project.sprints if s.name == todo_create.sprint_name), None)
-            
-            if domain_sprint:
-                # Find the todo in the sprint
-                domain_todo = next((t for t in domain_sprint.todos if t.title == todo_create.title), None)
-        else:
-            # Find the todo in the project
-            domain_todo = next((t for t in domain_project.todos if t.title == todo_create.title), None)
+        if task_update.description is not None:
+            domain_task.description = task_update.description
         
-        if not domain_todo:
-            raise ValueError(f"Failed to create todo {todo_create.title}")
+        if task_update.priority is not None:
+            domain_task.priority = task_update.priority
         
-        # Convert domain todo to API todo
-        pydantic_todo = todo_to_pydantic(domain_todo)
-        api_todo = ApiTodoItem.from_core_model(pydantic_todo, domain_todo.id, todo_create.sprint_name, project_id)
+        if task_update.assigned_to is not None:
+            domain_task.assigned_to = task_update.assigned_to
         
-        return api_todo
+        if task_update.status is not None:
+            domain_task.status = task_update.status
+        
+        # Update the task using the domain service
+        await self.project_service.update_task(project_id, domain_task)
+        
+        # Get the updated task
+        updated_domain_task = await self.project_service.get_task(project_id, task_id)
+        
+        # Convert domain task to API task
+        pydantic_task = task_to_pydantic(updated_domain_task)
+        api_task = ApiTask.from_core_model(pydantic_task, updated_domain_task.id)
+        
+        return api_task
     
-    async def update_todo(self, project_id: str, todo_id: str, todo_update: TodoItemUpdate) -> ApiTodoItem:
-        """Update a todo item.
+    async def delete_task(self, project_id: str, task_id: str) -> bool:
+        """Delete a task.
         
         Args:
-            project_id: ID of the project
-            todo_id: ID of the todo to update
-            todo_update: Todo update data
+            project_id: ID of the project containing the task
+            task_id: ID of the task to delete
             
         Returns:
-            The updated todo in API format
-            
-        Raises:
-            ValueError: If the project or todo does not exist
+            True if the task was deleted, False otherwise
         """
-        # Get the existing project
-        domain_project = await self.project_service.get_project(project_id)
+        return await self.project_service.delete_task(project_id, task_id)
+    
+    async def list_tasks(self, project_id: str) -> List[ApiTask]:
+        """List all tasks in a project.
         
-        if not domain_project:
-            raise ValueError(f"Project with ID {project_id} does not exist")
-        
-        # Find the todo to update
-        domain_todo = None
-        sprint_name = None
-        
-        # Check project todos
-        for todo in domain_project.todos:
-            if todo.id == todo_id:
-                domain_todo = todo
-                break
-        
-        # If not found in project todos, check sprint todos
-        if not domain_todo:
-            for sprint in domain_project.sprints:
-                for todo in sprint.todos:
-                    if todo.id == todo_id:
-                        domain_todo = todo
-                        sprint_name = sprint.name
-                        break
-                if domain_todo:
-                    break
-        
-        if not domain_todo:
-            raise ValueError(f"Todo with ID {todo_id} does not exist in project {domain_project.name}")
-        
-        # Update the todo fields
-        if todo_update.title is not None:
-            domain_todo.title = todo_update.title
-        
-        if todo_update.description is not None:
-            domain_todo.description = todo_update.description
-        
-        if todo_update.status is not None:
-            domain_todo.status = todo_update.status
+        Args:
+            project_id: ID of the project to list tasks from
             
-            # Update completed_at if status is DONE
-            if todo_update.status == "DONE":
-                domain_todo.completed_at = datetime.now()
+        Returns:
+            List of tasks in API format
+        """
+        domain_tasks = await self.project_service.list_tasks(project_id)
         
-        if todo_update.assigned_to is not None:
-            domain_todo.assigned_to = todo_update.assigned_to
-        
-        if todo_update.priority is not None:
-            domain_todo.priority = todo_update.priority
-        
-        if todo_update.depends_on is not None:
-            domain_todo.depends_on = todo_update.depends_on
-        
-        if todo_update.tags is not None:
-            domain_todo.tags = todo_update.tags
-        
-        # Handle sprint assignment changes
-        if todo_update.sprint_name is not None and todo_update.sprint_name != sprint_name:
-            # Move todo to a different sprint or to project level
+        # Convert domain tasks to API tasks
+        api_tasks = []
+        for task in domain_tasks:
+            # First convert to Pydantic model (intermediate step)
+            pydantic_task = task_to_pydantic(task)
             
-            # First remove from current location
-            if sprint_name:
-                # Remove from current sprint
-                sprint = next((s for s in domain_project.sprints if s.name == sprint_name), None)
-                if sprint:
-                    sprint.todos = [t for t in sprint.todos if t.id != todo_id]
-            else:
-                # Remove from project todos
-                domain_project.todos = [t for t in domain_project.todos if t.id != todo_id]
-            
-            # Then add to new location
-            if todo_update.sprint_name:
-                # Add to new sprint
-                new_sprint = next((s for s in domain_project.sprints if s.name == todo_update.sprint_name), None)
-                if new_sprint:
-                    new_sprint.todos.append(domain_todo)
-                else:
-                    raise ValueError(f"Sprint {todo_update.sprint_name} does not exist in project {domain_project.name}")
-            else:
-                # Add to project todos
-                domain_project.todos.append(domain_todo)
-            
-            # Update sprint_name for return value
-            sprint_name = todo_update.sprint_name
+            # Then convert to API model
+            api_task = ApiTask.from_core_model(pydantic_task, task.id)
+            api_tasks.append(api_task)
         
-        # Update the project using the domain service
-        await self.project_service.update_project(domain_project)
-        
-        # Convert domain todo to API todo
-        pydantic_todo = todo_to_pydantic(domain_todo)
-        api_todo = ApiTodoItem.from_core_model(pydantic_todo, domain_todo.id, sprint_name, project_id)
-        
-        return api_todo
-
+        return api_tasks
+    
     # Team-related methods
     
     async def list_teams(self) -> List[Dict[str, Any]]:

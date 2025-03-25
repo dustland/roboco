@@ -9,7 +9,9 @@ from typing import List, Optional, Dict, Any, Union
 from datetime import datetime
 import uuid
 import os
-from loguru import logger
+from roboco.core.logger import get_logger
+
+logger = get_logger(__name__)
 
 from roboco.services.project_service import ProjectService
 from roboco.services.team_service import TeamService
@@ -17,12 +19,13 @@ from roboco.services.agent_service import AgentService
 from roboco.services.task_service import TaskService
 from roboco.services.workspace_service import WorkspaceService
 from roboco.services.chat_service import ChatService
-from roboco.infrastructure.adapters.pydantic_adapters import (
-    project_to_pydantic, pydantic_to_project
+from roboco.storage.adapters.pydantic_adapters import (
+    project_to_pydantic
 )
-from roboco.core.schema import ProjectConfig, Task
 from roboco.api.models.project import Project as ApiProject, ProjectCreate, ProjectUpdate
 from roboco.api.models.task import Task as ApiTask, TaskCreate, TaskUpdate
+from roboco.api.models.chat import ChatRequest, ChatResponse
+from roboco.storage.repositories.file_project_repository import FileProjectRepository
 
 class ApiService:
     """Service for API operations.
@@ -62,7 +65,6 @@ class ApiService:
         
         # If project_repository is not provided, try to get it from the router's dependency injection
         if project_repository is None:
-            from roboco.infrastructure.repositories.file_project_repository import FileProjectRepository
             project_repository = FileProjectRepository()
             
         self.task_service = task_service or TaskService(project_repository)
@@ -315,3 +317,42 @@ class ApiService:
             ValueError: If the project does not exist
         """
         return await self.task_service.delete_task(project_id, task_id)
+        
+    # Chat-related methods
+    
+    async def start_chat(self, chat_request: ChatRequest) -> ChatResponse:
+        """Process a chat request with the project agent.
+        
+        Args:
+            chat_request: The chat request containing the query and other parameters
+            
+        Returns:
+            ChatResponse object with the response details
+        """
+        return await self.chat_service.start_chat(chat_request)
+        
+    async def get_chat_status(self, conversation_id: str) -> Optional[Dict[str, Any]]:
+        """Get the status of a chat conversation.
+        
+        Args:
+            conversation_id: ID of the conversation
+            
+        Returns:
+            Dictionary with conversation details or None if not found
+        """
+        conversation = await self.chat_service.get_conversation_history(conversation_id)
+        
+        if not conversation:
+            return None
+            
+        # Format the response
+        messages = conversation.get("messages", [])
+        latest_message = messages[-1] if messages else {"content": "", "role": "assistant"}
+        
+        return {
+            "conversation_id": conversation_id,
+            "project_id": conversation.get("project_id"),
+            "message": latest_message.get("content", ""),
+            "project_details": None,  # Add project details if needed
+            "status": "completed"
+        }
