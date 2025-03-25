@@ -19,7 +19,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../.
 from roboco.services.project_service import ProjectService
 from roboco.services.api_service import ApiService
 from roboco.api.models.chat import ChatRequest, ChatResponse
-from roboco.storage.repositories.file_project_repository import FileProjectRepository
+from roboco.core.project_fs import ProjectFS
 
 
 async def start_chat(query: str, conversation_id: Optional[str] = None) -> Dict[str, Any]:
@@ -33,14 +33,11 @@ async def start_chat(query: str, conversation_id: Optional[str] = None) -> Dict[
     Returns:
         The response from the chat API
     """
-    # Create the repository
-    repository = FileProjectRepository()
-    
     # Create the domain service
-    project_service = ProjectService(repository)
+    project_service = ProjectService()
     
-    # Create the API service - pass the repository directly
-    api_service = ApiService(project_service, project_repository=repository)
+    # Create the API service
+    api_service = ApiService(project_service)
     
     # Create the chat request
     chat_request = ChatRequest(

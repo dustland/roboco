@@ -8,7 +8,6 @@ and associated teams and jobs.
 import os
 import json
 import uuid
-import shutil
 from typing import Dict, List, Optional, Any, Union
 from datetime import datetime
 from pathlib import Path
@@ -21,226 +20,282 @@ from loguru import logger
 
 from roboco.core.models import ProjectConfig, Task
 from roboco.core import config
+from roboco.core.config import load_config
+from roboco.core.models.project import Project
+from roboco.core.models.task import Task
+from roboco.core.project_fs import ProjectFS
 
 
 class ProjectManager:
-    """Manager for projects and their components.
+    """
+    Manager for handling projects, tasks, and teams.
     
-    This class provides methods for creating, updating, and retrieving projects,
-    as well as managing tasks within projects.
+    This class provides methods for creating, retrieving, and updating projects,
+    as well as for managing project tasks and configuration.
     """
     
-    def __init__(self, projects_dir: Optional[str] = None):
-        """Initialize the project manager.
+    def __init__(self, config=None):
+        """
+        Initialize the project manager.
         
         Args:
-            projects_dir: Optional custom directory for storing projects
+            config: Configuration object
         """
-        self.config = config.load_config()
-        self.projects_dir = projects_dir or os.path.join(self.config.core.workspace_base, "projects")
-        os.makedirs(self.projects_dir, exist_ok=True)
-        self.projects: Dict[str, ProjectConfig] = {}
+        self.config = config or load_config()
+        self.projects = []
         self._load_projects()
     
-    def _load_projects(self) -> None:
-        """Load all existing projects from disk."""
-        for project_dir in os.listdir(self.projects_dir):
-            project_path = os.path.join(self.projects_dir, project_dir)
-            if os.path.isdir(project_path):
-                config_path = os.path.join(project_path, "project.json")
-                if os.path.exists(config_path):
-                    try:
-                        with open(config_path, "r") as f:
-                            project_data = json.load(f)
-                            project_id = os.path.basename(project_dir)
-                            self.projects[project_id] = ProjectConfig(**project_data)
-                            logger.info(f"Loaded project: {project_data['name']} (ID: {project_id})")
-                    except Exception as e:
-                        logger.error(f"Failed to load project from {config_path}: {str(e)}")
+    def _load_projects(self):
+        """
+        Load projects from disk.
+        """
+        try:
+            # Get the workspace base path
+            workspace_base = self.config.core.workspace_base
+            projects_dir = os.path.join(workspace_base, "projects")
+            
+            # Create the projects directory if it doesn't exist
+            if not os.path.exists(projects_dir):
+                os.makedirs(projects_dir, exist_ok=True)
+                return
+            
+            # Iterate through project directories
+            for project_dir in os.listdir(projects_dir):
+                dir_path = os.path.join(projects_dir, project_dir)
+                
+                if os.path.isdir(dir_path):
+                    project_file = os.path.join(dir_path, "project.json")
+                    
+                    if os.path.exists(project_file):
+                        try:
+                            with open(project_file, "r") as f:
+                                project_data = json.load(f)
+                                project = Project.from_dict(project_data)
+                                self.projects.append(project)
+                        except Exception as e:
+                            logger.error(f"Failed to load project from {project_file}: {str(e)}")
+        except Exception as e:
+            logger.error(f"Error loading projects: {str(e)}")
     
-    def _save_project(self, project_id: str) -> None:
-        """Save a project to disk.
+    async def _save_project(self, project):
+        """
+        Save a project to disk.
         
         Args:
-            project_id: ID of the project to save
+            project: Project to save
         """
-        project = self.projects.get(project_id)
-        if not project:
-            logger.error(f"Cannot save project {project_id}: project not found")
-            return
+        try:
+            # Create a ProjectFS instance for the project
+            project_fs = await ProjectFS.get_by_id(project.id)
             
-        project_dir = os.path.join(self.projects_dir, project_id)
-        os.makedirs(project_dir, exist_ok=True)
-        
-        # Ensure source code and docs directories exist
-        os.makedirs(os.path.join(project_dir, project.source_code_dir), exist_ok=True)
-        os.makedirs(os.path.join(project_dir, project.docs_dir), exist_ok=True)
-        
-        # Save the project configuration
-        config_path = os.path.join(project_dir, "project.json")
-        with open(config_path, "w") as f:
-            json.dump(project.model_dump(), f, default=str, indent=2)
-        
-        # Update task.md
-        self._update_task_markdown(project_id)
-        
-        logger.info(f"Saved project {project.name} (ID: {project_id})")
+            # Save the project
+            await project_fs.save_project(project)
+            
+        except Exception as e:
+            logger.error(f"Error saving project {project.id}: {str(e)}")
+            raise Exception(f"Error saving project: {str(e)}")
     
-    def _update_task_markdown(self, project_id: str) -> None:
-        """Update the task.md file for a project.
+    async def _update_task_markdown(self, project):
+        """
+        Update the task markdown file for a project.
+        
+        This is now handled internally by ProjectFS.save_project().
         
         Args:
-            project_id: ID of the project to update
+            project: Project to update task markdown for
         """
-        project = self.projects.get(project_id)
-        if not project:
-            return
-            
-        task_path = os.path.join(self.projects_dir, project_id, "task.md")
-        
-        content = f"# {project.name} - Task List\n\n"
-        content += f"*Last updated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}*\n\n"
-        
-        # Add tasks section
-        if project.tasks:
-            # Group tasks by status
-            todo_tasks = [t for t in project.tasks if t.status == "TODO"]
-            in_progress_tasks = [t for t in project.tasks if t.status == "IN_PROGRESS"]
-            done_tasks = [t for t in project.tasks if t.status == "DONE"]
-            
-            if in_progress_tasks:
-                content += "## In Progress\n\n"
-                for task in in_progress_tasks:
-                    assigned = f" (@{task.assigned_to})" if task.assigned_to else ""
-                    priority_marker = {"low": "🔽", "medium": "⏺️", "high": "🔼", "critical": "‼️"}.get(task.priority.lower(), "")
-                    content += f"- [ ] {priority_marker} {task.description}{assigned} - {task.description or ''}\n"
-                content += "\n"
-            
-            if todo_tasks:
-                content += "## To Do\n\n"
-                for task in todo_tasks:
-                    assigned = f" (@{task.assigned_to})" if task.assigned_to else ""
-                    priority_marker = {"low": "🔽", "medium": "⏺️", "high": "🔼", "critical": "‼️"}.get(task.priority.lower(), "")
-                    content += f"- [ ] {priority_marker} {task.description}{assigned} - {task.description or ''}\n"
-                content += "\n"
-            
-            if done_tasks:
-                content += "## Completed\n\n"
-                for task in done_tasks:
-                    assigned = f" (@{task.assigned_to})" if task.assigned_to else ""
-                    content += f"- [x] {task.description}{assigned} - {task.description or ''}\n"
-                content += "\n"
-        
-        # Write the task.md file
-        with open(task_path, "w") as f:
-            f.write(content)
-        
-        logger.info(f"Updated task.md for project {project.name} (ID: {project_id})")
+        # This is now managed by the ProjectFS abstraction
+        pass
     
-    def create_project(self, name: str, description: str, directory: Optional[str] = None,
-                     teams: Optional[List[str]] = None, tags: Optional[List[str]] = None,
-                     source_code_dir: str = "src", docs_dir: str = "docs") -> str:
-        """Create a new project.
+    async def create_project(
+        self,
+        name,
+        description,
+        directory=None,
+        teams=None,
+        tags=None,
+    ):
+        """
+        Create a new project.
         
         Args:
             name: Name of the project
             description: Description of the project
-            directory: Optional custom directory name (defaults to sanitized project name)
-            teams: Optional list of team keys to associate with this project
-            tags: Optional tags for the project
-            source_code_dir: Directory for source code (relative to project directory)
-            docs_dir: Directory for documentation (relative to project directory)
+            directory: Optional directory name
+            teams: List of teams involved in the project
+            tags: Tags for the project
             
         Returns:
-            The ID of the created project
+            The created project
         """
-        # Generate a unique ID for the project
-        project_id = str(uuid.uuid4())
-        
-        # Create a sanitized directory name if not provided
-        if not directory:
-            directory = name.lower().replace(" ", "_").replace("-", "_")
-        
-        # Create the project config
-        project = ProjectConfig(
-            name=name,
-            description=description,
-            directory=directory,
-            created_at=datetime.now(),
-            updated_at=datetime.now(),
-            teams=teams or [],
-            tags=tags or [],
-            source_code_dir=source_code_dir,
-            docs_dir=docs_dir
-        )
-        
-        # Save the project
-        self.projects[project_id] = project
-        self._save_project(project_id)
-        
-        return project_id
+        try:
+            # Create the project using ProjectFS
+            project_fs = await ProjectFS.create(
+                name=name,
+                description=description,
+                directory=directory,
+                teams=teams,
+                tags=tags
+            )
+            
+            # Get the project and add it to our cache
+            project = await project_fs.get_project()
+            self.projects.append(project)
+            
+            return project
+            
+        except Exception as e:
+            logger.error(f"Error creating project {name}: {str(e)}")
+            raise Exception(f"Error creating project: {str(e)}")
     
-    def get_project(self, project_id: str) -> Optional[ProjectConfig]:
-        """Get a project by ID.
+    def get_project(self, project_id):
+        """
+        Get a project by ID.
         
         Args:
-            project_id: ID of the project to retrieve
+            project_id: ID of the project to get
             
         Returns:
-            The project configuration or None if not found
+            Project with the specified ID, or None if not found
         """
-        return self.projects.get(project_id)
+        for project in self.projects:
+            if project.id == project_id:
+                return project
+        return None
     
-    def list_projects(self) -> List[Dict[str, Any]]:
-        """List all projects.
+    def list_projects(self):
+        """
+        List all projects.
         
         Returns:
-            List of project information dictionaries with id and summary data
+            List of all projects
         """
-        return [
-            {
-                "id": project_id,
-                "name": project.name,
-                "description": project.description,
-                "created_at": project.created_at,
-                "updated_at": project.updated_at,
-                "teams": project.teams,
-                "tags": project.tags,
-                "jobs_count": len(project.jobs),
-                "tasks_count": len(project.tasks)
-            }
-            for project_id, project in self.projects.items()
-        ]
+        return self.projects
     
-    def update_project(self, project_id: str, **updates) -> bool:
-        """Update a project.
+    def find_projects_by_name(self, name):
+        """
+        Find projects by name.
+        
+        Args:
+            name: Name to search for
+            
+        Returns:
+            List of projects matching the name
+        """
+        return [p for p in self.projects if name.lower() in p.name.lower()]
+    
+    def find_projects_by_tag(self, tag):
+        """
+        Find projects by tag.
+        
+        Args:
+            tag: Tag to search for
+            
+        Returns:
+            List of projects with the specified tag
+        """
+        return [p for p in self.projects if tag in p.tags]
+    
+    async def update_project(self, project_id, **kwargs):
+        """
+        Update a project.
         
         Args:
             project_id: ID of the project to update
-            **updates: Attributes to update
+            **kwargs: Project attributes to update
             
         Returns:
-            True if the project was updated, False otherwise
+            Updated project
+            
+        Raises:
+            Exception: If the project is not found
         """
-        project = self.projects.get(project_id)
+        project = self.get_project(project_id)
         if not project:
-            return False
+            raise Exception(f"Project not found: {project_id}")
         
-        # Update fields
-        for field, value in updates.items():
-            if hasattr(project, field) and field != "created_at":
-                setattr(project, field, value)
+        # Update project attributes
+        for key, value in kwargs.items():
+            if hasattr(project, key):
+                setattr(project, key, value)
         
-        # Update last updated timestamp
-        project.updated_at = datetime.now()
+        # Save the project
+        await self._save_project(project)
         
-        # Save changes
-        self._save_project(project_id)
-        
-        return True
+        return project
     
-    def delete_project(self, project_id: str) -> bool:
-        """Delete a project.
+    async def add_task(self, project_id, task):
+        """
+        Add a task to a project.
+        
+        Args:
+            project_id: ID of the project to add the task to
+            task: Task to add
+            
+        Returns:
+            Updated project
+            
+        Raises:
+            Exception: If the project is not found
+        """
+        project = self.get_project(project_id)
+        if not project:
+            raise Exception(f"Project not found: {project_id}")
+        
+        # Add the task to the project
+        project.tasks.append(task)
+        
+        # Save the project
+        await self._save_project(project)
+        
+        return project
+    
+    async def update_task(self, project_id, task_id, **kwargs):
+        """
+        Update a task in a project.
+        
+        Args:
+            project_id: ID of the project containing the task
+            task_id: ID of the task to update
+            **kwargs: Task attributes to update
+            
+        Returns:
+            Updated project
+            
+        Raises:
+            Exception: If the project or task is not found
+        """
+        project = self.get_project(project_id)
+        if not project:
+            raise Exception(f"Project not found: {project_id}")
+        
+        # Find the task
+        task_found = False
+        for task in project.tasks:
+            if task.id == task_id:
+                # Update task attributes
+                for key, value in kwargs.items():
+                    if hasattr(task, key):
+                        setattr(task, key, value)
+                
+                # Special handling for status changes
+                if kwargs.get("status") == "DONE" and not task.completed_at:
+                    task.completed_at = datetime.now()
+                
+                task_found = True
+                break
+        
+        if not task_found:
+            raise Exception(f"Task not found: {task_id}")
+        
+        # Save the project
+        await self._save_project(project)
+        
+        return project
+    
+    async def delete_project(self, project_id):
+        """
+        Delete a project.
         
         Args:
             project_id: ID of the project to delete
@@ -248,113 +303,23 @@ class ProjectManager:
         Returns:
             True if the project was deleted, False otherwise
         """
-        if project_id not in self.projects:
-            return False
-        
-        # Remove from projects dictionary
-        project = self.projects.pop(project_id)
-        
-        # Delete from disk
-        project_dir = os.path.join(self.projects_dir, project_id)
-        if os.path.exists(project_dir):
-            shutil.rmtree(project_dir)
-        
-        logger.info(f"Deleted project {project.name} (ID: {project_id})")
-        
-        return True
-    
-    def add_job_to_project(self, project_id: str, job_id: str) -> bool:
-        """Add a job to a project.
-        
-        Args:
-            project_id: ID of the project
-            job_id: ID of the job to add
-            
-        Returns:
-            True if the job was added, False otherwise
-        """
-        project = self.projects.get(project_id)
+        # Find the project
+        project = self.get_project(project_id)
         if not project:
-            return False
+            return True  # Already deleted
         
-        if job_id not in project.jobs:
-            project.jobs.append(job_id)
-            project.updated_at = datetime.now()
-            self._save_project(project_id)
-        
-        return True
-    
-    def create_task(self, project_id: str, description: Optional[str] = None,
-                  status: str = "TODO", assigned_to: Optional[str] = None,
-                  priority: str = "medium", depends_on: Optional[List[str]] = None,
-                  tags: Optional[List[str]] = None) -> Optional[Task]:
-        """Create a new task.
-        
-        Args:
-            project_id: ID of the project
-            description: Optional description
-            status: Status (TODO, IN_PROGRESS, DONE)
-            assigned_to: Optional assignee
-            priority: Priority level (low, medium, high, critical)
-            depends_on: Optional list of task IDs this task depends on
-            tags: Optional tags
+        try:
+            # Delete the project using ProjectFS
+            project_fs = await ProjectFS.get_by_id(project_id)
+            success = await project_fs.delete()
             
-        Returns:
-            The created task or None if the project wasn't found
-        """
-        project = self.projects.get(project_id)
-        if not project:
-            return None
-        
-        # Create the task
-        task = Task(
-            description=description,
-            status=status,
-            assigned_to=assigned_to,
-            priority=priority,
-            depends_on=depends_on or [],
-            tags=tags or []
-        )
-        
-        # Add to project tasks
-        project.tasks.append(task)
-        
-        # Update last updated timestamp
-        project.updated_at = datetime.now()
-        
-        # Save changes
-        self._save_project(project_id)
-        
-        return task
-    
-    def update_task(self, project_id: str, task_description: str, **updates) -> bool:
-        """Update a task.
-        
-        Args:
-            project_id: ID of the project
-            task_description: Description of the task to update
-            **updates: Attributes to update
-            
-        Returns:
-            True if the task was updated, False otherwise
-        """
-        project = self.projects.get(project_id)
-        if not project:
-            return False
-        
-        # Check project tasks
-        for i, task in enumerate(project.tasks):
-            if task.description == task_description:
-                for field, value in updates.items():
-                    if hasattr(task, field):
-                        setattr(task, field, value)
-                
-                task.updated_at = datetime.now()
-                if updates.get("status") == "DONE" and not task.completed_at:
-                    task.completed_at = datetime.now()
-                
-                project.updated_at = datetime.now()
-                self._save_project(project_id)
+            if success:
+                # Remove from local cache
+                self.projects = [p for p in self.projects if p.id != project_id]
                 return True
-        
-        return False
+            else:
+                return False
+                
+        except Exception as e:
+            logger.error(f"Error deleting project {project_id}: {str(e)}")
+            return False

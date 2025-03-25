@@ -9,35 +9,13 @@ from typing import Dict, Any, Optional, List
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from datetime import datetime
 
-# Remove this import to break the circular dependency
-# from roboco.services.api_service import ApiService
 from roboco.api.models.chat import ChatRequest, ChatResponse
 from roboco.api.dependencies import get_api_service
-from roboco.services.project_service import ProjectService
-from roboco.storage.repositories.file_project_repository import FileProjectRepository
 
 
 router = APIRouter(
     tags=["chat"],
 )
-
-
-# Dependency to get the API service
-async def get_api_service():
-    """Get the API service instance."""
-    # Import here to avoid circular dependency
-    from roboco.services.api_service import ApiService
-    
-    # Create the repository
-    repository = FileProjectRepository()
-    
-    # Create the domain service
-    project_service = ProjectService(repository)
-    
-    # Create the API service - pass the repository directly
-    api_service = ApiService(project_service, project_repository=repository)
-    
-    return api_service
 
 
 @router.post("/", response_model=ChatResponse)

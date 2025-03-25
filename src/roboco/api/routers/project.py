@@ -11,34 +11,14 @@ from pydantic import ValidationError
 
 from roboco.api.models.project import Project, ProjectCreate, ProjectUpdate
 from roboco.api.models.task import Task, TaskCreate, TaskUpdate
-from roboco.storage.repositories.file_project_repository import FileProjectRepository
 from roboco.services.project_service import ProjectService
 from roboco.api.dependencies import get_api_service
-# from roboco.services.api_service import ApiService
 
 
 router = APIRouter(
     tags=["projects"],
     responses={404: {"description": "Project not found"}},
 )
-
-
-# Dependency to get the API service
-async def get_api_service():
-    """Get the API service instance."""
-    # Import here to avoid circular dependency
-    from roboco.services.api_service import ApiService
-    
-    # Create the repository
-    repository = FileProjectRepository()
-    
-    # Create the domain service
-    project_service = ProjectService(repository)
-    
-    # Create the API service - pass the repository directly
-    api_service = ApiService(project_service, project_repository=repository)
-    
-    return api_service
 
 
 @router.get("/", response_model=List[Project])
@@ -250,4 +230,4 @@ async def get_task_markdown(
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error retrieving task markdown: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error getting task markdown: {str(e)}")

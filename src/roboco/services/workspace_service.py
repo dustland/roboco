@@ -31,7 +31,20 @@ class WorkspaceService:
             workspace_base: Base directory for workspaces, defaults to ~/roboco_workspace
         """
         self.workspace_base = workspace_base or os.path.expanduser("~/roboco_workspace")
-        os.makedirs(self.workspace_base, exist_ok=True)
+        self._ensure_directory(self.workspace_base)
+    
+    def _ensure_directory(self, directory_path: str) -> None:
+        """
+        Ensure a directory exists.
+        
+        Centralizes directory creation to avoid scattered os.makedirs calls.
+        
+        Args:
+            directory_path: Path to ensure exists
+        """
+        if not os.path.exists(directory_path):
+            os.makedirs(directory_path, exist_ok=True)
+            logger.debug(f"Created directory: {directory_path}")
     
     async def create_workspace(self, name: str, description: Optional[str] = None) -> Dict[str, Any]:
         """
@@ -56,13 +69,13 @@ class WorkspaceService:
             raise ValueError(f"Workspace '{name}' already exists")
         
         # Create workspace directory
-        os.makedirs(workspace_path, exist_ok=True)
+        self._ensure_directory(workspace_path)
         
         # Create subdirectories
-        os.makedirs(os.path.join(workspace_path, "artifacts"), exist_ok=True)
-        os.makedirs(os.path.join(workspace_path, "data"), exist_ok=True)
-        os.makedirs(os.path.join(workspace_path, "code"), exist_ok=True)
-        os.makedirs(os.path.join(workspace_path, "docs"), exist_ok=True)
+        self._ensure_directory(os.path.join(workspace_path, "artifacts"))
+        self._ensure_directory(os.path.join(workspace_path, "data"))
+        self._ensure_directory(os.path.join(workspace_path, "code"))
+        self._ensure_directory(os.path.join(workspace_path, "docs"))
         
         # Create metadata file
         metadata = {
@@ -353,18 +366,18 @@ class WorkspaceService:
     
     async def write_file(self, workspace_id_or_name: str, path: str, content: Union[str, bytes]) -> Dict[str, Any]:
         """
-        Write a file to a workspace.
+        Write content to a file in a workspace.
         
         Args:
             workspace_id_or_name: ID or name of the workspace
             path: Path to the file within the workspace
-            content: File contents as a string or bytes
+            content: Content to write (string or bytes)
             
         Returns:
             Dictionary with file information
             
         Raises:
-            ValueError: If the workspace is not found
+            ValueError: If the workspace is not found or path is invalid
         """
         # Get workspace
         workspace = await self.get_workspace(workspace_id_or_name)
@@ -376,27 +389,32 @@ class WorkspaceService:
         
         file_path = os.path.join(workspace["path"], norm_path)
         
-        # Create parent directories if they don't exist
-        os.makedirs(os.path.dirname(file_path), exist_ok=True)
+        # Ensure parent directory exists
+        parent_dir = os.path.dirname(file_path)
+        self._ensure_directory(parent_dir)
         
         # Write file
-        if isinstance(content, str):
-            with open(file_path, "w") as f:
-                f.write(content)
-        else:
-            with open(file_path, "wb") as f:
-                f.write(content)
-        
-        # Get file stats
-        stats = os.stat(file_path)
-        
-        return {
-            "name": os.path.basename(file_path),
-            "path": path,
-            "type": "file",
-            "size": stats.st_size,
-            "modified": datetime.fromtimestamp(stats.st_mtime).isoformat()
-        }
+        try:
+            if isinstance(content, str):
+                with open(file_path, "w") as f:
+                    f.write(content)
+            else:
+                with open(file_path, "wb") as f:
+                    f.write(content)
+                    
+            # Get file stats
+            stats = os.stat(file_path)
+            
+            return {
+                "name": os.path.basename(file_path),
+                "path": path,
+                "type": "file",
+                "size": stats.st_size,
+                "modified": datetime.fromtimestamp(stats.st_mtime).isoformat()
+            }
+        except Exception as e:
+            logger.error(f"Error writing file: {str(e)}")
+            raise ValueError(f"Error writing file: {str(e)}")
     
     async def delete_file(self, workspace_id_or_name: str, path: str) -> bool:
         """

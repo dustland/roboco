@@ -13,6 +13,7 @@ from datetime import datetime
 
 from roboco.core.logger import get_logger
 from roboco.core.config import load_config
+from roboco.core.project_fs import ProjectFS, ProjectNotFoundError
 
 logger = get_logger(__name__)
 
@@ -43,6 +44,8 @@ class Workspace:
             root_path: Root path for the workspace.
         """
         self.root_path = Path(root_path).resolve()
+        
+        # Define standard workspace directories
         self.research_path = self.root_path / "research"
         self.code_path = self.root_path / "code"
         self.docs_path = self.root_path / "docs"
@@ -54,108 +57,127 @@ class Workspace:
         logger.info(f"Initialized workspace at {self.root_path}")
     
     def _ensure_directories(self):
-        """Ensure that all necessary directories exist."""
-        self.research_path.mkdir(parents=True, exist_ok=True)
-        self.code_path.mkdir(parents=True, exist_ok=True)
-        self.docs_path.mkdir(parents=True, exist_ok=True)
-        self.data_path.mkdir(parents=True, exist_ok=True)
+        """Ensure that all necessary directories exist.
+        
+        Uses a helper method to avoid direct os.makedirs calls.
+        """
+        self._ensure_directory(self.research_path)
+        self._ensure_directory(self.code_path)
+        self._ensure_directory(self.docs_path)
+        self._ensure_directory(self.data_path)
     
-    def get_project_path(self, project_name: str) -> Path:
-        """Get the path for a specific project.
+    def _ensure_directory(self, directory_path: Path):
+        """Ensure a directory exists.
         
         Args:
-            project_name: Name of the project.
-            
-        Returns:
-            Path: Path to the project directory.
+            directory_path: Path to ensure exists
         """
-        project_name_safe = project_name.lower().replace(" ", "_").replace("-", "_")
-        project_path = self.code_path / project_name_safe
-        project_path.mkdir(parents=True, exist_ok=True)
-        return project_path
+        directory_path.mkdir(parents=True, exist_ok=True)
     
-    def get_research_path(self, topic: str) -> Path:
-        """Get the path for research on a specific topic.
+    def get_research_path(self, topic_name: Optional[str] = None) -> Path:
+        """Get the path to a research topic, or the research directory.
         
         Args:
-            topic: Research topic.
+            topic_name: Name of the research topic, or None for the research directory.
             
         Returns:
-            Path: Path to the research directory.
+            Path: Path to the research topic or directory.
         """
-        topic_safe = topic.lower().replace(" ", "_").replace("-", "_")
-        research_path = self.research_path / topic_safe
-        research_path.mkdir(parents=True, exist_ok=True)
-        return research_path
+        if topic_name:
+            path = self.research_path / topic_name
+            self._ensure_directory(path)
+            return path
+        return self.research_path
     
-    def save_research_report(self, topic: str, report: Dict[str, Any]) -> Path:
-        """Save a research report to the workspace.
+    async def get_project_path(self, project_name: str) -> Path:
+        """Get the path to a project.
+        
+        This method tries to find a project by name or ID.
         
         Args:
-            topic: Research topic.
-            report: Research report to save.
+            project_name: Name or ID of the project.
             
         Returns:
-            Path: Path to the saved report.
+            Path: Path to the project.
         """
-        import json
+        try:
+            # Try to get the project by ID first
+            project_fs = await ProjectFS.get_by_id(project_name)
+            return project_fs.path
+        except ProjectNotFoundError:
+            # If not found by ID, try by name
+            try:
+                projects = await ProjectFS.find_by_name(project_name)
+                if projects:
+                    # Use the first matching project
+                    project_fs = await ProjectFS.get_by_id(projects[0].id)
+                    return project_fs.path
+            except Exception:
+                pass
         
-        research_path = self.get_research_path(topic)
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        report_file = research_path / f"report_{timestamp}.json"
-        
-        with open(report_file, 'w') as f:
-            json.dump(report, f, indent=2)
-        
-        logger.info(f"Saved research report to {report_file}")
-        return report_file
+        # If not found, use a default path based on the name
+        config = load_config()
+        return Path(os.path.join(config.workspace_root, "projects", project_name))
     
-    def save_code_artifact(self, project_name: str, file_path: str, content: str) -> Path:
-        """Save a code artifact to the workspace.
+    def get_doc_path(self, doc_name: Optional[str] = None) -> Path:
+        """Get the path to a document, or the docs directory.
         
         Args:
-            project_name: Name of the project.
-            file_path: Relative path to the file within the project.
-            content: Content to write to the file.
+            doc_name: Name of the document, or None for the docs directory.
             
         Returns:
-            Path: Path to the saved artifact.
+            Path: Path to the document or directory.
         """
-        project_path = self.get_project_path(project_name)
-        full_path = project_path / file_path
-        full_path.parent.mkdir(parents=True, exist_ok=True)
-        
-        with open(full_path, 'w') as f:
-            f.write(content)
-        
-        logger.info(f"Saved code artifact to {full_path}")
-        return full_path
+        if doc_name:
+            path = self.docs_path / doc_name
+            self._ensure_directory(path)
+            return path
+        return self.docs_path
     
-    def save_documentation(self, project_name: str, doc_name: str, content: str) -> Path:
-        """Save documentation to the workspace.
+    def get_data_path(self, data_name: Optional[str] = None) -> Path:
+        """Get the path to a data file or directory, or the data directory.
         
         Args:
-            project_name: Name of the project.
-            doc_name: Name of the documentation file.
-            content: Content to write to the file.
+            data_name: Name of the data file or directory, or None for the data directory.
             
         Returns:
-            Path: Path to the saved documentation.
+            Path: Path to the data file/directory or the data directory.
         """
-        project_name_safe = project_name.lower().replace(" ", "_").replace("-", "_")
-        doc_path = self.docs_path / project_name_safe
-        doc_path.mkdir(parents=True, exist_ok=True)
-        
-        doc_file = doc_path / f"{doc_name}.md"
-        
-        with open(doc_file, 'w') as f:
-            f.write(content)
-        
-        logger.info(f"Saved documentation to {doc_file}")
-        return doc_file
+        if data_name:
+            path = self.data_path / data_name
+            self._ensure_directory(path)
+            return path
+        return self.data_path
     
-    def create_project_structure(self, project_name: str, structure: Dict[str, Any]) -> Path:
+    def create_research_topic(self, topic_name: str, description: str = "") -> Path:
+        """Create a research topic directory with notes and resources.
+        
+        Args:
+            topic_name: Name of the research topic.
+            description: Description of the topic.
+            
+        Returns:
+            Path: Path to the created research topic.
+        """
+        topic_path = self.get_research_path(topic_name)
+        
+        # Create standard subdirectories using helper method
+        self._ensure_directory(topic_path / "notes")
+        self._ensure_directory(topic_path / "resources")
+        
+        # Create a README.md file
+        readme_path = topic_path / "README.md"
+        with open(readme_path, 'w') as f:
+            f.write(f"# {topic_name}\n\n{description}\n\n")
+            f.write(f"Created: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+        
+        logger.info(f"Created research topic at {topic_path}")
+        return topic_path
+    
+    async def create_project_structure(self, project_name: str, structure: Dict[str, Any]) -> Path:
         """Create a project structure in the workspace.
+        
+        Use ProjectFS to create the project directories and files.
         
         Args:
             project_name: Name of the project.
@@ -164,30 +186,34 @@ class Workspace:
         Returns:
             Path: Path to the project directory.
         """
-        project_path = self.get_project_path(project_name)
+        # Create a project using ProjectFS
+        project_fs = await ProjectFS.create(
+            name=project_name,
+            description=f"Project {project_name}",
+            directory=project_name.lower().replace(" ", "_"),
+        )
         
-        # Create directory structure
+        # Create the directory structure and files
         for dir_path, files in structure.items():
-            dir_full_path = project_path / dir_path
-            dir_full_path.mkdir(parents=True, exist_ok=True)
+            # Ensure directory exists
+            await project_fs.mkdir(dir_path)
             
-            # Create files in the directory
+            # Create each file
             for file_name, content in files.items():
-                file_path = dir_full_path / file_name
-                
-                with open(file_path, 'w') as f:
-                    f.write(content)
+                file_path = os.path.join(dir_path, file_name)
+                await project_fs.write(file_path, content)
         
-        logger.info(f"Created project structure at {project_path}")
-        return project_path
+        logger.info(f"Created project structure at {project_fs.path}")
+        return project_fs.path
     
-    def list_projects(self) -> List[str]:
+    async def list_projects(self) -> List[str]:
         """List all projects in the workspace.
         
         Returns:
             List[str]: List of project names.
         """
-        return [p.name for p in self.code_path.iterdir() if p.is_dir()]
+        projects = await ProjectFS.list_all()
+        return [project.name for project in projects]
     
     def list_research_topics(self) -> List[str]:
         """List all research topics in the workspace.
@@ -196,6 +222,27 @@ class Workspace:
             List[str]: List of research topic names.
         """
         return [p.name for p in self.research_path.iterdir() if p.is_dir()]
+    
+    def save_file(self, file_path: str, content: str) -> Path:
+        """Save content to a file in the workspace.
+        
+        Args:
+            file_path: Path to the file, relative to the workspace root.
+            content: Content to write to the file.
+            
+        Returns:
+            Path: Path to the saved file.
+        """
+        full_path = self.root_path / file_path
+        
+        # Ensure parent directory exists
+        self._ensure_directory(full_path.parent)
+        
+        with open(full_path, 'w') as f:
+            f.write(content)
+        
+        logger.info(f"Saved file {full_path}")
+        return full_path
     
     def get_file_content(self, file_path: str) -> Optional[str]:
         """Get the content of a file in the workspace.
@@ -209,13 +256,16 @@ class Workspace:
         full_path = self.root_path / file_path
         
         if not full_path.exists():
-            logger.warning(f"File {full_path} does not exist")
             return None
         
-        with open(full_path, 'r') as f:
-            return f.read()
+        try:
+            with open(full_path, 'r') as f:
+                return f.read()
+        except Exception as e:
+            logger.error(f"Error reading file {full_path}: {str(e)}")
+            return None
     
     def cleanup(self):
         """Clean up temporary files in the workspace."""
-        # Implement any cleanup logic here
+        # Implement cleanup logic here if needed
         pass 

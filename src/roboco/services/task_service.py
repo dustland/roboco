@@ -12,7 +12,7 @@ from loguru import logger
 
 from roboco.core.models import Task
 from roboco.core.task_manager import TaskManager
-from roboco.core.repositories.project_repository import ProjectRepository
+from roboco.core.project_fs import ProjectFS, get_project_fs, ProjectNotFoundError
 
 
 class TaskService:
@@ -23,15 +23,13 @@ class TaskService:
     business logic and providing a clean interface for the API layer.
     """
     
-    def __init__(self, project_repository: ProjectRepository, task_manager: Optional[TaskManager] = None):
+    def __init__(self, task_manager: Optional[TaskManager] = None):
         """
         Initialize the task service with its dependencies.
         
         Args:
-            project_repository: Repository for project data access
             task_manager: Manager for task file operations (optional)
         """
-        self.project_repository = project_repository
         self.task_manager = task_manager or TaskManager()
     
     async def get_tasks_for_project(self, project_id: str) -> List[Task]:
@@ -47,11 +45,12 @@ class TaskService:
         Raises:
             ValueError: If the project does not exist
         """
-        project = await self.project_repository.get_by_id(project_id)
-        if not project:
+        try:
+            project_fs = get_project_fs(project_id)
+            project = await project_fs.get_project()
+            return project.tasks
+        except ProjectNotFoundError:
             raise ValueError(f"Project with ID {project_id} does not exist")
-            
-        return project.tasks
     
     async def get_task(self, project_id: str, task_id: str) -> Optional[Task]:
         """
@@ -67,15 +66,17 @@ class TaskService:
         Raises:
             ValueError: If the project does not exist
         """
-        project = await self.project_repository.get_by_id(project_id)
-        if not project:
-            raise ValueError(f"Project with ID {project_id} does not exist")
+        try:
+            project_fs = get_project_fs(project_id)
+            project = await project_fs.get_project()
             
-        for task in project.tasks:
-            if getattr(task, 'id', None) == task_id:
-                return task
-                
-        return None
+            for task in project.tasks:
+                if getattr(task, 'id', None) == task_id:
+                    return task
+                    
+            return None
+        except ProjectNotFoundError:
+            raise ValueError(f"Project with ID {project_id} does not exist")
     
     async def create_task(
         self,
@@ -105,27 +106,29 @@ class TaskService:
         Raises:
             ValueError: If the project does not exist
         """
-        project = await self.project_repository.get_by_id(project_id)
-        if not project:
-            raise ValueError(f"Project with ID {project_id} does not exist")
+        try:
+            project_fs = get_project_fs(project_id)
+            project = await project_fs.get_project()
+                
+            task = Task(
+                id=str(uuid.uuid4()),
+                description=description,
+                status=status,
+                assigned_to=assigned_to,
+                priority=priority,
+                depends_on=depends_on or [],
+                tags=tags or [],
+                created_at=datetime.now(),
+                updated_at=datetime.now(),
+                completed_at=None
+            )
             
-        task = Task(
-            id=str(uuid.uuid4()),
-            description=description,
-            status=status,
-            assigned_to=assigned_to,
-            priority=priority,
-            depends_on=depends_on or [],
-            tags=tags or [],
-            created_at=datetime.now(),
-            updated_at=datetime.now(),
-            completed_at=None
-        )
-        
-        project.add_task(task)
-        await self.project_repository.save(project)
-        
-        return task
+            project.add_task(task)
+            await project_fs.save_project(project)
+            
+            return task
+        except ProjectNotFoundError:
+            raise ValueError(f"Project with ID {project_id} does not exist")
     
     async def update_task(
         self,
@@ -157,56 +160,58 @@ class TaskService:
         Raises:
             ValueError: If the project or task does not exist
         """
-        project = await self.project_repository.get_by_id(project_id)
-        if not project:
+        try:
+            project_fs = get_project_fs(project_id)
+            project = await project_fs.get_project()
+                
+            # Find the task to update
+            task_to_update = None
+            task_index = -1
+            
+            for i, task in enumerate(project.tasks):
+                if getattr(task, 'id', None) == task_id:
+                    task_to_update = task
+                    task_index = i
+                    break
+                    
+            if not task_to_update:
+                raise ValueError(f"Task with ID {task_id} does not exist in project {project_id}")
+                
+            if description is not None:
+                task_to_update.description = description
+                
+            if status is not None:
+                old_status = task_to_update.status
+                task_to_update.status = status
+                
+                # If the task is being marked as done, set the completed_at timestamp
+                if status.upper() == "DONE" and old_status.upper() != "DONE":
+                    task_to_update.completed_at = datetime.now()
+                # If the task is being moved from done to another status, clear the completed_at timestamp
+                elif status.upper() != "DONE" and old_status.upper() == "DONE":
+                    task_to_update.completed_at = None
+                    
+            if assigned_to is not None:
+                task_to_update.assigned_to = assigned_to
+                
+            if priority is not None:
+                task_to_update.priority = priority
+                
+            if depends_on is not None:
+                task_to_update.depends_on = depends_on
+                
+            if tags is not None:
+                task_to_update.tags = tags
+                
+            task_to_update.updated_at = datetime.now()
+            
+            # Update the task in the project
+            project.tasks[task_index] = task_to_update
+            await project_fs.save_project(project)
+            
+            return task_to_update
+        except ProjectNotFoundError:
             raise ValueError(f"Project with ID {project_id} does not exist")
-            
-        # Find the task to update
-        task_to_update = None
-        task_index = -1
-        
-        for i, task in enumerate(project.tasks):
-            if getattr(task, 'id', None) == task_id:
-                task_to_update = task
-                task_index = i
-                break
-                
-        if not task_to_update:
-            raise ValueError(f"Task with ID {task_id} does not exist in project {project_id}")
-            
-        if description is not None:
-            task_to_update.description = description
-            
-        if status is not None:
-            old_status = task_to_update.status
-            task_to_update.status = status
-            
-            # If the task is being marked as done, set the completed_at timestamp
-            if status.upper() == "DONE" and old_status.upper() != "DONE":
-                task_to_update.completed_at = datetime.now()
-            # If the task is being moved from done to another status, clear the completed_at timestamp
-            elif status.upper() != "DONE" and old_status.upper() == "DONE":
-                task_to_update.completed_at = None
-                
-        if assigned_to is not None:
-            task_to_update.assigned_to = assigned_to
-            
-        if priority is not None:
-            task_to_update.priority = priority
-            
-        if depends_on is not None:
-            task_to_update.depends_on = depends_on
-            
-        if tags is not None:
-            task_to_update.tags = tags
-            
-        task_to_update.updated_at = datetime.now()
-        
-        # Update the task in the project
-        project.tasks[task_index] = task_to_update
-        await self.project_repository.save(project)
-        
-        return task_to_update
     
     async def delete_task(self, project_id: str, task_id: str) -> bool:
         """
@@ -222,26 +227,28 @@ class TaskService:
         Raises:
             ValueError: If the project does not exist
         """
-        project = await self.project_repository.get_by_id(project_id)
-        if not project:
-            raise ValueError(f"Project with ID {project_id} does not exist")
-            
-        # Find the task to delete
-        task_index = -1
-        
-        for i, task in enumerate(project.tasks):
-            if getattr(task, 'id', None) == task_id:
-                task_index = i
-                break
+        try:
+            project_fs = get_project_fs(project_id)
+            project = await project_fs.get_project()
                 
-        if task_index == -1:
-            return False
+            # Find the task to delete
+            task_index = -1
             
-        # Remove the task from the project
-        project.tasks.pop(task_index)
-        await self.project_repository.save(project)
-        
-        return True
+            for i, task in enumerate(project.tasks):
+                if getattr(task, 'id', None) == task_id:
+                    task_index = i
+                    break
+                    
+            if task_index == -1:
+                return False
+                
+            # Remove the task from the project
+            project.tasks.pop(task_index)
+            await project_fs.save_project(project)
+            
+            return True
+        except ProjectNotFoundError:
+            raise ValueError(f"Project with ID {project_id} does not exist")
     
     async def get_tasks_by_status(self, project_id: str, status: str) -> List[Task]:
         """
@@ -257,11 +264,8 @@ class TaskService:
         Raises:
             ValueError: If the project does not exist
         """
-        project = await self.project_repository.get_by_id(project_id)
-        if not project:
-            raise ValueError(f"Project with ID {project_id} does not exist")
-            
-        return [task for task in project.tasks if task.status.upper() == status.upper()]
+        project = await self.get_tasks_for_project(project_id)
+        return [task for task in project if task.status.upper() == status.upper()]
     
     async def get_tasks_by_assignee(self, project_id: str, assignee: str) -> List[Task]:
         """
@@ -277,11 +281,8 @@ class TaskService:
         Raises:
             ValueError: If the project does not exist
         """
-        project = await self.project_repository.get_by_id(project_id)
-        if not project:
-            raise ValueError(f"Project with ID {project_id} does not exist")
-            
-        return [task for task in project.tasks if task.assigned_to == assignee]
+        project = await self.get_tasks_for_project(project_id)
+        return [task for task in project if task.assigned_to == assignee]
     
     async def get_tasks_by_priority(self, project_id: str, priority: str) -> List[Task]:
         """
@@ -297,11 +298,8 @@ class TaskService:
         Raises:
             ValueError: If the project does not exist
         """
-        project = await self.project_repository.get_by_id(project_id)
-        if not project:
-            raise ValueError(f"Project with ID {project_id} does not exist")
-            
-        return [task for task in project.tasks if task.priority.lower() == priority.lower()]
+        project = await self.get_tasks_for_project(project_id)
+        return [task for task in project if task.priority.lower() == priority.lower()]
     
     async def get_tasks_by_tag(self, project_id: str, tag: str) -> List[Task]:
         """
@@ -317,11 +315,8 @@ class TaskService:
         Raises:
             ValueError: If the project does not exist
         """
-        project = await self.project_repository.get_by_id(project_id)
-        if not project:
-            raise ValueError(f"Project with ID {project_id} does not exist")
-            
-        return [task for task in project.tasks if tag in task.tags]
+        project = await self.get_tasks_for_project(project_id)
+        return [task for task in project if tag in task.tags]
     
     async def import_tasks_from_file(self, project_id: str, tasks_file_path: str) -> List[Task]:
         """
@@ -337,7 +332,7 @@ class TaskService:
         Raises:
             ValueError: If the project does not exist or the file cannot be parsed
         """
-        project = await self.project_repository.get_by_id(project_id)
+        project = await self.get_tasks_for_project(project_id)
         if not project:
             raise ValueError(f"Project with ID {project_id} does not exist")
             
@@ -358,7 +353,7 @@ class TaskService:
                     imported_tasks.append(task)
             
             # Save the updated project
-            await self.project_repository.save(project)
+            await self.get_tasks_for_project(project_id)
             
             return imported_tasks
         except Exception as e:
@@ -379,15 +374,15 @@ class TaskService:
         Raises:
             ValueError: If the project does not exist
         """
-        project = await self.project_repository.get_by_id(project_id)
+        project = await self.get_tasks_for_project(project_id)
         if not project:
             raise ValueError(f"Project with ID {project_id} does not exist")
             
         try:
             # Group tasks by status to create phases
-            todo_tasks = [task for task in project.tasks if task.status.upper() == "TODO"]
-            in_progress_tasks = [task for task in project.tasks if task.status.upper() == "IN_PROGRESS"]
-            done_tasks = [task for task in project.tasks if task.status.upper() == "DONE"]
+            todo_tasks = [task for task in project if task.status.upper() == "TODO"]
+            in_progress_tasks = [task for task in project if task.status.upper() == "IN_PROGRESS"]
+            done_tasks = [task for task in project if task.status.upper() == "DONE"]
             
             # Create phases
             from roboco.core.models.phase import Phase, PhaseStatus

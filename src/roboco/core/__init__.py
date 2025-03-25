@@ -17,6 +17,9 @@ from roboco.core.team_assigner import TeamAssigner
 from roboco.core.phase_executor import PhaseExecutor
 from roboco.core.project_executor import ProjectExecutor
 
+from roboco.core.config import load_config, save_config, create_default_config
+from roboco.core.project_fs import FileSystem, ProjectFS, ProjectNotFoundError, get_project_fs
+
 __all__ = [
     'Agent',
     'Team',
@@ -29,5 +32,12 @@ __all__ = [
     'TaskManager',
     'TeamAssigner',
     'PhaseExecutor',
-    'ProjectExecutor'
+    'ProjectExecutor',
+    'load_config',
+    'save_config',
+    'create_default_config',
+    'FileSystem',
+    'ProjectFS',
+    'ProjectNotFoundError',
+    'get_project_fs'
 ]

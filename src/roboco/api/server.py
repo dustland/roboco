@@ -24,7 +24,6 @@ from roboco.services.team_service import TeamService
 from roboco.services.agent_service import AgentService
 from roboco.services.workspace_service import WorkspaceService
 from roboco.services.chat_service import ChatService
-from roboco.storage.repositories.file_project_repository import FileProjectRepository
 
 
 # Create the FastAPI app
@@ -62,8 +61,7 @@ def get_api_service():
     Get the API service instance.
     
     This function follows the Dependency Injection pattern for FastAPI.
-    It creates the necessary services and repositories and injects them
-    into the ApiService.
+    It creates the necessary services and injects them into the ApiService.
     
     Returns:
         ApiService: The API service instance.
@@ -71,11 +69,8 @@ def get_api_service():
     # Import here to avoid circular dependency
     from roboco.services.api_service import ApiService
     
-    # Create the project repository
-    project_repository = FileProjectRepository()
-    
-    # Create the project service with the repository
-    project_service = ProjectService(project_repository)
+    # Create the project service
+    project_service = ProjectService()
     
     # Create the team service
     team_service = TeamService()
@@ -84,13 +79,13 @@ def get_api_service():
     agent_service = AgentService()
     
     # Create the task service
-    task_service = TaskService(project_repository)
+    task_service = TaskService()
     
     # Create the workspace service
     workspace_service = WorkspaceService()
     
     # Create the chat service
-    chat_service = ChatService(project_repository)
+    chat_service = ChatService()
     
     # Create the API service with all the required services
     return ApiService(
@@ -99,8 +94,7 @@ def get_api_service():
         agent_service=agent_service,
         task_service=task_service,
         workspace_service=workspace_service,
-        chat_service=chat_service,
-        project_repository=project_repository
+        chat_service=chat_service
     )
 
 

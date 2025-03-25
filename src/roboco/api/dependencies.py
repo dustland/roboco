@@ -10,10 +10,10 @@ from typing import Optional
 # Remove this import to avoid circular dependency
 # from roboco.services.api_service import ApiService
 from roboco.services.project_service import ProjectService
-from roboco.storage.repositories.file_project_repository import FileProjectRepository
 
 # Singleton instances
 _api_service = None
+_project_service = None
 
 
 def get_project_service() -> ProjectService:
@@ -22,8 +22,12 @@ def get_project_service() -> ProjectService:
     Returns:
         ProjectService instance
     """
-    project_repository = FileProjectRepository()
-    return ProjectService(project_repository)
+    global _project_service
+    
+    if _project_service is None:
+        _project_service = ProjectService()
+        
+    return _project_service
 
 
 def get_api_service():

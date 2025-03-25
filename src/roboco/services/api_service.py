@@ -25,7 +25,7 @@ from roboco.storage.adapters.pydantic_adapters import (
 from roboco.api.models.project import Project as ApiProject, ProjectCreate, ProjectUpdate
 from roboco.api.models.task import Task as ApiTask, TaskCreate, TaskUpdate
 from roboco.api.models.chat import ChatRequest, ChatResponse
-from roboco.storage.repositories.file_project_repository import FileProjectRepository
+from roboco.core.project_fs import ProjectFS
 
 class ApiService:
     """Service for API operations.
@@ -44,8 +44,7 @@ class ApiService:
         agent_service: Optional[AgentService] = None,
         task_service: Optional[TaskService] = None,
         workspace_service: Optional[WorkspaceService] = None,
-        chat_service: Optional[ChatService] = None,
-        project_repository = None
+        chat_service: Optional[ChatService] = None
     ):
         """
         Initialize the API service with its dependencies.
@@ -57,19 +56,15 @@ class ApiService:
             task_service: Service for task-related operations
             workspace_service: Service for workspace-related operations
             chat_service: Service for chat-related operations
-            project_repository: Optional repository to use for task service
         """
         self.project_service = project_service
         self.team_service = team_service or TeamService()
         self.agent_service = agent_service or AgentService()
         
-        # If project_repository is not provided, try to get it from the router's dependency injection
-        if project_repository is None:
-            project_repository = FileProjectRepository()
-            
-        self.task_service = task_service or TaskService(project_repository)
+        # Create services with default implementations if not provided
+        self.task_service = task_service or TaskService()
         self.workspace_service = workspace_service or WorkspaceService()
-        self.chat_service = chat_service or ChatService(project_repository)
+        self.chat_service = chat_service or ChatService()
         
         # Set up workspace directory
         self.workspace_dir = os.path.expanduser("~/roboco_workspace")

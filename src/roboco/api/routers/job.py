@@ -8,35 +8,14 @@ It follows the DDD principles by using the domain services through the API servi
 from typing import List, Optional, Dict, Any
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 
-# Remove this import to avoid circular dependency
-# from roboco.services.api_service import ApiService
 from roboco.api.models.job import JobRequest, JobStatus, TeamInfo, ArtifactInfo, ToolRegistration, AgentStatusUpdate
-from roboco.storage.repositories.file_project_repository import FileProjectRepository
-from roboco.services.project_service import ProjectService
+from roboco.api.dependencies import get_api_service
 
 
 router = APIRouter(
     tags=["jobs"],
     responses={404: {"description": "Job not found"}},
 )
-
-
-# Dependency to get the API service
-async def get_api_service():
-    """Get the API service instance."""
-    # Import here to avoid circular dependency
-    from roboco.services.api_service import ApiService
-    
-    # Create the repository
-    repository = FileProjectRepository()
-    
-    # Create the domain service
-    project_service = ProjectService(repository)
-    
-    # Create the API service - pass the repository directly
-    api_service = ApiService(project_service, project_repository=repository)
-    
-    return api_service
 
 
 @router.post("/", response_model=JobStatus, status_code=201)

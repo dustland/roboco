@@ -1,177 +1,237 @@
 """
 Project Service
 
-This module provides the service layer for project management operations.
-It orchestrates interactions between the domain models and repositories.
+This module provides services for managing projects, including project creation,
+updating, and management of project-related operations.
 """
 
-from typing import List, Optional, Dict, Any, Union
+from typing import List, Optional, Dict, Any
 from datetime import datetime
 import uuid
-from loguru import logger
+import os
+import logging
 
-from roboco.core.models.project import Project
-from roboco.core.models import Task
-from roboco.core.repositories.project_repository import ProjectRepository
+from roboco.core.models import Project
+from roboco.core.project_fs import ProjectFS, ProjectNotFoundError, get_project_fs
 
 
 class ProjectService:
-    """Service for project management operations.
-    
-    This class provides high-level operations for managing projects,
-    orchestrating interactions between domain models and repositories.
     """
+    Service for managing projects.
     
-    def __init__(self, project_repository: ProjectRepository):
-        """Initialize the project service.
-        
-        Args:
-            project_repository: Repository for project persistence
+    This service provides methods for creating, retrieving, updating, and
+    deleting projects, as well as for managing project tasks.
+    """
+
+    def __init__(self):
         """
-        self.project_repository = project_repository
-    
-    async def get_project(self, project_id: str) -> Optional[Project]:
-        """Get a project by its ID.
+        Initialize the project service.
+        """
+        pass
+
+    async def get_project(self, project_id: str) -> Project:
+        """
+        Retrieve a project by its ID.
         
         Args:
-            project_id: ID of the project to retrieve
+            project_id: The ID of the project to retrieve.
             
         Returns:
-            The project if found, None otherwise
+            The Project with the specified ID.
+            
+        Raises:
+            Exception: If the project cannot be found.
         """
-        return await self.project_repository.get_by_id(project_id)
-    
+        try:
+            project_fs = await ProjectFS.get_by_id(project_id)
+            return await project_fs.get_project()
+        except ProjectNotFoundError as e:
+            raise Exception(f"Project not found: {str(e)}")
+        except Exception as e:
+            logger.error(f"Error retrieving project {project_id}: {str(e)}")
+            raise Exception(f"Error retrieving project: {str(e)}")
+
     async def list_projects(self) -> List[Project]:
-        """List all projects.
+        """
+        List all projects.
         
         Returns:
-            List of all projects
+            List of all projects.
         """
-        return await self.project_repository.list_all()
-    
+        try:
+            return await ProjectFS.list_all()
+        except Exception as e:
+            logger.error(f"Error listing projects: {str(e)}")
+            raise Exception(f"Error listing projects: {str(e)}")
+
     async def create_project(
-        self, 
-        name: str, 
-        description: str, 
+        self,
+        name: str,
+        description: str,
         directory: Optional[str] = None,
         teams: Optional[List[str]] = None,
-        tags: Optional[List[str]] = None
-    ) -> str:
-        """Create a new project.
-        
-        Args:
-            name: Name of the project
-            description: Description of the project
-            directory: Directory for project files (derived from name if not provided)
-            teams: List of teams involved in the project
-            tags: Tags for categorizing the project
-            
-        Returns:
-            ID of the created project
+        tags: Optional[List[str]] = None,
+    ) -> Project:
         """
-        project = Project(
-            name=name,
-            description=description,
-            directory=directory,
-            teams=teams or [],
-            tags=tags or []
-        )
-        
-        return await self.project_repository.create(project)
-    
-    async def update_project(self, project: Project) -> str:
-        """Update an existing project.
+        Create a new project.
         
         Args:
-            project: The project to update
+            name: Name of the project.
+            description: Description of the project.
+            directory: Custom directory name (optional).
+            teams: Teams involved in the project (optional).
+            tags: Tags for the project (optional).
             
         Returns:
-            ID of the updated project
+            The newly created Project.
+        """
+        try:
+            # Create the project using ProjectFS
+            project_fs = await ProjectFS.create(
+                name=name,
+                description=description,
+                directory=directory,
+                teams=teams or [],
+                tags=tags or []
+            )
+            
+            # Return the project data
+            return await project_fs.get_project()
+            
+        except Exception as e:
+            logger.error(f"Error creating project {name}: {str(e)}")
+            raise Exception(f"Error creating project: {str(e)}")
+
+    async def update_project(self, project_id: str, **kwargs) -> Project:
+        """
+        Update a project.
+        
+        Args:
+            project_id: The ID of the project to update.
+            **kwargs: Project attributes to update.
+            
+        Returns:
+            The updated Project.
             
         Raises:
-            ValueError: If the project does not exist
+            Exception: If the project cannot be found or updated.
         """
-        existing_project = await self.project_repository.get_by_id(project.id)
-        if not existing_project:
-            raise ValueError(f"Project with ID {project.id} does not exist")
+        try:
+            # Get the project
+            project_fs = await ProjectFS.get_by_id(project_id)
+            project = await project_fs.get_project()
             
-        return await self.project_repository.save(project)
-    
+            # Update project attributes
+            for key, value in kwargs.items():
+                if hasattr(project, key):
+                    setattr(project, key, value)
+            
+            # Save the project
+            await project_fs.save_project(project)
+            
+            # Return the updated project
+            return project
+            
+        except ProjectNotFoundError:
+            raise Exception(f"Project not found: {project_id}")
+        except Exception as e:
+            logger.error(f"Error updating project {project_id}: {str(e)}")
+            raise Exception(f"Error updating project: {str(e)}")
+
     async def delete_project(self, project_id: str) -> bool:
-        """Delete a project.
-        
-        Args:
-            project_id: ID of the project to delete
-            
-        Returns:
-            True if the project was deleted, False otherwise
         """
-        return await self.project_repository.delete(project_id)
-    
-    async def find_projects_by_name(self, name: str) -> List[Project]:
-        """Find projects by name.
+        Delete a project.
         
         Args:
-            name: Name to search for
+            project_id: The ID of the project to delete.
             
         Returns:
-            List of projects matching the name
-        """
-        return await self.project_repository.find_by_name(name)
-    
-    async def find_projects_by_tag(self, tag: str) -> List[Project]:
-        """Find projects by tag.
-        
-        Args:
-            tag: Tag to search for
-            
-        Returns:
-            List of projects with the specified tag
-        """
-        return await self.project_repository.find_by_tag(tag)
-    
-    async def add_task_to_project(
-        self,
-        project_id: str,
-        description: Optional[str] = None,
-        status: str = "TODO",
-        assigned_to: Optional[str] = None,
-        priority: str = "medium",
-        tags: Optional[List[str]] = None
-    ) -> str:
-        """Add a task to a project.
-        
-        Args:
-            project_id: ID of the project to add the task to
-            description: Description of the task
-            status: Status of the task (TODO, IN_PROGRESS, DONE)
-            assigned_to: Agent or person assigned to the task
-            priority: Priority level (low, medium, high, critical)
-            tags: Tags for categorizing the task
-            
-        Returns:
-            ID of the project
+            True if the project was deleted, False otherwise.
             
         Raises:
-            ValueError: If the project does not exist
+            Exception: If an error occurs during deletion.
         """
-        project = await self.project_repository.get_by_id(project_id)
-        if not project:
-            raise ValueError(f"Project with ID {project_id} does not exist")
+        try:
+            # Get the project
+            project_fs = await ProjectFS.get_by_id(project_id)
             
-        task = Task(
-            description=description,
-            status=status,
-            assigned_to=assigned_to,
-            priority=priority,
-            tags=tags or []
-        )
+            # Delete the project
+            success = await project_fs.delete()
+            
+            if not success:
+                raise Exception(f"Failed to delete project {project_id}")
+                
+            return True
+            
+        except ProjectNotFoundError:
+            # If the project doesn't exist, consider it deleted
+            return True
+        except Exception as e:
+            logger.error(f"Error deleting project {project_id}: {str(e)}")
+            raise Exception(f"Error deleting project: {str(e)}")
+
+    async def find_projects_by_name(self, name: str) -> List[Project]:
+        """
+        Find projects by name.
         
-        project.add_task(task)
-        await self.project_repository.save(project)
+        Args:
+            name: Name to search for (case-insensitive partial match).
+            
+        Returns:
+            List of projects matching the name.
+        """
+        try:
+            return await ProjectFS.find_by_name(name)
+        except Exception as e:
+            logger.error(f"Error finding projects by name {name}: {str(e)}")
+            raise Exception(f"Error finding projects by name: {str(e)}")
+
+    async def find_projects_by_tag(self, tag: str) -> List[Project]:
+        """
+        Find projects by tag.
         
-        return project_id
-    
+        Args:
+            tag: Tag to search for (exact match).
+            
+        Returns:
+            List of projects with the specified tag.
+        """
+        try:
+            return await ProjectFS.find_by_tag(tag)
+        except Exception as e:
+            logger.error(f"Error finding projects by tag {tag}: {str(e)}")
+            raise Exception(f"Error finding projects by tag: {str(e)}")
+
+    async def add_task_to_project(self, project_id: str, task: Task) -> Project:
+        """
+        Add a task to a project.
+        
+        Args:
+            project_id: The ID of the project to add the task to.
+            task: The task to add.
+            
+        Returns:
+            The updated Project.
+            
+        Raises:
+            Exception: If the project cannot be found or updated.
+        """
+        try:
+            # Get the project
+            project_fs = await ProjectFS.get_by_id(project_id)
+            
+            # Add the task
+            await project_fs.add_task(task)
+            
+            # Return the updated project
+            return await project_fs.get_project()
+            
+        except ProjectNotFoundError:
+            raise Exception(f"Project not found: {project_id}")
+        except Exception as e:
+            logger.error(f"Error adding task to project {project_id}: {str(e)}")
+            raise Exception(f"Error adding task to project: {str(e)}")
+
     async def create_project_from_query(self, query: str, teams: Optional[List[str]] = None) -> str:
         """Create a project from a natural language query.
         

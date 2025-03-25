@@ -15,7 +15,7 @@ from roboco.core.logger import get_logger
 logger = get_logger(__name__)
 
 from roboco.core.models.project import Project
-from roboco.core.repositories.project_repository import ProjectRepository
+from roboco.core.project_fs import ProjectFS, get_project_fs, ProjectNotFoundError
 from roboco.core.config import load_config, get_llm_config, get_workspace
 from roboco.teams.planning import PlanningTeam
 from roboco.teams.versatile import VersatileTeam
@@ -31,14 +31,10 @@ class ChatService:
     business logic and providing a clean interface for the API layer.
     """
     
-    def __init__(self, project_repository: ProjectRepository):
+    def __init__(self):
         """
         Initialize the chat service with its dependencies.
-        
-        Args:
-            project_repository: Repository for project data access
         """
-        self.project_repository = project_repository
         # Store conversation history - in a real implementation, this would be persisted
         self.conversations = {}
         
@@ -224,8 +220,8 @@ class ChatService:
         )
         
         # Save the project
-        project_id = await self.project_repository.create(project)
-        project.id = project_id
+        project_fs = ProjectFS.create(project)
+        project_id = project.id
         
         # Update conversation with project ID
         self.conversations[conversation_id]["project_id"] = project_id
