@@ -38,7 +38,7 @@ async def run_simple_task(workspace_dir: str, task_description: str):
     try:
         # Create the task
         task = Task(
-            name="simple_task",
+            title="simple_task",
             description=task_description,
             expected_outcome="Successfully complete the requested task"
         )
@@ -74,12 +74,19 @@ async def run_collaborative_task(workspace_dir: str, task_description: str):
     print_section(f"Running Collaborative Task: {task_description[:40]}...")
     
     try:
+        # Create the task
+        task = Task(
+            title="collaborative_task",
+            description=task_description,
+            expected_outcome="Successfully complete the requested task"
+        )
+        
         # Create the team
         team = VersatileTeam(workspace_dir=workspace_dir)
         
         # Execute the collaborative task
         print("Starting collaborative task session...")
-        result = await team.run_collaborative_session(task_description)
+        result = await team.run_collaborative_session(task)
         
         if result.get("status") == "completed":
             print("\n✅ Collaborative task completed successfully!")
@@ -114,17 +121,17 @@ async def run_multiple_tasks(workspace_dir: str):
         # Create a list of tasks
         tasks = [
             Task(
-                name="task1",
+                title="task1",
                 description="Research the key components of a successful blog post",
                 expected_outcome="A list of key components and best practices"
             ),
             Task(
-                name="task2",
+                title="task2",
                 description="Create an outline for a blog post about artificial intelligence trends",
                 expected_outcome="A detailed outline with sections and key points"
             ),
             Task(
-                name="task3", 
+                title="task3", 
                 description="Identify potential visual elements to enhance the blog post",
                 expected_outcome="A list of image ideas, charts, and other visual elements"
             )

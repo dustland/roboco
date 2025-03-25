@@ -27,14 +27,21 @@ class CodeTool(Tool):
     and execute it when needed. It supports multiple programming languages.
     """
     
-    def __init__(self, workspace_dir: str = "workspace"):
+    def __init__(
+        self, 
+        workspace_dir: str = "workspace", 
+        name: str = "code", 
+        description: str = "Generate, validate, and execute code in multiple languages"
+    ):
         """
         Initialize the CodeTool.
         
         Args:
             workspace_dir: Directory to use for code files
+            name: Name of the tool
+            description: Description of the tool
         """
-        super().__init__(name="code")
+        super().__init__(name=name, description=description)
         self.workspace_dir = workspace_dir
         
         # Ensure workspace directory exists

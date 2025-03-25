@@ -194,7 +194,10 @@ class VersatileTeam(Team):
             # Register web search tool if available
             try:
                 from roboco.tools.web_search import WebSearchTool
-                web_search_tool = WebSearchTool()
+                web_search_tool = WebSearchTool(
+                    name="web_search",
+                    description="Search the web for information"
+                )
                 
                 # Register with explorer primarily, but also with architect for high-level information
                 web_search_tool.register_with_agents(
@@ -204,11 +207,17 @@ class VersatileTeam(Team):
                 logger.info("Registered WebSearchTool with explorer and architect")
             except ImportError:
                 logger.warning("WebSearchTool not available")
+            except Exception as e:
+                logger.warning(f"Could not initialize WebSearchTool: {str(e)}")
             
             # Register code tool with creator and evaluator
             try:
                 from roboco.tools.code import CodeTool
-                code_tool = CodeTool(workspace_dir=os.path.join(self.workspace_dir, "code"))
+                code_tool = CodeTool(
+                    workspace_dir=os.path.join(self.workspace_dir, "code"),
+                    name="code",
+                    description="Generate, validate, and execute code in multiple languages"
+                )
                 
                 # Register with creator for implementation and evaluator for testing
                 code_tool.register_with_agents(
@@ -222,6 +231,8 @@ class VersatileTeam(Team):
                 logger.info(f"Registered CodeTool with creator, evaluator, and synthesizer. Available languages: {available_langs}")
             except ImportError:
                 logger.warning("CodeTool not available")
+            except Exception as e:
+                logger.warning(f"Could not initialize CodeTool: {str(e)}")
                 
         except Exception as e:
             logger.error(f"Error registering tools: {str(e)}")
@@ -236,7 +247,7 @@ class VersatileTeam(Team):
         Returns:
             Dict containing the task execution results
         """
-        logger.info(f"Starting execution of task: {task.name}")
+        logger.info(f"Starting execution of task: {task.title}")
         
         architect = self.get_agent("architect")
         strategist = self.get_agent("strategist")
@@ -258,7 +269,7 @@ class VersatileTeam(Team):
         
         try:
             # Phase 1: Architecture
-            logger.info(f"Starting architecture phase for task: {task.name}")
+            logger.info(f"Starting architecture phase for task: {task.title}")
             architecture_message = f"""
             We need to design a solution for the following task:
             
@@ -275,7 +286,7 @@ class VersatileTeam(Team):
             )
             
             # Phase 2: Strategy
-            logger.info(f"Starting strategy phase for task: {task.name}")
+            logger.info(f"Starting strategy phase for task: {task.title}")
             strategy_message = f"""
             Based on our architectural design:
             
@@ -292,7 +303,7 @@ class VersatileTeam(Team):
             )
             
             # Phase 3: Exploration
-            logger.info(f"Starting exploration phase for task: {task.name}")
+            logger.info(f"Starting exploration phase for task: {task.title}")
             exploration_message = f"""
             Based on our architecture and strategy:
             
@@ -311,7 +322,7 @@ class VersatileTeam(Team):
             )
             
             # Phase 4: Creation
-            logger.info(f"Starting creation phase for task: {task.name}")
+            logger.info(f"Starting creation phase for task: {task.title}")
             creation_message = f"""
             Based on our architecture, strategy, and exploration:
             
@@ -341,7 +352,7 @@ class VersatileTeam(Team):
             )
             
             # Phase 5: Evaluation
-            logger.info(f"Starting evaluation phase for task: {task.name}")
+            logger.info(f"Starting evaluation phase for task: {task.title}")
             evaluation_message = f"""
             Please evaluate the implementation for this task:
             
@@ -369,7 +380,7 @@ class VersatileTeam(Team):
             )
             
             # Phase 6: Synthesis
-            logger.info(f"Starting synthesis phase for task: {task.name}")
+            logger.info(f"Starting synthesis phase for task: {task.title}")
             synthesis_message = f"""
             Based on the implementation and evaluation:
             
@@ -391,9 +402,9 @@ class VersatileTeam(Team):
             )
             
             # Save the results
-            results_path = os.path.join(self.workspace_dir, f"{task.name}_results.md")
+            results_path = os.path.join(self.workspace_dir, f"{task.title}_results.md")
             with open(results_path, "w") as f:
-                f.write(f"# Task Results: {task.name}\n\n")
+                f.write(f"# Task Results: {task.title}\n\n")
                 f.write(f"## Task Description\n{task.description}\n\n")
                 f.write(f"## Architecture\n{architecture_result.summary}\n\n")
                 f.write(f"## Strategy\n{strategy_result.summary}\n\n")
@@ -407,7 +418,7 @@ class VersatileTeam(Team):
             # Return the results
             return {
                 "status": "completed",
-                "task_name": task.name,
+                "task_name": task.title,
                 "results_path": results_path,
                 "summary": synthesis_result.summary,
                 "phases": {
@@ -429,10 +440,10 @@ class VersatileTeam(Team):
             }
             
         except Exception as e:
-            logger.error(f"Error executing task {task.name}: {str(e)}")
+            logger.error(f"Error executing task {task.title}: {str(e)}")
             return {
                 "status": "failed",
-                "task_name": task.name,
+                "task_name": task.title,
                 "error": str(e)
             }
     
@@ -473,7 +484,7 @@ class VersatileTeam(Team):
         # Convert string to Task if needed
         if isinstance(task, str):
             from roboco.core.schema import Task
-            task = Task(name="collaborative_task", description=task)
+            task = Task(title="collaborative_task", description=task)
         
         # Enable swarm for collaboration
         self.enable_swarm()
@@ -505,17 +516,17 @@ class VersatileTeam(Team):
         swarm_result = self.run_swarm(
             initial_agent_name="architect",
             query=query,
-            context_variables={"task": task.dict() if hasattr(task, 'dict') else {"name": task.name, "description": task.description}},
+            context_variables={"task": task.dict() if hasattr(task, 'dict') else {"title": task.title, "description": task.description}},
             max_rounds=25
         )
         
         # Save the results
-        results_path = os.path.join(self.workspace_dir, f"{task.name}_collaborative_results.md")
+        results_path = os.path.join(self.workspace_dir, f"{task.title}_collaborative_results.md")
         
         if "error" not in swarm_result:
             chat_result = swarm_result.get("chat_result", "")
             with open(results_path, "w") as f:
-                f.write(f"# Collaborative Task Results: {task.name}\n\n")
+                f.write(f"# Collaborative Task Results: {task.title}\n\n")
                 f.write(f"## Task Description\n{task.description}\n\n")
                 f.write(f"## Solution\n{chat_result}\n\n")
             
