@@ -9,8 +9,8 @@ from typing import Dict, Any, Optional, List
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from datetime import datetime
 
-from roboco.api.models.chat import ChatRequest, ChatResponse
 from roboco.api.dependencies import get_api_service
+from roboco.core.models.chat import ChatRequest, ChatResponse
 
 
 router = APIRouter(

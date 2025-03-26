@@ -21,6 +21,7 @@ from autogen import (
 
 from roboco.core.config import load_config, get_llm_config
 from roboco.core.models import Task
+from roboco.core.project_fs import ProjectFS
 
 
 class Team(ABC):
@@ -32,7 +33,8 @@ class Team(ABC):
         self,
         name: str,
         agents: Dict[str, ConversableAgent] = None,
-        config_path: Optional[str] = None
+        config_path: Optional[str] = None,
+        fs: ProjectFS = None
     ):
         """Initialize a team of agents.
         
@@ -47,6 +49,8 @@ class Team(ABC):
         # Load configuration
         self.config = load_config(config_path)
         self.llm_config = get_llm_config(self.config)
+        
+        self.fs = fs
         
         # Storage for output artifacts
         self.artifacts = {}
@@ -209,178 +213,27 @@ class Team(ABC):
             logger.error(f"Error in swarm execution: {str(e)}")
             return {"error": str(e)}
 
-
-class BaseExecutionTeam(Team):
-    """Base class for teams that execute tasks."""
-    
-    def __init__(
-        self, 
-        name: str,
-        project_dir: str, 
-        agent_types: List[str], 
-        tool_types: List[str],
-        config_path: Optional[str] = None
-    ):
-        """Initialize the execution team.
+    def add_to_context(self, key: str, value: Any) -> None:
+        """
+        Add a key-value pair to the team's shared context.
         
         Args:
-            name: Name of the team
-            project_dir: Directory of the project
-            agent_types: List of agent types to include in the team
-            tool_types: List of tools to make available to the team
-            config_path: Optional path to team configuration file
+            key: The key to add
+            value: The value to associate with the key
         """
-        super().__init__(name=name, config_path=config_path)
-        self.project_dir = project_dir
-        self.agent_types = agent_types
-        self.tool_types = tool_types
+        self.shared_context[key] = value
+        logger.info(f"Added {key} to team's shared context")
         
-        # Initialize agents based on agent_types
-        self._initialize_agents()
-    
-    def _initialize_agents(self):
-        """Initialize the agents for this team."""
-        for agent_type in self.agent_types:
-            agent = self._create_agent(agent_type)
-            if agent:
-                self.add_agent(agent_type, agent)
-    
-    def _create_agent(self, agent_type: str) -> Optional[ConversableAgent]:
-        """Create an agent of the specified type.
+        # Enable swarm if not already enabled
+        if not self.swarm_enabled:
+            self.enable_swarm()
+            
+    def set_output_dir(self, output_dir: str) -> None:
+        """
+        Set the output directory for the team.
         
         Args:
-            agent_type: Type of agent to create
-            
-        Returns:
-            An initialized agent instance
+            output_dir: The output directory path
         """
-        # This would be implemented with a factory pattern
-        # For now, we'll just log and return None
-        logger.info(f"Creating agent of type: {agent_type}")
-        return None
-    
-    @abstractmethod
-    async def execute_tasks(self, tasks: List[Task]) -> Dict[str, Any]:
-        """Execute the given tasks using this team's agents.
-        
-        Args:
-            tasks: List of tasks to execute
-            
-        Returns:
-            Dictionary with execution results
-        """
-        pass
-
-
-class SequentialExecutionTeam(BaseExecutionTeam):
-    """Team that executes tasks sequentially."""
-    
-    async def execute_tasks(self, tasks: List[Task]) -> Dict[str, Any]:
-        """Execute tasks in sequence."""
-        results = {
-            "tasks": [],
-            "success": True,
-            "execution_time": 0
-        }
-        
-        for task in tasks:
-            # Skip completed tasks
-            if task.status == "DONE":
-                results["tasks"].append({
-                    "description": task.description,
-                    "status": "DONE",
-                    "skipped": True
-                })
-                continue
-            
-            # Execute task (placeholder)
-            logger.info(f"SequentialTeam executing task: {task.description}")
-            
-            # Record result (placeholder)
-            results["tasks"].append({
-                "description": task.description,
-                "status": "DONE",
-                "execution_time": 0,
-                "output": f"Executed task: {task.description}",
-                "error": None
-            })
-        
-        return results
-
-
-class ParallelExecutionTeam(BaseExecutionTeam):
-    """Team that executes tasks in parallel."""
-    
-    async def execute_tasks(self, tasks: List[Task]) -> Dict[str, Any]:
-        """Execute tasks in parallel."""
-        results = {
-            "tasks": [],
-            "success": True,
-            "execution_time": 0
-        }
-        
-        # Placeholder for parallel execution
-        logger.info(f"ParallelTeam would execute {len(tasks)} tasks in parallel")
-        
-        for task in tasks:
-            results["tasks"].append({
-                "description": task.description,
-                "status": "DONE",
-                "execution_time": 0,
-                "output": f"Executed task: {task.description}",
-                "error": None
-            })
-        
-        return results
-
-
-class IterativeExecutionTeam(BaseExecutionTeam):
-    """Team that executes tasks iteratively with feedback loops."""
-    
-    async def execute_tasks(self, tasks: List[Task]) -> Dict[str, Any]:
-        """Execute tasks iteratively."""
-        results = {
-            "tasks": [],
-            "success": True,
-            "execution_time": 0
-        }
-        
-        # Placeholder for iterative execution
-        logger.info(f"IterativeTeam would execute {len(tasks)} tasks iteratively")
-        
-        for task in tasks:
-            results["tasks"].append({
-                "description": task.description,
-                "status": "DONE",
-                "execution_time": 0,
-                "output": f"Executed task: {task.description}",
-                "error": None
-            })
-        
-        return results
-
-
-class GenericExecutionTeam(BaseExecutionTeam):
-    """Generic team for when no specialized team is available."""
-    
-    async def execute_tasks(self, tasks: List[Task]) -> Dict[str, Any]:
-        """Execute tasks with a generic approach."""
-        results = {
-            "tasks": [],
-            "success": True,
-            "execution_time": 0
-        }
-        
-        # Placeholder for generic execution
-        logger.info(f"GenericTeam executing {len(tasks)} tasks")
-        
-        for task in tasks:
-            results["tasks"].append({
-                "description": task.description,
-                "status": "DONE",
-                "execution_time": 0,
-                "output": f"Executed task: {task.description}",
-                "error": None
-            })
-        
-        return results
+        self.add_to_context("output_dir", output_dir)
+        logger.info(f"Set team output directory to {output_dir}")

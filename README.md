@@ -1,6 +1,8 @@
+<img src="./assets/logo.png" alt="logo" width="80px" height="80px">
+
 # RoboCo
 
-A Domain-Driven Multi-Agent Platform for Robot-Human Collaboration
+A Robot-Driven Company built with Multi-Agent Platform.
 
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/Python-3.10+-blue?logo=python&logoColor=white)](https://www.python.org/)
@@ -41,34 +43,6 @@ cp .env.example .env
 ./start.sh  # Uses default host (127.0.0.1) and port (8000)
 # Or with custom options
 ./start.sh --host=0.0.0.0 --port=8080 --reload
-```
-
-## Architecture
-
-RoboCo follows a clean, domain-driven architecture:
-
-```
-src/roboco/
-├── api/                # REST API with FastAPI
-│   ├── routers/        # API route handlers
-│   └── server.py       # FastAPI application
-├── core/               # Core domain models and interfaces
-│   ├── models/         # Core domain entities
-│   ├── repositories/   # Repository interfaces
-│   └── schema/         # Data validation schemas
-├── infrastructure/     # External systems and implementations
-│   ├── repositories/   # Repository implementations
-│   └── adapters/       # External service adapters
-├── services/           # Application services
-│   ├── agent_service.py    # Agent management
-│   ├── api_service.py      # API facade
-│   ├── chat_service.py     # Chat interactions
-│   ├── project_service.py  # Project management
-│   ├── task_service.py     # Task management
-│   ├── team_service.py     # Team management
-│   └── workspace_service.py # Workspace management
-└── teams/              # Multi-agent team implementations
-    └── project_team.py # Project creation and management team
 ```
 
 ## Documentation
@@ -131,3 +105,4 @@ We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) f
   journal = {GitHub repository},
   howpublished = {\url{https://github.com/dustland/roboco}},
 }
+```

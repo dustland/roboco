@@ -6,8 +6,6 @@ This module provides core functionality for the Roboco system.
 
 from roboco.core.agent import Agent
 from roboco.core.team import Team
-from roboco.core.team_builder import TeamBuilder
-from roboco.core.team_factory import TeamRegistry, TeamFactory
 from roboco.core.agent_factory import AgentFactory
 from roboco.core.tool import Tool, command
 
@@ -23,9 +21,6 @@ from roboco.core.project_fs import FileSystem, ProjectFS, ProjectNotFoundError, 
 __all__ = [
     'Agent',
     'Team',
-    'TeamBuilder',
-    'TeamRegistry',
-    'TeamFactory',
     'AgentFactory',
     'Tool',
     'command',

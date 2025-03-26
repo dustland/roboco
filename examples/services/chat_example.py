@@ -11,15 +11,13 @@ import sys
 import asyncio
 import argparse
 from typing import Dict, Any, Optional
-import uuid
 
 # Add parent directory to path to allow importing from src
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 
 from roboco.services.project_service import ProjectService
 from roboco.services.api_service import ApiService
-from roboco.api.models.chat import ChatRequest, ChatResponse
-from roboco.core.project_fs import ProjectFS
+from roboco.core.models.chat import ChatRequest
 
 
 async def start_chat(query: str, conversation_id: Optional[str] = None) -> Dict[str, Any]:

@@ -116,8 +116,10 @@ class Workspace:
                 pass
         
         # If not found, use a default path based on the name
+        from roboco.core import get_workspace
         config = load_config()
-        return Path(os.path.join(config.workspace_root, "projects", project_name))
+        workspace_path = get_workspace(config)
+        return Path(os.path.join(workspace_path, project_name))
     
     def get_doc_path(self, doc_name: Optional[str] = None) -> Path:
         """Get the path to a document, or the docs directory.

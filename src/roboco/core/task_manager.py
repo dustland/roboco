@@ -2,12 +2,11 @@
 Manager for tasks.md files - handles parsing, updating, and tracking task completion.
 """
 import logging
-import re
-import uuid
 from datetime import datetime
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 
 from roboco.core.models.phase import Phase
+from roboco.core.project_fs import ProjectFS
 from roboco.core.value_objects.phase_status import PhaseStatus
 from roboco.core.value_objects.task_status import TaskStatus
 from roboco.core.models import Task
@@ -18,7 +17,10 @@ logger = logging.getLogger(__name__)
 class TaskManager:
     """Component for parsing, updating, and managing tasks.md files."""
     
-    def parse(self, tasks_path: str) -> List[Phase]:
+    def __init__(self, fs: ProjectFS):
+        self.fs = fs
+    
+    def load(self, tasks_path: str) -> List[Phase]:
         """Parse tasks.md into structured Phase objects with Tasks.
         
         Args:
@@ -31,8 +33,8 @@ class TaskManager:
         current_phase = None
         
         try:
-            with open(tasks_path, 'r') as file:
-                lines = file.readlines()
+            content = self.fs.read_sync(tasks_path)
+            lines = content.split('\n')
         except FileNotFoundError:
             logger.error(f"Tasks file not found: {tasks_path}")
             return phases
@@ -95,7 +97,7 @@ class TaskManager:
         
         return phases
     
-    def mark_task_completed(self, phases: List[Phase], task_id: str) -> bool:
+    def mark_task_completed(self, phases: List[Phase], task_description: str) -> bool:
         """Mark a specific task as completed.
         
         Args:
@@ -107,7 +109,7 @@ class TaskManager:
         """
         for phase in phases:
             for task in phase.tasks:
-                if task.id == task_id:
+                if task.description == task_description:
                     task.status = TaskStatus.DONE
                     task.completed_at = datetime.now()
                     

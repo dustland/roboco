@@ -6,24 +6,21 @@ It organizes endpoints into routers and uses the domain services through the API
 """
 
 import os
-import json
 from datetime import datetime
-from typing import Dict, Any, List, Optional
-from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, BackgroundTasks, Depends, Request, Response
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from loguru import logger
 
 from roboco.api.routers import chat, job, project
-from roboco.services.project_service import ProjectService
-from roboco.services.task_service import TaskService
-from roboco.services.team_service import TeamService
-from roboco.services.agent_service import AgentService
-from roboco.services.workspace_service import WorkspaceService
 from roboco.services.chat_service import ChatService
+from roboco.services.project_service import ProjectService
+from roboco.services.agent_service import AgentService
+from roboco.core.models.chat import ChatRequest, ChatResponse
+from roboco.core.logger import get_logger
+from roboco.core.config import get_workspace, load_config
 
 
 # Create the FastAPI app
@@ -43,7 +40,8 @@ app.add_middleware(
 )
 
 # Set up workspace directory
-workspace_dir = os.path.expanduser("~/roboco_workspace")
+config = load_config()
+workspace_dir = get_workspace(config)
 os.makedirs(workspace_dir, exist_ok=True)
 
 # Mount static files for the workspace directory
@@ -72,17 +70,8 @@ def get_api_service():
     # Create the project service
     project_service = ProjectService()
     
-    # Create the team service
-    team_service = TeamService()
-    
     # Create the agent service
     agent_service = AgentService()
-    
-    # Create the task service
-    task_service = TaskService()
-    
-    # Create the workspace service
-    workspace_service = WorkspaceService()
     
     # Create the chat service
     chat_service = ChatService()
@@ -90,10 +79,7 @@ def get_api_service():
     # Create the API service with all the required services
     return ApiService(
         project_service=project_service,
-        team_service=team_service,
         agent_service=agent_service,
-        task_service=task_service,
-        workspace_service=workspace_service,
         chat_service=chat_service
     )
 
@@ -126,7 +112,8 @@ async def get_artifact(path: str):
     """
     try:
         # Construct the absolute path to the artifact
-        base_dir = os.environ.get("ROBOCO_DATA_DIR", os.path.expanduser("~/.roboco"))
+        config = load_config()
+        base_dir = os.environ.get("ROBOCO_DATA_DIR", os.path.join(config.workspace_root, ".roboco"))
         artifact_path = os.path.join(base_dir, "artifacts", path)
         
         # Check if the file exists
@@ -150,6 +137,16 @@ async def global_exception_handler(request: Request, exc: Exception):
         status_code=500,
         content={"detail": f"An unexpected error occurred: {str(exc)}"},
     )
+
+
+@app.post("/chat", response_model=ChatResponse)
+async def chat(request: ChatRequest):
+    """Handle chat requests."""
+    # Lazy import to avoid circular dependency
+    from roboco.services.chat_service import ChatService
+    
+    chat_service = ChatService()
+    return await chat_service.start_chat(request)
 
 
 if __name__ == "__main__":

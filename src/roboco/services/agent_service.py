@@ -45,30 +45,6 @@ class AgentService:
         
         # Dynamically discover and register other agent types
         try:
-            from roboco.agents.researcher import Researcher
-            self._agent_types["Researcher"] = Researcher
-        except ImportError:
-            pass
-            
-        try:
-            from roboco.agents.report_writer import ReportWriter
-            self._agent_types["ReportWriter"] = ReportWriter
-        except ImportError:
-            pass
-            
-        try:
-            from roboco.agents.tool_user import ToolUser
-            self._agent_types["ToolUser"] = ToolUser
-        except ImportError:
-            pass
-            
-        try:
-            from roboco.agents.project_builder import ProjectAgent
-            self._agent_types["ProjectAgent"] = ProjectAgent
-        except ImportError:
-            pass
-            
-        try:
             from roboco.agents.robotics_scientist import RoboticsScientist
             self._agent_types["RoboticsScientist"] = RoboticsScientist
         except ImportError:

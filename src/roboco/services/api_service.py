@@ -14,18 +14,26 @@ from roboco.core.logger import get_logger
 logger = get_logger(__name__)
 
 from roboco.services.project_service import ProjectService
-from roboco.services.team_service import TeamService
 from roboco.services.agent_service import AgentService
-from roboco.services.task_service import TaskService
-from roboco.services.workspace_service import WorkspaceService
 from roboco.services.chat_service import ChatService
-from roboco.storage.adapters.pydantic_adapters import (
-    project_to_pydantic
-)
 from roboco.api.models.project import Project as ApiProject, ProjectCreate, ProjectUpdate
 from roboco.api.models.task import Task as ApiTask, TaskCreate, TaskUpdate
-from roboco.api.models.chat import ChatRequest, ChatResponse
+from roboco.core.models.chat import ChatRequest, ChatResponse
 from roboco.core.project_fs import ProjectFS
+from roboco.core.config import load_config
+
+def project_to_pydantic(project):
+    """Convert domain project to Pydantic model."""
+    return {
+        "id": project.id,
+        "name": project.name,
+        "description": project.description,
+        "directory": project.directory,
+        "teams": project.teams,
+        "tags": project.tags,
+        "created_at": project.created_at,
+        "updated_at": project.updated_at
+    }
 
 class ApiService:
     """Service for API operations.
@@ -40,10 +48,7 @@ class ApiService:
     def __init__(
         self, 
         project_service: ProjectService,
-        team_service: Optional[TeamService] = None,
         agent_service: Optional[AgentService] = None,
-        task_service: Optional[TaskService] = None,
-        workspace_service: Optional[WorkspaceService] = None,
         chat_service: Optional[ChatService] = None
     ):
         """
@@ -51,24 +56,19 @@ class ApiService:
         
         Args:
             project_service: Service for project-related operations
-            team_service: Service for team-related operations
             agent_service: Service for agent-related operations
-            task_service: Service for task-related operations
-            workspace_service: Service for workspace-related operations
             chat_service: Service for chat-related operations
         """
         self.project_service = project_service
-        self.team_service = team_service or TeamService()
         self.agent_service = agent_service or AgentService()
         
         # Create services with default implementations if not provided
-        self.task_service = task_service or TaskService()
-        self.workspace_service = workspace_service or WorkspaceService()
         self.chat_service = chat_service or ChatService()
         
-        # Set up workspace directory
-        self.workspace_dir = os.path.expanduser("~/roboco_workspace")
-        os.makedirs(self.workspace_dir, exist_ok=True)
+        # Let the ProjectFS/FileSystem handle workspace paths
+        self.workspace_dir = ""
+        config = load_config()
+        os.makedirs(os.path.join(config.workspace_root, self.workspace_dir), exist_ok=True)
 
     async def list_projects(self) -> List[ApiProject]:
         """List all projects.
@@ -235,83 +235,6 @@ class ApiService:
         api_task = ApiTask.from_core_model(task, project_id)
         
         return api_task
-    
-    async def create_task(self, project_id: str, task_create: TaskCreate) -> ApiTask:
-        """Create a new task.
-        
-        Args:
-            project_id: ID of the project
-            task_create: Task creation data
-            
-        Returns:
-            The created task in API format
-            
-        Raises:
-            ValueError: If the project does not exist
-        """
-        # Create the task using the domain service
-        task = await self.task_service.create_task(
-            project_id=project_id,
-            description=task_create.description,
-            status=task_create.status,
-            assigned_to=task_create.assigned_to,
-            priority=task_create.priority,
-            depends_on=task_create.depends_on,
-            tags=task_create.tags
-        )
-        
-        # Convert domain task to API task
-        api_task = ApiTask.from_core_model(task, project_id)
-        
-        return api_task
-    
-    async def update_task(self, project_id: str, task_id: str, task_update: TaskUpdate) -> ApiTask:
-        """Update a task.
-        
-        Args:
-            project_id: ID of the project
-            task_id: ID of the task to update
-            task_update: Task update data
-            
-        Returns:
-            The updated task in API format
-            
-        Raises:
-            ValueError: If the project or task does not exist
-        """
-        # Update the task using the domain service
-        task = await self.task_service.update_task(
-            project_id=project_id,
-            task_id=task_id,
-            description=task_update.description,
-            status=task_update.status,
-            assigned_to=task_update.assigned_to,
-            priority=task_update.priority,
-            depends_on=task_update.depends_on,
-            tags=task_update.tags
-        )
-        
-        # Convert domain task to API task
-        api_task = ApiTask.from_core_model(task, project_id)
-        
-        return api_task
-    
-    async def delete_task(self, project_id: str, task_id: str) -> bool:
-        """Delete a task.
-        
-        Args:
-            project_id: ID of the project
-            task_id: ID of the task to delete
-            
-        Returns:
-            True if the task was deleted, False otherwise
-            
-        Raises:
-            ValueError: If the project does not exist
-        """
-        return await self.task_service.delete_task(project_id, task_id)
-        
-    # Chat-related methods
     
     async def start_chat(self, chat_request: ChatRequest) -> ChatResponse:
         """Process a chat request with the project agent.

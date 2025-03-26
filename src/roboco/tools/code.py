@@ -16,6 +16,7 @@ from roboco.core.logger import get_logger
 # Initialize logger
 logger = get_logger(__name__)
 
+from roboco.core.project_fs import ProjectFS
 from roboco.core.tool import Tool, command
 
 
@@ -29,7 +30,7 @@ class CodeTool(Tool):
     
     def __init__(
         self, 
-        workspace_dir: str = "workspace", 
+        fs: ProjectFS, 
         name: str = "code", 
         description: str = "Generate, validate, and execute code in multiple languages"
     ):
@@ -42,10 +43,7 @@ class CodeTool(Tool):
             description: Description of the tool
         """
         super().__init__(name=name, description=description)
-        self.workspace_dir = workspace_dir
-        
-        # Ensure workspace directory exists
-        os.makedirs(workspace_dir, exist_ok=True)
+        self.fs = fs
         
         # Dictionary of supported languages and their compilers/interpreters
         self.language_configs = {
@@ -180,7 +178,7 @@ class CodeTool(Tool):
             filename = f"{filename}{extension}"
         
         # Full path to save the file
-        file_path = os.path.join(self.workspace_dir, filename)
+        file_path = os.path.join(self.fs.base_dir, filename)
         
         try:
             # Write code to file

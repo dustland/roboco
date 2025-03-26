@@ -8,7 +8,9 @@ from typing import Any, Dict, List, Optional
 from roboco.core.logger import get_logger
 
 from roboco.core.models.phase import Phase
+from roboco.core.project_fs import ProjectFS
 from roboco.teams.versatile import VersatileTeam
+from roboco.teams.planning import PlanningTeam
 
 # Initialize logger
 logger = get_logger(__name__)
@@ -16,13 +18,13 @@ logger = get_logger(__name__)
 class TeamAssigner:
     """Assigns appropriate teams for executing different types of phases."""
     
-    def __init__(self, workspace_dir: str):
+    def __init__(self, fs: ProjectFS):
         """Initialize the team assigner.
         
         Args:
-            workspace_dir: Base workspace directory for team operations
+            fs: ProjectFS instance
         """
-        self.workspace_dir = workspace_dir
+        self.fs = fs
         
         # Simple mapping of phase keywords to team types
         self.phase_team_mapping = {
@@ -88,23 +90,9 @@ class TeamAssigner:
         """
         logger.debug(f"Creating team of type '{team_type}'")
         
-        try:
-            if team_type == "planning":
-                from roboco.teams.planning import PlanningTeam
-                return PlanningTeam(workspace_dir=self.workspace_dir)
-                
-            else:
-                # Default to VersatileTeam instead of ExecutionTeam for better adaptability
-                logger.info(f"No specific team implementation for '{team_type}', using VersatileTeam")
-                return VersatileTeam(workspace_dir=self.workspace_dir)
-                
-        except Exception as e:
-            logger.error(f"Error creating team of type '{team_type}': {e}")
-            logger.warning("Attempting to use VersatileTeam as fallback")
-            try:
-                from roboco.teams.versatile import VersatileTeam
-                return VersatileTeam(workspace_dir=self.workspace_dir)
-            except Exception:
-                logger.warning("Failed to create VersatileTeam, falling back to ExecutionTeam")
-                from roboco.teams.execution import ExecutionTeam
-                return ExecutionTeam(project_dir=self.workspace_dir) 
+        if team_type == "planning":
+            return PlanningTeam(fs=self.fs)
+        else:
+            # Default to VersatileTeam instead of ExecutionTeam for better adaptability
+            return VersatileTeam(fs=self.fs)
+        

@@ -4,46 +4,42 @@ Phase Executor Module
 This module provides functionality to execute tasks within a single phase.
 """
 
-import os
-from typing import Dict, Any, Optional
+from typing import Dict, Any
 from datetime import datetime
-from loguru import logger
+from roboco.core.logger import get_logger
+logger = get_logger(__name__)
 
 from roboco.core.models.phase import Phase
 from roboco.core.models.task import TaskStatus
 from roboco.core.task_manager import TaskManager
 from roboco.core.team_assigner import TeamAssigner
+from roboco.core.project_fs import ProjectFS
 
 
 class PhaseExecutor:
     """Executes all tasks within a single phase."""
     
-    def __init__(self, project_dir: str, workspace_dir: str = None):
+    def __init__(self, fs: ProjectFS, task_manager: TaskManager):
         """Initialize the phase executor.
         
         Args:
-            project_dir: Project directory containing task data
-            workspace_dir: Base workspace directory (defaults to project_dir)
+            fs: ProjectFS instance
         """
-        self.project_dir = project_dir
-        self.workspace_dir = workspace_dir or project_dir
-        self.src_dir = os.path.join(self.project_dir, "src")
-        self.docs_dir = os.path.join(self.project_dir, "docs")
+        self.fs = fs
+        self.task_manager = task_manager
+        self.src_dir = "src"
+        self.docs_dir = "docs"
         
-        # Create directories if they don't exist
-        os.makedirs(self.src_dir, exist_ok=True)
-        os.makedirs(self.docs_dir, exist_ok=True)
-        
-        self.team_assigner = TeamAssigner(self.workspace_dir)
-        logger.debug(f"Initialized PhaseExecutor for project: {project_dir}")
+        self.team_assigner = TeamAssigner(self.fs)
+
+        logger.debug(f"Initialized PhaseExecutor for project: {self.fs.project_dir}")
     
-    async def execute_phase(self, phase: Phase, task_manager: TaskManager, tasks_path: str) -> Dict[str, Any]:
+    async def execute_phase(self, phase: Phase) -> Dict[str, Any]:
         """Execute all tasks in a phase.
         
         Args:
             phase: The phase to execute
             task_manager: TaskManager instance for updating tasks
-            tasks_path: Path to the tasks.md file
             
         Returns:
             Results of phase execution
@@ -52,16 +48,14 @@ class PhaseExecutor:
         
         # Get appropriate team for this phase
         team = self.team_assigner.get_team_for_phase(phase)
-        
+
         # Track results
         results = {
             "phase_name": phase.name,
             "tasks": {},
             "status": "success",
             "directory_structure": {
-                "project": self.project_dir,
-                "src": self.src_dir,
-                "docs": self.docs_dir
+                "project": self.fs.project_dir,
             }
         }
         
@@ -85,8 +79,6 @@ class PhaseExecutor:
                 
                 IMPORTANT DIRECTORY STRUCTURE:
                 - Project root: {self.project_dir}
-                - Source code directory: {self.src_dir} (Put all code here)
-                - Documentation directory: {self.docs_dir} (Put all documentation here)
                 
                 Instructions:
                 - Always place source code files (js, py, etc.) in the src directory
@@ -116,7 +108,7 @@ class PhaseExecutor:
                     logger.error(f"Task '{task.description}' failed: {task_result.get('error', 'Unknown error')}")
                 
                 # Update tasks.md file after each task
-                task_manager.update_tasks_file(tasks_path, [phase])
+                self.task_manager.mark_task_completed(phase, task.description)
                 
             except Exception as e:
                 results["tasks"][task.description] = {

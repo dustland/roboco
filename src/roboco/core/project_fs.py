@@ -13,292 +13,412 @@ It includes:
 import os
 import json
 import re
-import shutil
 from pathlib import Path
-from typing import Optional, List, Union, Dict, Any, BinaryIO, TextIO
+from typing import Optional, List, Union, Dict, Any
 from datetime import datetime
 import uuid
-import yaml
 from loguru import logger
 
-from roboco.utils import (
-    ensure_directory,
-    read_file, 
-    write_file,
-    append_to_file,
-    delete_file,
-    list_files,
-    read_json_file,
-    write_json_file,
-    read_yaml_file,
-    write_yaml_file,
-    copy_file,
-    move_file,
-    get_file_info
-)
 from roboco.core.models.project import Project
 from roboco.core.models.task import Task
-from roboco.core.config import load_config
+from roboco.core.config import load_config, get_workspace
 from roboco.core.models.project_manifest import ProjectManifest, dict_to_project_manifest
 
 
 class FileSystem:
     """
-    A file system abstraction that maintains a base directory context.
+    Base class for file system operations with directory context.
     
-    This class provides simplified methods for file operations within a specific directory,
-    handling path resolution and error handling automatically.
+    This class wraps file system operations, providing a context-aware API
+    for reading, writing, and managing files within a base directory.
+    
+    Attributes:
+        base_dir: The base directory for all operations
     """
-    
-    def __init__(self, base_dir: Union[str, Path]):
+
+    def __init__(self, base_dir: str):
         """
-        Initialize the file system with a base directory.
+        Initialize the FileSystem.
         
         Args:
-            base_dir: The base directory for all file operations
+            base_dir: The base directory for all operations
         """
         self.base_dir = Path(base_dir)
-        self._ensure_base_dir_exists()
-    
-    def _ensure_base_dir_exists(self) -> None:
-        """Ensure the base directory exists."""
-        ensure_directory(self.base_dir)
-    
-    def _resolve_path(self, rel_path: Union[str, Path]) -> Path:
+        
+    def _resolve_path(self, path: str) -> str:
         """
-        Resolve a relative path to an absolute path within the base directory.
+        Resolve a path relative to the base directory.
+        
+        This method ensures that the path is within the base directory,
+        preventing directory traversal attacks.
         
         Args:
-            rel_path: A path relative to the base directory
+            path: The path to resolve, relative to the base directory
             
         Returns:
-            The absolute path
-        """
-        # Convert to Path if not already
-        path = Path(rel_path)
-        
-        # Check for path traversal attempts
-        if '..' in str(path):
-            normalized = os.path.normpath(str(path))
-            if normalized.startswith('..') or normalized.startswith('/'):
-                raise ValueError(f"Path traversal attempt detected: {rel_path}")
-        
-        return self.base_dir / path
-    
-    async def read(self, rel_path: Union[str, Path], binary: bool = False) -> Optional[Union[str, bytes]]:
-        """
-        Read file contents from a path relative to the base directory.
-        
-        Args:
-            rel_path: Path relative to the base directory
-            binary: Whether to read in binary mode
+            The absolute path within the base directory
             
-        Returns:
-            File contents or None if file doesn't exist or can't be read
+        Raises:
+            ValueError: If the path would resolve outside the base directory
         """
-        abs_path = self._resolve_path(rel_path)
-        return await read_file(abs_path, binary)
-    
-    async def write(self, rel_path: Union[str, Path], content: Union[str, bytes], binary: bool = False) -> bool:
+        # Handle empty path
+        if not path or path == "":
+            return str(self.base_dir)
+            
+        # Convert to absolute path
+        abs_path = (self.base_dir / path).resolve()
+        
+        # Check if the resolved path is within base_dir
+        try:
+            abs_path.relative_to(self.base_dir)
+        except ValueError:
+            raise ValueError(f"Path '{path}' would resolve outside the base directory")
+            
+        return str(abs_path)
+        
+    # Synchronous methods for basic file operations
+    def mkdir_sync(self, path: str) -> bool:
         """
-        Write content to a path relative to the base directory.
+        Create a directory.
         
         Args:
-            rel_path: Path relative to the base directory
-            content: Content to write
-            binary: Whether to write in binary mode
+            path: Directory path relative to base_dir
             
         Returns:
             True if successful, False otherwise
         """
-        abs_path = self._resolve_path(rel_path)
-        return await write_file(abs_path, content, binary)
-    
-    async def append(self, rel_path: Union[str, Path], content: Union[str, bytes], binary: bool = False) -> bool:
-        """
-        Append content to a file relative to the base directory.
-        
-        Args:
-            rel_path: Path relative to the base directory
-            content: Content to append
-            binary: Whether to append in binary mode
+        abs_path = self._resolve_path(path)
+        try:
+            os.makedirs(abs_path, exist_ok=True)
+            return True
+        except Exception as e:
+            logger.error(f"Failed to create directory {path}: {str(e)}")
+            return False
             
-        Returns:
-            True if successful, False otherwise
-        """
-        abs_path = self._resolve_path(rel_path)
-        return await append_to_file(abs_path, content, binary)
-    
-    async def delete(self, rel_path: Union[str, Path]) -> bool:
-        """
-        Delete a file or directory relative to the base directory.
-        
-        Args:
-            rel_path: Path relative to the base directory
-            
-        Returns:
-            True if successful, False otherwise
-        """
-        abs_path = self._resolve_path(rel_path)
-        return await delete_file(abs_path)
-    
-    async def ls(self, rel_path: Union[str, Path] = "", pattern: Optional[str] = None) -> List[str]:
-        """
-        List files in a directory relative to the base directory.
-        
-        Args:
-            rel_path: Path relative to the base directory
-            pattern: Optional glob pattern to filter files
-            
-        Returns:
-            List of file paths relative to the specified directory
-        """
-        abs_path = self._resolve_path(rel_path)
-        files = await list_files(abs_path, pattern)
-        
-        # Convert absolute paths back to relative paths
-        base_str = str(self.base_dir)
-        return [os.path.relpath(f, base_str) for f in files]
-    
-    async def exists(self, rel_path: Union[str, Path]) -> bool:
+    def exists_sync(self, path: str) -> bool:
         """
         Check if a file or directory exists.
         
         Args:
-            rel_path: Path relative to the base directory
+            path: File/directory path relative to base_dir
             
         Returns:
-            True if the path exists, False otherwise
+            True if exists, False otherwise
         """
-        abs_path = self._resolve_path(rel_path)
+        abs_path = self._resolve_path(path)
         return os.path.exists(abs_path)
-    
-    async def mkdir(self, rel_path: Union[str, Path]) -> bool:
+        
+    def is_dir_sync(self, path: str) -> bool:
         """
-        Create a directory relative to the base directory.
+        Check if a path is a directory.
         
         Args:
-            rel_path: Path relative to the base directory
+            path: Path relative to base_dir
+            
+        Returns:
+            True if directory, False otherwise
+        """
+        abs_path = self._resolve_path(path)
+        return os.path.isdir(abs_path)
+        
+    def read_sync(self, path: str) -> str:
+        """
+        Read the contents of a file.
+        
+        Args:
+            path: File path relative to base_dir
+            
+        Returns:
+            File contents as string
+            
+        Raises:
+            FileNotFoundError: If the file does not exist
+        """
+        abs_path = self._resolve_path(path)
+        with open(abs_path, 'r', encoding='utf-8') as f:
+            return f.read()
+            
+    def write_sync(self, path: str, content: str) -> bool:
+        """
+        Write content to a file.
+        
+        Args:
+            path: File path relative to base_dir
+            content: Content to write
             
         Returns:
             True if successful, False otherwise
         """
-        abs_path = self._resolve_path(rel_path)
+        abs_path = self._resolve_path(path)
         try:
-            ensure_directory(abs_path)
+            # Ensure the parent directory exists
+            os.makedirs(os.path.dirname(abs_path), exist_ok=True)
+            
+            # Write the file
+            with open(abs_path, 'w', encoding='utf-8') as f:
+                f.write(content)
             return True
         except Exception as e:
-            logger.error(f"Error creating directory {abs_path}: {str(e)}")
+            logger.error(f"Failed to write to {path}: {str(e)}")
             return False
-    
-    async def read_json(self, rel_path: Union[str, Path]) -> Optional[Dict[str, Any]]:
-        """
-        Read and parse a JSON file relative to the base directory.
-        
-        Args:
-            rel_path: Path relative to the base directory
             
-        Returns:
-            Parsed JSON data or None if reading failed
+    def append_sync(self, path: str, content: str) -> bool:
         """
-        abs_path = self._resolve_path(rel_path)
-        return await read_json_file(abs_path)
-    
-    async def write_json(self, rel_path: Union[str, Path], data: Dict[str, Any], indent: int = 2) -> bool:
-        """
-        Write data as JSON to a file relative to the base directory.
+        Append content to a file.
         
         Args:
-            rel_path: Path relative to the base directory
-            data: Data to write as JSON
-            indent: Indentation level for JSON formatting
+            path: File path relative to base_dir
+            content: Content to append
             
         Returns:
             True if successful, False otherwise
         """
-        abs_path = self._resolve_path(rel_path)
-        return await write_json_file(abs_path, data, indent)
-    
-    async def read_yaml(self, rel_path: Union[str, Path]) -> Optional[Dict[str, Any]]:
-        """
-        Read and parse a YAML file relative to the base directory.
-        
-        Args:
-            rel_path: Path relative to the base directory
+        abs_path = self._resolve_path(path)
+        try:
+            # Ensure the parent directory exists
+            os.makedirs(os.path.dirname(abs_path), exist_ok=True)
             
-        Returns:
-            Parsed YAML data or None if reading failed
+            # Append to the file
+            with open(abs_path, 'a', encoding='utf-8') as f:
+                f.write(content)
+            return True
+        except Exception as e:
+            logger.error(f"Failed to append to {path}: {str(e)}")
+            return False
+            
+    def delete_sync(self, path: str) -> bool:
         """
-        abs_path = self._resolve_path(rel_path)
-        return await read_yaml_file(abs_path)
-    
-    async def write_yaml(self, rel_path: Union[str, Path], data: Dict[str, Any]) -> bool:
-        """
-        Write data as YAML to a file relative to the base directory.
+        Delete a file or directory.
         
         Args:
-            rel_path: Path relative to the base directory
-            data: Data to write as YAML
+            path: Path relative to base_dir
             
         Returns:
             True if successful, False otherwise
         """
-        abs_path = self._resolve_path(rel_path)
-        return await write_yaml_file(abs_path, data)
-    
-    async def copy(self, source_rel_path: Union[str, Path], target_rel_path: Union[str, Path]) -> bool:
+        abs_path = self._resolve_path(path)
+        try:
+            if os.path.isdir(abs_path):
+                # Use os.rmdir for empty directories
+                os.rmdir(abs_path)
+            elif os.path.isfile(abs_path):
+                os.remove(abs_path)
+            return True
+        except Exception as e:
+            logger.error(f"Failed to delete {path}: {str(e)}")
+            return False
+            
+    def list_sync(self, path: str) -> List[str]:
         """
-        Copy a file within the base directory.
+        List files and directories in a directory.
         
         Args:
-            source_rel_path: Source path relative to the base directory
-            target_rel_path: Target path relative to the base directory
+            path: Directory path relative to base_dir
+            
+        Returns:
+            List of file/directory names
+            
+        Raises:
+            NotADirectoryError: If the path is not a directory
+        """
+        abs_path = self._resolve_path(path)
+        if not os.path.isdir(abs_path):
+            raise NotADirectoryError(f"Path {path} is not a directory")
+        return os.listdir(abs_path)
+        
+    def read_json_sync(self, path: str) -> Dict[str, Any]:
+        """
+        Read and parse a JSON file.
+        
+        Args:
+            path: File path relative to base_dir
+            
+        Returns:
+            Parsed JSON data as Python object
+            
+        Raises:
+            FileNotFoundError: If the file does not exist
+            json.JSONDecodeError: If the file contains invalid JSON
+        """
+        content = self.read_sync(path)
+        # Handle empty files gracefully
+        if not content or content.isspace():
+            return {}
+        return json.loads(content)
+        
+    # These methods keep the async interface for backwards compatibility
+    # but internally use the sync methods
+    async def mkdir(self, path: str) -> bool:
+        """
+        Create a directory.
+        
+        Args:
+            path: Directory path relative to base_dir
             
         Returns:
             True if successful, False otherwise
         """
-        source_abs_path = self._resolve_path(source_rel_path)
-        target_abs_path = self._resolve_path(target_rel_path)
-        return await copy_file(source_abs_path, target_abs_path)
+        return self.mkdir_sync(path)
     
-    async def move(self, source_rel_path: Union[str, Path], target_rel_path: Union[str, Path]) -> bool:
+    async def exists(self, path: str) -> bool:
         """
-        Move a file within the base directory.
+        Check if a file or directory exists.
         
         Args:
-            source_rel_path: Source path relative to the base directory
-            target_rel_path: Target path relative to the base directory
+            path: File/directory path relative to base_dir
+            
+        Returns:
+            True if exists, False otherwise
+        """
+        return self.exists_sync(path)
+    
+    async def is_dir(self, path: str) -> bool:
+        """
+        Check if a path is a directory.
+        
+        Args:
+            path: Path relative to base_dir
+            
+        Returns:
+            True if directory, False otherwise
+        """
+        return self.is_dir_sync(path)
+    
+    async def read(self, path: str) -> str:
+        """
+        Read the contents of a file.
+        
+        Args:
+            path: File path relative to base_dir
+            
+        Returns:
+            File contents as string
+            
+        Raises:
+            FileNotFoundError: If the file does not exist
+        """
+        return self.read_sync(path)
+        
+    async def read_json(self, path: str) -> Dict[str, Any]:
+        """
+        Read and parse a JSON file.
+        
+        Args:
+            path: File path relative to base_dir
+            
+        Returns:
+            Parsed JSON data as Python object
+            
+        Raises:
+            FileNotFoundError: If the file does not exist
+            json.JSONDecodeError: If the file contains invalid JSON
+        """
+        return self.read_json_sync(path)
+    
+    async def write(self, path: str, content: str) -> bool:
+        """
+        Write content to a file.
+        
+        Args:
+            path: File path relative to base_dir
+            content: Content to write
             
         Returns:
             True if successful, False otherwise
         """
-        source_abs_path = self._resolve_path(source_rel_path)
-        target_abs_path = self._resolve_path(target_rel_path)
-        return await move_file(source_abs_path, target_abs_path)
+        return self.write_sync(path, content)
     
-    def info(self, rel_path: Union[str, Path]) -> Optional[Dict[str, Any]]:
+    async def append(self, path: str, content: str) -> bool:
         """
-        Get information about a file or directory.
+        Append content to a file.
         
         Args:
-            rel_path: Path relative to the base directory
+            path: File path relative to base_dir
+            content: Content to append
             
         Returns:
-            Dictionary with file information or None if file doesn't exist
+            True if successful, False otherwise
         """
-        abs_path = self._resolve_path(rel_path)
-        file_info = get_file_info(abs_path)
-        
-        if file_info:
-            # Convert absolute path to relative path
-            file_info["rel_path"] = os.path.relpath(file_info["path"], str(self.base_dir))
-        
-        return file_info
+        return self.append_sync(path, content)
     
-    @property
-    def path(self) -> Path:
-        """Get the base directory path."""
-        return self.base_dir
+    async def delete(self, path: str) -> bool:
+        """
+        Delete a file or directory.
+        
+        Args:
+            path: Path relative to base_dir
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        return self.delete_sync(path)
+    
+    async def list(self, path: str = "") -> List[str]:
+        """
+        List files and directories in a directory.
+        
+        Args:
+            path: Directory path relative to base_dir
+            
+        Returns:
+            List of file/directory names
+            
+        Raises:
+            NotADirectoryError: If the path is not a directory
+        """
+        return self.list_sync(path)
+
+    def rmdir_sync(self, path: str) -> bool:
+        """
+        Recursively remove a directory and all its contents.
+        
+        Args:
+            path: Directory path relative to base_dir
+            
+        Returns:
+            True if successful, False otherwise
+            
+        Raises:
+            NotADirectoryError: If the path is not a directory
+            OSError: If removal fails
+        """
+        abs_path = self._resolve_path(path)
+        
+        if not os.path.isdir(abs_path):
+            raise NotADirectoryError(f"Path {path} is not a directory")
+            
+        try:
+            # Walk through directory tree bottom-up
+            for root, dirs, files in os.walk(abs_path, topdown=False):
+                # First remove all files in current directory
+                for name in files:
+                    file_path = os.path.join(root, name)
+                    os.remove(file_path)
+                    
+                # Then remove all subdirectories
+                for name in dirs:
+                    dir_path = os.path.join(root, name)
+                    os.rmdir(dir_path)
+                    
+            # Finally remove the root directory
+            os.rmdir(abs_path)
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to remove directory {path}: {str(e)}")
+            return False
+
+    async def rmdir(self, path: str) -> bool:
+        """
+        Recursively remove a directory and all its contents.
+        
+        Args:
+            path: Directory path relative to base_dir
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        return self.rmdir_sync(path)
 
 
 class ProjectNotFoundError(Exception):
@@ -315,126 +435,26 @@ class ProjectFS(FileSystem):
     and artifact organization.
     """
     
-    def __init__(self, project_id: str = None, project_dir: str = None):
+    def __init__(self, project_dir: str):
         """
         Initialize the project filesystem.
         
-        Either project_id or project_dir must be provided.
+        If project_dir is empty, the project will be created in the projects base directory.
         
         Args:
-            project_id: ID of the project (will be resolved to a directory)
             project_dir: Direct path to the project directory
         """
-        if not project_id and not project_dir:
-            raise ValueError("Either project_id or project_dir must be provided")
+
             
         # Load configuration to get projects base directory
         self.config = load_config()
-        self.projects_base_dir = os.path.join(self.config.workspace_root, "projects")
+        self.project_dir = project_dir
         
         # If project_dir is provided, use it directly
-        if project_dir:
-            super().__init__(project_dir)
-            self.project_id = self._get_project_id_from_dir(project_dir)
-        # Otherwise, resolve the project ID to a directory
-        else:
-            project_dir = self._resolve_project_dir(project_id)
-            super().__init__(project_dir)
-            self.project_id = project_id
+        super().__init__(get_workspace(self.config) / self.project_dir)
             
         # Cache for project data
         self._project_data = None
-    
-    def _get_project_id_from_dir(self, project_dir: str) -> Optional[str]:
-        """
-        Get the project ID from a directory by reading project.json.
-        
-        Args:
-            project_dir: Path to the project directory
-            
-        Returns:
-            Project ID or None if not found
-        """
-        project_json_path = os.path.join(project_dir, "project.json")
-        if os.path.exists(project_json_path):
-            try:
-                with open(project_json_path, 'r') as f:
-                    data = json.load(f)
-                    return data.get("id")
-            except Exception as e:
-                logger.error(f"Failed to read project ID from {project_json_path}: {str(e)}")
-        return None
-    
-    def _resolve_project_dir(self, project_id: str) -> str:
-        """
-        Resolve a project ID to its directory path.
-        
-        This method searches for the project directory by:
-        1. Checking if the ID is a direct directory name
-        2. Searching all project directories for a matching ID in project.json
-        
-        Args:
-            project_id: ID of the project
-            
-        Returns:
-            Path to the project directory
-            
-        Raises:
-            ProjectNotFoundError: If the project directory cannot be found
-        """
-        # Check if project ID is actually a directory name already
-        direct_path = os.path.join(self.projects_base_dir, project_id)
-        if os.path.exists(direct_path) and os.path.isdir(direct_path):
-            config_path = os.path.join(direct_path, "project.json")
-            if os.path.exists(config_path):
-                return direct_path
-        
-        # Otherwise, try to find by ID in project.json files
-        for folder_name in os.listdir(self.projects_base_dir):
-            folder_path = os.path.join(self.projects_base_dir, folder_name)
-            if os.path.isdir(folder_path):
-                config_path = os.path.join(folder_path, "project.json")
-                if os.path.exists(config_path):
-                    try:
-                        with open(config_path, "r") as f:
-                            project_data = json.load(f)
-                            if project_data.get("id") == project_id:
-                                return folder_path
-                    except Exception:
-                        pass
-        
-        # Not found
-        raise ProjectNotFoundError(f"Project with ID {project_id} not found")
-    
-    @classmethod
-    def _create_folder_name(cls, project: Project) -> str:
-        """
-        Create a clean, meaningful folder name from a project.
-        
-        Args:
-            project: The project to create a folder name for
-            
-        Returns:
-            A suitable folder name
-        """
-        # If project has a specified directory, use that
-        if project.directory and project.directory != project.id:
-            folder_name = project.directory
-        else:
-            # Create a folder name from the project name
-            folder_name = project.name.lower()
-            
-            # Replace special characters and spaces
-            folder_name = re.sub(r'[^a-zA-Z0-9_-]', '_', folder_name)
-            folder_name = re.sub(r'_+', '_', folder_name)  # Replace multiple underscores with single one
-            folder_name = folder_name.strip('_')
-            
-            # Add a small prefix from the ID for uniqueness
-            if project.id:
-                id_prefix = project.id.split('-')[0] if '-' in project.id else project.id[:8]
-                folder_name = f"{folder_name}_{id_prefix}"
-        
-        return folder_name
     
     async def get_project(self) -> Project:
         """
@@ -449,15 +469,12 @@ class ProjectFS(FileSystem):
         if self._project_data:
             return self._project_data
             
-        try:
-            data = await self.read_json("project.json")
-            if not data:
-                raise ProjectNotFoundError(f"Project data not found at {self.path}")
-                
-            self._project_data = Project.from_dict(data)
-            return self._project_data
-        except Exception as e:
-            raise ProjectNotFoundError(f"Failed to load project data: {str(e)}")
+        data = await self.read_json("project.json")
+        if not data:
+            raise ProjectNotFoundError(f"Project data not found at {self.base_dir}")
+            
+        self._project_data = Project.from_dict(data)
+        return self._project_data
     
     async def save_project(self, project: Project) -> None:
         """
@@ -470,64 +487,68 @@ class ProjectFS(FileSystem):
             None
         """
         # Update the directory field to match the folder name
-        project.directory = os.path.basename(self.path)
+        project.directory = os.path.basename(self.base_dir)
         
         # Update the project data
         project.updated_at = datetime.now()
         
-        # Save the project data
-        await self.write_json("project.json", project.to_dict())
+        # Save the project data as properly serialized JSON
+        await self.write("project.json", json.dumps(project.to_dict(), indent=2))
         
         # Update the cache
         self._project_data = project
         
-        # Update task.md
+        # Update tasks.md
         await self._update_task_markdown(project)
     
     async def _update_task_markdown(self, project: Project) -> None:
         """
-        Update the task.md file for a project.
+        Update the tasks.md file for a project.
         
         Args:
-            project: The project to update the task.md for
+            project: The project to update the tasks.md for
         """
-        content = f"# {project.name} - Task List\n\n"
+        content = [f"# {project.name} - Task List\n"]
+        
+        # Add project description if available
+        if project.description:
+            content.append(f"\n## Description\n\n{project.description}\n")
+        
+        # Add project metadata
+        content.append("\n## Project Details\n")
+        content.append(f"- **ID**: {project.id}")
+        if project.teams:
+            content.append(f"- **Teams**: {', '.join(project.teams)}")
+        if project.tags:
+            content.append(f"- **Tags**: {', '.join(project.tags)}")
+        content.append(f"- **Created**: {project.created_at.isoformat() if project.created_at else 'N/A'}")
+        content.append(f"- **Last Updated**: {project.updated_at.isoformat() if project.updated_at else 'N/A'}\n")
         
         # Add project-level tasks
         if project.tasks:
-            content += "## Project Tasks\n\n"
+            content.append("\n## Project Tasks\n")
             for task in project.tasks:
                 status_marker = "- [x]" if task.status == "DONE" else "- [ ]"
-                content += f"{status_marker} **{task.description}**"
+                task_line = f"{status_marker} **{task.description}**"
                 if task.priority:
-                    content += f" (Priority: {task.priority})"
-                content += "\n"
+                    task_line += f" (Priority: {task.priority})"
+                content.append(task_line)
+                
+                # Add task details indented
                 if task.assigned_to:
-                    content += f"  - Assigned to: {task.assigned_to}\n"
+                    content.append(f"  - Assigned to: {task.assigned_to}")
                 if task.depends_on:
-                    content += f"  - Depends on: {', '.join(task.depends_on)}\n"
+                    content.append(f"  - Depends on: {', '.join(task.depends_on)}")
                 if task.tags:
-                    content += f"  - Tags: {', '.join(task.tags)}\n"
+                    content.append(f"  - Tags: {', '.join(task.tags)}")
                 if task.completed_at:
-                    content += f"  - Completed at: {task.completed_at.isoformat()}\n"
-                content += "\n"
+                    content.append(f"  - Completed at: {task.completed_at.isoformat()}")
+                content.append("")  # Add blank line between tasks
+        else:
+            content.append("\n## Project Tasks\n\nNo tasks have been created yet.\n")
         
-        await self.write("task.md", content)
-    
-    async def add_task(self, task: Task) -> None:
-        """
-        Add a task to the project.
-        
-        Args:
-            task: Task to add
-            
-        Returns:
-            None
-        """
-        project = await self.get_project()
-        project.tasks.append(task)
-        await self.save_project(project)
-    
+        await self.write("tasks.md", "\n".join(content))
+
     async def update_task(self, task_id: str, **kwargs) -> bool:
         """
         Update a task in the project.
@@ -598,7 +619,7 @@ class ProjectFS(FileSystem):
         
         # Get the projects base directory
         config = load_config()
-        projects_base_dir = os.path.join(config.workspace_root, "projects")
+        projects_base_dir = get_workspace(config)
         
         # Create the project directory
         project_dir = os.path.join(projects_base_dir, folder_name)
@@ -606,16 +627,27 @@ class ProjectFS(FileSystem):
         # Create a ProjectFS instance
         project_fs = ProjectFS(project_dir=project_dir)
         
-        # Ensure directories exist
-        await project_fs.mkdir("")
-        await project_fs.mkdir("src")
-        await project_fs.mkdir("docs")
-        
-        # Save the project data
-        await project_fs.save_project(project)
-        
-        return project_fs
-    
+        try:
+            # Create base directories
+            await project_fs._ensure_directories()
+            
+            # Save the project data
+            await project_fs.save_project(project)
+            
+            return project_fs
+            
+        except Exception as e:
+            # If anything fails during setup, clean up by removing the project directory
+            await project_fs.rmdir("")
+            raise e
+
+    async def _ensure_directories(self) -> None:
+        """
+        Ensure the base project directory exists.
+        """
+        # Create only the base project directory
+        await self.mkdir("")
+
     @classmethod
     async def list_all(cls) -> List[Project]:
         """
@@ -626,7 +658,7 @@ class ProjectFS(FileSystem):
         """
         # Get the projects base directory
         config = load_config()
-        projects_base_dir = os.path.join(config.workspace_root, "projects")
+        projects_base_dir = get_workspace(config)
         
         projects = []
         
@@ -702,10 +734,10 @@ class ProjectFS(FileSystem):
             True if successful, False otherwise
         """
         try:
-            # Delete the entire project directory
-            return await super().delete("")
+            # Use rmdir instead of delete for recursive directory removal
+            return await self.rmdir("")
         except Exception as e:
-            logger.error(f"Failed to delete project {self.project_id}: {str(e)}")
+            logger.error(f"Failed to delete project: {str(e)}")
             return False
 
     async def execute_project_manifest(self, manifest: Union[ProjectManifest, Dict[str, Any]], override_base_path: str = "") -> Dict[str, Any]:

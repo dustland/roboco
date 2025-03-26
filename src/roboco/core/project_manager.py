@@ -5,25 +5,15 @@ This module provides functionality for managing projects, including their tasks
 and associated teams and jobs.
 """
 
+from datetime import datetime
 import os
 import json
-import uuid
-from typing import Dict, List, Optional, Any, Union
-from datetime import datetime
-from pathlib import Path
-import markdown
-import time
-import yaml
-from datetime import timedelta
 
 from loguru import logger
 
-from roboco.core.models import ProjectConfig, Task
-from roboco.core import config
-from roboco.core.config import load_config
 from roboco.core.models.project import Project
-from roboco.core.models.task import Task
 from roboco.core.project_fs import ProjectFS
+from roboco.core.config import load_config, get_workspace
 
 
 class ProjectManager:
@@ -51,17 +41,16 @@ class ProjectManager:
         """
         try:
             # Get the workspace base path
-            workspace_base = self.config.core.workspace_base
-            projects_dir = os.path.join(workspace_base, "projects")
+            workspace_base = get_workspace(self.config)
             
-            # Create the projects directory if it doesn't exist
-            if not os.path.exists(projects_dir):
-                os.makedirs(projects_dir, exist_ok=True)
+            # Create the workspace directory if it doesn't exist
+            if not os.path.exists(workspace_base):
+                os.makedirs(workspace_base, exist_ok=True)
                 return
             
             # Iterate through project directories
-            for project_dir in os.listdir(projects_dir):
-                dir_path = os.path.join(projects_dir, project_dir)
+            for project_dir in os.listdir(workspace_base):
+                dir_path = os.path.join(workspace_base, project_dir)
                 
                 if os.path.isdir(dir_path):
                     project_file = os.path.join(dir_path, "project.json")

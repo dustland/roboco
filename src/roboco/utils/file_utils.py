@@ -16,16 +16,41 @@ from datetime import datetime
 from loguru import logger
 
 
-def ensure_directory(directory_path: Union[str, Path]) -> None:
+def ensure_directory(directory_path: Union[str, Path]) -> bool:
     """
-    Ensure a directory exists.
+    Ensures a directory exists, creating it if it doesn't.
     
     Args:
-        directory_path: Path of the directory to ensure exists
+        directory_path: Path to the directory to ensure exists
+        
+    Returns:
+        bool: True if the directory exists or was created successfully, False otherwise
     """
-    if not os.path.exists(directory_path):
-        os.makedirs(directory_path, exist_ok=True)
-        logger.debug(f"Created directory: {directory_path}")
+    try:
+        path = Path(directory_path)
+        
+        # If the directory already exists, return early
+        if path.exists() and path.is_dir():
+            logger.debug(f"Directory already exists: {path}")
+            return True
+        
+        # Create the directory and any parent directories
+        path.mkdir(parents=True, exist_ok=True)
+        
+        # Verify creation was successful
+        if path.exists() and path.is_dir():
+            logger.debug(f"Created directory: {path}")
+            return True
+        else:
+            logger.error(f"Failed to create directory: {path}")
+            return False
+            
+    except PermissionError as e:
+        logger.error(f"Permission error creating directory {directory_path}: {str(e)}")
+        return False
+    except Exception as e:
+        logger.error(f"Error creating directory {directory_path}: {str(e)}")
+        return False
 
 
 async def read_file(file_path: Union[str, Path], binary: bool = False) -> Optional[Union[str, bytes]]:
