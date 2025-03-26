@@ -12,7 +12,7 @@ from roboco.core.tool import Tool, command
 # Task Execution Components
 from roboco.core.task_manager import TaskManager
 from roboco.core.team_assigner import TeamAssigner
-from roboco.core.phase_executor import PhaseExecutor
+from roboco.core.task_executor import TaskExecutor
 from roboco.core.project_executor import ProjectExecutor
 
 from roboco.core.config import load_config, save_config, create_default_config
@@ -26,7 +26,7 @@ __all__ = [
     'command',
     'TaskManager',
     'TeamAssigner',
-    'PhaseExecutor',
+    'TaskExecutor',
     'ProjectExecutor',
     'load_config',
     'save_config',

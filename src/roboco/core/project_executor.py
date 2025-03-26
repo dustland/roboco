@@ -1,7 +1,7 @@
 """
 Project Executor Module
 
-This module provides functionality to execute tasks in a project by phase.
+This module provides functionality to execute tasks in a project.
 """
 
 import os
@@ -10,7 +10,7 @@ from loguru import logger
 
 from roboco.core.models.phase import Phase
 from roboco.core.task_manager import TaskManager
-from roboco.core.phase_executor import PhaseExecutor
+from roboco.core.task_executor import TaskExecutor
 from roboco.core.project_fs import ProjectFS
 
 
@@ -30,7 +30,7 @@ class ProjectExecutor:
         logger.info(f"Initializing ProjectExecutor for project: {project_dir}")
         self.fs = ProjectFS(project_dir=project_dir)
         self.task_manager = TaskManager(fs=self.fs)
-        self.phase_executor = PhaseExecutor(fs=self.fs, task_manager=self.task_manager)
+        self.task_executor = TaskExecutor(fs=self.fs, task_manager=self.task_manager)
         
     async def execute_project(self, phase_filter: Optional[str] = None) -> Dict[str, Any]:
         """
@@ -65,7 +65,7 @@ class ProjectExecutor:
             phases = filtered_phases
             logger.info(f"Filtered to {len(phases)} phases")
         
-        # Execute each phase sequentially
+        # Execute each phase's tasks sequentially
         results = {
             "phases": {},
             "overall_status": "success",
@@ -79,12 +79,24 @@ class ProjectExecutor:
         for phase in phases:
             logger.info(f"Executing phase: {phase.name}")
             
-            phase_result = await self.phase_executor.execute_phase(phase)
+            # Execute each task in the phase
+            phase_results = {
+                "tasks": {},
+                "status": "success"
+            }
             
-            results["phases"][phase.name] = phase_result
+            for task in phase.tasks:
+                task_result = await self.task_executor.execute_task(task)
+                phase_results["tasks"][task.description] = task_result
+                
+                # Update phase status if any task failed
+                if task_result["status"] != "completed" and task_result["status"] != "already_completed":
+                    phase_results["status"] = "partial_failure"
+            
+            results["phases"][phase.name] = phase_results
             
             # Update overall status if any phase failed
-            if phase_result["status"] != "success":
+            if phase_results["status"] != "success":
                 results["overall_status"] = "partial_failure"
         
         # Create a summary of files created in each directory
@@ -118,7 +130,7 @@ class ProjectExecutor:
         
         # Parse tasks.md into phases and tasks
         logger.info(f"Parsing tasks file: {tasks_path}")
-        phases = self.task_manager.parse(tasks_path)
+        phases = self.task_manager.load(tasks_path)
         
         if not phases:
             error_msg = "No phases found in tasks.md"
@@ -131,19 +143,8 @@ class ProjectExecutor:
                 if task.description.lower() == task_description.lower():
                     logger.info(f"Found task '{task_description}' in phase '{phase.name}'")
                     
-                    # Create a temporary phase with just this task
-                    temp_phase = Phase(
-                        name=phase.name,
-                        tasks=[task],
-                        status=phase.status
-                    )
-                    
-                    # Execute just this task's phase
-                    result = await self.phase_executor.execute_phase(
-                        temp_phase,
-                        self.task_manager,
-                        tasks_path
-                    )
+                    # Execute the task
+                    result = await self.task_executor.execute_task(task)
                     
                     return {
                         "task": task.description,
