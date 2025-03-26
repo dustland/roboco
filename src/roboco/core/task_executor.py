@@ -4,15 +4,17 @@ Task Executor Module
 This module provides functionality to execute individual tasks.
 """
 
-from typing import Dict, Any
+from typing import Dict, Any, List
 from datetime import datetime
 from roboco.core.logger import get_logger
 logger = get_logger(__name__)
 
 from roboco.core.models.task import Task, TaskStatus
+from roboco.core.models.phase import Phase
 from roboco.core.task_manager import TaskManager
 from roboco.core.team_assigner import TeamAssigner
 from roboco.core.project_fs import ProjectFS
+from roboco.tools.fs import FileSystemTool
 
 
 class TaskExecutor:
@@ -31,14 +33,62 @@ class TaskExecutor:
         self.docs_dir = "docs"
         
         self.team_assigner = TeamAssigner(self.fs)
+        self.file_tool = FileSystemTool(fs)
 
         logger.debug(f"Initialized TaskExecutor for project: {self.fs.project_dir}")
     
-    async def execute_task(self, task: Task) -> Dict[str, Any]:
+    def _get_minimal_context(self, current_task: Task, phases: List[Phase]) -> str:
+        """Get minimal but essential context for task execution.
+        
+        Args:
+            current_task: The current task being executed
+            phases: List of all phases
+            
+        Returns:
+            A string containing minimal context
+        """
+        context_parts = []
+        
+        # Get current phase
+        current_phase = None
+        for phase in phases:
+            if current_task in phase.tasks:
+                current_phase = phase
+                break
+        
+        if not current_phase:
+            return "No phase context available"
+            
+        # Add basic context
+        context_parts.append(f"Current Phase: {current_phase.name}")
+        context_parts.append(f"Task: {current_task.description}")
+        
+        # Add project structure
+        try:
+            context_parts.append("\nProject Structure:")
+            context_parts.append(f"- Project root: {self.fs.project_dir}")
+            context_parts.append(f"- Source code directory: {self.src_dir}")
+            context_parts.append(f"- Documentation directory: {self.docs_dir}")
+            
+            # List top-level directories and files
+            root_items = self.fs.list_sync(".")
+            if root_items:
+                context_parts.append("\nRoot Directory Contents:")
+                for item in root_items:
+                    if item not in [self.src_dir, self.docs_dir]:
+                        context_parts.append(f"- {item}")
+        
+        except Exception as e:
+            logger.warning(f"Could not get project structure: {e}")
+        
+        return "\n".join(context_parts)
+    
+    async def execute_task(self, task: Task, phases: List[Phase]) -> Dict[str, Any]:
         """Execute a single task.
         
         Args:
             task: The task to execute
+            phases: List of all phases for context
             
         Returns:
             Results of task execution
@@ -56,6 +106,9 @@ class TaskExecutor:
         # Get appropriate team for this task
         team = self.team_assigner.get_team_for_task(task)
         
+        # Get minimal context
+        execution_context = self._get_minimal_context(task, phases)
+        
         # Track results
         results = {
             "task": task.description,
@@ -69,14 +122,24 @@ class TaskExecutor:
             
             {task.description}
             
-            IMPORTANT DIRECTORY STRUCTURE:
-            - Project root: {self.fs.project_dir}
+            CONTEXT:
+            {execution_context}
             
             Instructions:
+            - You have access to the filesystem tool for all file operations
+            - Use the filesystem tool's commands to:
+              * `list_directory` to explore directories and see what files exist
+              * `read_file` to read file contents
+              * `save_file` to create or modify files
+              * `file_exists` to check if a file exists
+              * `create_directory` to create new directories
+              * `delete_file` to remove files
+              * `read_json` to read and parse JSON files
             - Always place source code files (js, py, etc.) in the src directory
             - Always place documentation files (md, txt, etc.) in the docs directory
             - Maintain a clean, organized directory structure
             - Do not create files directly in the project root
+            - When modifying files, use the filesystem tool's commands instead of trying to edit files directly
             """
             
             # Execute task using the team

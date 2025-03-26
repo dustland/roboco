@@ -25,7 +25,7 @@ class PlanningTeam:
             system_message="""You are an execution agent that helps prepare projects.
             When creating files, always put source code in the src directory and documentation in the docs directory.
             """,
-            human_input_mode="TERMINATE",
+            human_input_mode="NEVER",
             terminate_msg="TERMINATE",
             llm_config=False,
             code_execution_config={"work_dir": get_workspace() / "code", "use_docker": False}
@@ -83,7 +83,7 @@ class PlanningTeam:
         chat_result = executer.initiate_chat(
             recipient=planner,
             message=message,
-            max_turns=10,
+            max_turns=4,
         )
         
         # Extract project directory from the response

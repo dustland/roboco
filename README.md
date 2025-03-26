@@ -2,7 +2,7 @@
 
 # RoboCo
 
-A Robot-Driven Company built with Multi-Agent Platform.
+A **Robo**t-driven **Co**mpany built with Multi-Agent Platform.
 
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/Python-3.10+-blue?logo=python&logoColor=white)](https://www.python.org/)
@@ -92,7 +92,7 @@ We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) f
 - Built on top of [AG2](https://github.com/ag2ai/ag2)
 - Inspired by [Manus](https://manus.im/) and [OpenManus](https://github.com/mannaandpoem/OpenManus/)
 - Thanks to Anthropic for MCP(Model Context Protocol) design
-- Special thanks to the robotics and AI research communities
+- Logo generated with [GPT-4o](https://chatgpt.com)
 
 ## Citation
 

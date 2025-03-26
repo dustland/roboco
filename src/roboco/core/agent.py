@@ -64,15 +64,19 @@ class Agent(AssistantAgent):
         # Store termination message
         self.terminate_msg = terminate_msg
         
+        is_termination_msg = None
+        
         # Append termination instructions to system message if a termination message is provided
         if terminate_msg:
             system_message = f"{system_message}\n\nWhen you have completed your response, end your message with \"{terminate_msg}\" to signal that you are done."
+            is_termination_msg = lambda x: terminate_msg in (x.get("content", "") or "")
         
         # Initialize base class
         super().__init__(
             name=name,
             system_message=system_message,
             llm_config=llm_config,
+            is_termination_msg=is_termination_msg,
             **kwargs
         )
         

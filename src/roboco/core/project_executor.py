@@ -86,7 +86,7 @@ class ProjectExecutor:
             }
             
             for task in phase.tasks:
-                task_result = await self.task_executor.execute_task(task)
+                task_result = await self.task_executor.execute_task(task, phases)
                 phase_results["tasks"][task.description] = task_result
                 
                 # Update phase status if any task failed
@@ -144,7 +144,7 @@ class ProjectExecutor:
                     logger.info(f"Found task '{task_description}' in phase '{phase.name}'")
                     
                     # Execute the task
-                    result = await self.task_executor.execute_task(task)
+                    result = await self.task_executor.execute_task(task, phases)
                     
                     return {
                         "task": task.description,
