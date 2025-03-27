@@ -114,9 +114,6 @@ class CodeTool(Tool):
         
         # Check which languages are actually available
         self.available_languages = self._check_available_languages()
-        
-        logger.info(f"CodeTool initialized with {len(self.available_languages)} available languages")
-        logger.debug(f"Available languages: {', '.join(self.available_languages)}")
     
     def _check_available_languages(self) -> List[str]:
         """

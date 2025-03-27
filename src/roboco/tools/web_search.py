@@ -145,8 +145,6 @@ class WebSearchTool(Tool):
         self.max_retries = max_retries
         self.timeout = timeout
         
-        self.logger.info("Initialized WebSearchTool")
-        
     @command(primary=True)
     def web_search(self, query: str, max_results: Optional[int] = None) -> Dict[str, Any]:
         """

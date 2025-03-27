@@ -18,13 +18,13 @@ class ProjectFile(BaseModel):
 
 class ProjectManifest(BaseModel):
     """Manifest describing a project structure and metadata."""
+    id: str = Field(..., description="Project unique identifier")
     name: str = Field(..., description="Human-readable project name")
     description: str = Field(..., description="Project description")
-    project_dir: str = Field(..., description="Clean, normalized folder name (snake_case)")
     structure: Dict[str, Any] = Field(..., description="Project structure type")
     folder_structure: List[str] = Field(..., description="List of top-level directories")
     meta: Optional[Dict[str, Any]] = Field(None, description="Additional metadata")
-    created_at: datetime = Field(default_factory=datetime.now, description="Creation timestamp")
+    created_at: str = Field(default_factory=lambda: datetime.now().isoformat(), description="Creation timestamp")
     task_file: str = Field("tasks.md", description="Name of the task file")
     directories: Optional[List[str]] = Field(None, description="Deprecated: use folder_structure")
     files: Optional[List[ProjectFile]] = Field(None, description="Files to create")
@@ -33,10 +33,10 @@ class ProjectManifest(BaseModel):
         """Pydantic configuration."""
         json_schema_extra = {
             "example": {
+                "id": "A1c23fb",
                 "name": "Todo App",
                 "description": "A simple todo application",
-                "project_dir": "todo_app",
-                "structure": {"type": "web_application"},
+                "structure": {"type": "dev"},
                 "folder_structure": ["src", "docs", "tests"],
                 "meta": {
                     "teams": ["frontend", "backend"],
@@ -80,10 +80,6 @@ def dict_to_project_manifest(data: Dict[str, Any]) -> ProjectManifest:
     Raises:
         ValueError: If the data is invalid
     """
-    # Handle the case where directory_name might be used instead of project_dir
-    if "directory_name" in data and "project_dir" not in data:
-        data["project_dir"] = data.pop("directory_name")
-    
     # Convert the files list to ProjectFile objects
     if "files" in data and data["files"] and isinstance(data["files"], list):
         data["files"] = [

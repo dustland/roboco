@@ -66,7 +66,6 @@ class Team(ABC):
     def add_agent(self, agent_name: str, agent: ConversableAgent) -> None:
         """Add an agent to the team."""
         self.agents[agent_name] = agent
-        logger.info(f"Added agent '{agent_name}' to the team")
     
     def get_agent(self, agent_name: str) -> Optional[ConversableAgent]:
         """Get an agent from the team by name."""

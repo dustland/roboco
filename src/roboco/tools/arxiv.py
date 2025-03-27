@@ -219,11 +219,10 @@ class ArxivTool(Tool):
         try:
             # Create workspace research directory
             if save_to_workspace:
-                # Import ProjectManager here to avoid circular imports
-                from roboco.core.project_manager import ProjectManager
-                workspace = ProjectManager(self.config.get("workspace_dir", "workspace"))
-                save_path = workspace.get_research_path("papers") / f"{paper_id}.pdf"
-                save_path.parent.mkdir(parents=True, exist_ok=True)
+                workspace_dir = Path(self.config.get("workspace_dir", "workspace"))
+                research_dir = workspace_dir / "research" / "papers"
+                research_dir.mkdir(parents=True, exist_ok=True)
+                save_path = research_dir / f"{paper_id}.pdf"
             else:
                 temp_dir = Path(self.config.get("temp_dir", "/tmp/arxiv_papers"))
                 temp_dir.mkdir(parents=True, exist_ok=True)
@@ -344,17 +343,17 @@ class ArxivTool(Tool):
 """
             
             # Create workspace research notes directory
-            workspace = ProjectManager(self.config.get("workspace_dir", "workspace"))
-            workspace_path = workspace.get_research_path("notes")
+            workspace_dir = Path(self.config.get("workspace_dir", "workspace"))
+            research_dir = workspace_dir / "research" / "notes"
             if topic:
                 topic_safe = topic.lower().replace(" ", "_").replace("-", "_")
-                workspace_path = workspace_path / topic_safe
+                research_dir = research_dir / topic_safe
             
-            workspace_path.mkdir(parents=True, exist_ok=True)
+            research_dir.mkdir(parents=True, exist_ok=True)
             
             # Save notes file
             timestamp = datetime.now().strftime("%Y%m%d")
-            notes_file = workspace_path / f"{timestamp}_{paper_id}_notes.md"
+            notes_file = research_dir / f"{timestamp}_{paper_id}_notes.md"
             
             with open(notes_file, "w") as f:
                 f.write(formatted_notes)

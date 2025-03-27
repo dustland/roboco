@@ -31,15 +31,13 @@ class TaskManager:
         self.docs_dir = "docs"
         
         # Initialize team manager for task execution
-        team_manager = TeamManager.get_instance()
-        team_manager.set_fs(fs)
-        self.team_manager = team_manager
+        self.team_manager = TeamManager(fs=fs)
         
         # Import FileSystemTool here to avoid circular imports
         from roboco.tools.fs import FileSystemTool
         self.file_tool = FileSystemTool(fs)
         
-        logger.debug(f"Initialized TaskManager for project: {self.fs.project_dir}")
+        logger.debug(f"Initialized TaskManager for project: {self.fs.project_id}")
     
     def load(self, tasks_path: str) -> List[Dict[str, Any]]:
         """Parse tasks.md into structured Task objects.
@@ -87,7 +85,7 @@ class TaskManager:
                 current_task = Task(
                     description=task_description,
                     status=TaskStatus.DONE if is_completed else TaskStatus.TODO,
-                    completed_at=datetime.now() if is_completed else None,
+                    completed_at=datetime.now().isoformat() if is_completed else None,
                     details=[]
                 )
             
@@ -116,7 +114,7 @@ class TaskManager:
         for task in tasks:
             if task.description == task_description:
                 task.status = TaskStatus.DONE
-                task.completed_at = datetime.now()
+                task.completed_at = datetime.now().isoformat()
                 return True
         
         return False
@@ -130,7 +128,7 @@ class TaskManager:
         """
         try:
             # Extract project name from path
-            project_name = self.fs.project_dir.split('/')[-1].replace('_', ' ').title()
+            project_name = self.fs.project_id
             
             # Start with the project title
             content = f"# {project_name}\n\n"
@@ -345,7 +343,7 @@ Instructions:
             # Update task status based on result
             if "error" not in task_result:
                 task.status = TaskStatus.DONE
-                task.completed_at = datetime.now()
+                task.completed_at = datetime.now().isoformat()
                 results.update({
                     "status": "completed",
                     "response": task_result.get("response", "")
@@ -498,7 +496,7 @@ Instructions:
         # Add project structure
         try:
             context_parts.append("\nProject Structure:")
-            context_parts.append(f"- Project root: {self.fs.project_dir}")
+            context_parts.append(f"- Project root: {self.fs.project_id}")
             context_parts.append(f"- Source code directory: {self.src_dir}")
             context_parts.append(f"- Documentation directory: {self.docs_dir}")
             

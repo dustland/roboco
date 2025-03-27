@@ -169,4 +169,4 @@ class Agent(AssistantAgent):
             executor=executor_agent,
             description=description
         )
-        logger.info(f"Registered function {function.__name__} with caller {self.name} and executor {executor_agent.name}")
+        # logger.info(f"Registered function {function.__name__} with caller {self.name} and executor {executor_agent.name}")

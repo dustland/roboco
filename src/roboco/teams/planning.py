@@ -10,14 +10,19 @@ from typing import Dict, Any, List, Optional
 from roboco.core.agent import Agent
 from roboco.agents.planner import Planner
 from roboco.core.config import get_workspace
-from roboco.core.project_fs import FileSystem
+from roboco.core.project_fs import ProjectFS
 
 class PlanningTeam:
     """Team for creating and managing projects."""
     
-    def __init__(self):
+    def __init__(self, project_id: str):
         """Initialize the project team.
+        
+        Args:
+            project_id: Optional project ID to use consistently
         """
+        # Store project_id for later use
+        self.project_id = project_id
         
         # Initialize the agents
         executer = Agent(
@@ -41,7 +46,9 @@ class PlanningTeam:
         
         # Register tools with agents
         from roboco.tools.fs import FileSystemTool
-        fs_tool = FileSystemTool(fs=FileSystem(base_dir=get_workspace()))
+        # Use the project_id if available
+        fs = ProjectFS(project_id=self.project_id)
+        fs_tool = FileSystemTool(fs=fs)
 
         fs_tool.register_with_agents(planner, executor_agent=executer)
         
@@ -61,13 +68,14 @@ class PlanningTeam:
             raise ValueError(f"Agent '{name}' not found")
         return self.agents[name]
     
-    async def run_chat(self, query: str, teams: Optional[List[str]] = None) -> Dict[str, Any]:
+    async def run_chat(self, query: str, teams: Optional[List[str]] = None, context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """
         Run a chat session with the project agent.
         
         Args:
             query: The user's query
             teams: Optional list of teams to assign
+            context: Optional context with additional parameters like project_id
             
         Returns:
             Dict containing the chat results and project directory
@@ -76,9 +84,14 @@ class PlanningTeam:
         executer = self.get_agent("executer")
         planner = self.get_agent("planner")
         
-        # Format the message for project planning
+        # Create base message for project planning
         message = f"""Creating a project for this idea: {query}"""
-                
+        
+        # Add context information if provided
+        if context and isinstance(context, dict):
+            if "project_id" in context:
+                message += f"\n\nIMPORTANT: Use the following project ID: {context['project_id']}"
+        
         # Start chat with the project agent and get the result directly
         chat_result = executer.initiate_chat(
             recipient=planner,
@@ -87,25 +100,29 @@ class PlanningTeam:
         )
         
         # Extract project directory from the response
-        project_directory = extract_project_directory(chat_result.chat_history)
+        project_id = extract_project_id(chat_result.chat_history)
+        
+        # Use the pre-specified project_id from context if provided and not found in response
+        if not project_id and context and "project_id" in context:
+            project_id = context["project_id"]
         
         # Return the chat results with project directory
         return {
             "response": chat_result.summary,
             "chat_history": chat_result.chat_history,
             "summary": chat_result.summary,
-            "project_dir": project_directory
+            "project_id": project_id
         }
 
-def extract_project_directory(chat_history) -> Optional[str]:
+def extract_project_id(chat_history) -> Optional[str]:
     """
-    Extract the project directory from the agent's response.
+    Extract the project id from the agent's response.
     
     Args:
         chat_history: The chat history from ChatResult, which can be a list of messages or a string
         
     Returns:
-        The extracted project directory or None if not found
+        The extracted project id or None if not found
     """
     import re
     import json
@@ -121,17 +138,13 @@ def extract_project_directory(chat_history) -> Optional[str]:
         response = str(chat_history)
     
     # First, try to find direct response from execute_project_manifest (most reliable)
-    # Look for JSON response containing directory_name or project_dir
+    # Look for JSON response containing project_id
     json_match = re.search(r'```json\s*({.*?})\s*```', response, re.DOTALL)
     if json_match:
         try:
             json_data = json.loads(json_match.group(1))
-            if 'directory_name' in json_data:
-                return json_data['directory_name']
-            elif 'project_dir' in json_data:
-                # Extract just the directory name from the full path
-                import os
-                return os.path.basename(json_data['project_dir'])
+            if 'project_id' in json_data:
+                return json_data['project_id']
         except json.JSONDecodeError:
             pass
 
@@ -140,18 +153,18 @@ def extract_project_directory(chat_history) -> Optional[str]:
     if match:
         return match.group(1)
     
-    # Try to find "project_dir" or similar in the result
-    match = re.search(r'[\'"]?project_dir[\'"]?:\s*[\'"]([a-zA-Z0-9_\-]+)[\'"]', response)
+    # Try to find "project_id" or similar in the result
+    match = re.search(r'[\'"]?project_id[\'"]?:\s*[\'"]([a-zA-Z0-9_\-]+)[\'"]', response)
     if match:
         return match.group(1)
     
-    # Try to find the directory in a success message
+    # Try to find the project_id in a success message
     match = re.search(r'successfully.*[\'"]([a-zA-Z0-9_\-]+)[\'"]', response, re.IGNORECASE)
     if match:
         return match.group(1)
         
-    # Try to find directory_name in json
-    match = re.search(r'"directory_name":\s*"([a-zA-Z0-9_\-]+)"', response)
+    # Try to find project_id in json
+    match = re.search(r'"project_id":\s*"([a-zA-Z0-9_\-]+)"', response)
     if match:
         return match.group(1)
     

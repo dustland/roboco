@@ -41,9 +41,9 @@ class TaskUpdate(BaseModel):
 class Task(TaskBase):
     """Response model for a task."""
     id: str
-    created_at: datetime
-    updated_at: datetime
-    completed_at: Optional[datetime] = None
+    created_at: str
+    updated_at: str
+    completed_at: Optional[str] = None
     project_id: str
 
     class Config:

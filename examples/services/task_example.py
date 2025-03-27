@@ -3,18 +3,18 @@ import json
 from loguru import logger
 from roboco.core.task_manager import TaskManager
 from roboco.core.project_fs import ProjectFS
+from roboco.utils.id_generator import generate_short_id
 
 # Get a logger instance with the module name
 logger = logger.bind(module=__name__)
 
 async def main():
     # Set up project directory
-    project_name = "simple_calculator_app"
-    project_dir = Path(project_name)
+    project_id = generate_short_id()
     
     # Initialize filesystem and task manager
-    logger.info(f"Initializing project filesystem for: {project_dir}")
-    fs = ProjectFS(project_dir=str(project_dir))
+    logger.info(f"Initializing project filesystem for: {project_id}")
+    fs = ProjectFS(project_id=project_id)
     task_manager = TaskManager(fs=fs)
     logger.info("Initialized TaskManager")
     

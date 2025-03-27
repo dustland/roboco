@@ -127,8 +127,6 @@ class VersatileTeam(Team):
             for agent_name, agent in self.agents.items():
                 fs_tool.register_with_agents(agent)
             
-            logger.info("Registered FileSystemTool with all agents")
-            
             # Register web search tool if available
             try:
                 from roboco.tools.web_search import WebSearchTool
@@ -141,7 +139,6 @@ class VersatileTeam(Team):
                 web_search_tool.register_with_agents(
                     self.get_agent("researcher")
                 )
-                logger.info("Registered WebSearchTool with researcher")
             except ImportError:
                 logger.warning("WebSearchTool not available")
             except Exception as e:
@@ -163,9 +160,6 @@ class VersatileTeam(Team):
                     self.get_agent("integrator")
                 )
                 
-                # Log available languages
-                available_langs = ', '.join(code_tool.available_languages)
-                logger.info(f"Registered CodeTool with creator, evaluator, and integrator. Available languages: {available_langs}")
             except ImportError:
                 logger.warning("CodeTool not available")
             except Exception as e:

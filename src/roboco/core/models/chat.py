@@ -14,7 +14,7 @@ class ChatRequest(BaseModel):
     query: str = Field(..., description="The query to process")
     teams: Optional[List[str]] = Field(None, description="Optional specific teams to assign")
     conversation_id: Optional[str] = Field(None, description="Optional ID to continue existing conversation")
-
+    project_id: Optional[str] = Field(None, description="Optional project ID to use for project creation")
 
 class ChatResponse(BaseModel):
     """Response from project chat API."""

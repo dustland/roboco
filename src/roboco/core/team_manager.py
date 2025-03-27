@@ -8,7 +8,7 @@ configuring team behaviors and handoffs.
 
 import os
 import yaml
-from typing import Dict, Any, List, Optional, Type, Set, Union, ClassVar
+from typing import Dict, Any, List, Optional, Type, Set, Union
 from loguru import logger
 
 from roboco.core.team import Team
@@ -34,32 +34,12 @@ class TeamManager:
     This class combines the functionality of TeamBuilder and TeamAssigner
     into a single unified interface. It provides methods for creating
     teams with different agent compositions and assigning teams to tasks.
-    
-    It follows the singleton pattern to ensure there is only one
-    central team manager across the application.
     """
-    
-    # Singleton instance
-    _instance: ClassVar[Optional['TeamManager']] = None
-    
-    @classmethod
-    def get_instance(cls, **kwargs) -> 'TeamManager':
-        """Get the singleton instance of TeamManager.
-        
-        Args:
-            **kwargs: Initialization parameters (only used when creating a new instance)
-            
-        Returns:
-            The singleton TeamManager instance
-        """
-        if cls._instance is None:
-            cls._instance = cls(**kwargs)
-        return cls._instance
     
     def __init__(
         self,
+        fs: ProjectFS,
         teams_config_path: str = "config/teams.yaml",
-        fs: Optional[ProjectFS] = None,
         **agent_factory_kwargs
     ):
         """Initialize the team manager.
@@ -69,10 +49,6 @@ class TeamManager:
             fs: Optional ProjectFS instance
             **agent_factory_kwargs: Additional keyword arguments to pass to the AgentFactory
         """
-        # Skip initialization if already initialized (singleton pattern)
-        if TeamManager._instance is not None:
-            return
-            
         # Get the singleton AgentFactory instance
         self.agent_factory = AgentFactory.get_instance(**agent_factory_kwargs)
         
@@ -266,7 +242,7 @@ class TeamManager:
         team_config.update(kwargs)
         
         # Configure a new builder based on the team config
-        builder = TeamManager.get_instance()
+        builder = TeamManager()
         
         # Configure roles
         if "roles" in team_config:
@@ -399,16 +375,18 @@ class TeamManager:
     
     @staticmethod
     def create_team(team_key: str, **kwargs) -> Team:
-        """Static method to create a team by key without requiring an instance.
+        """Create a team of the specified type with default configuration.
         
         Args:
             team_key: Key of the team to create
-            **kwargs: Additional arguments to override configuration values
+            **kwargs: Additional arguments for the team
             
         Returns:
-            An initialized Team instance
+            Initialized team instance
         """
-        return TeamManager.get_instance().create_team_from_config(team_key, **kwargs)
+        # Create a new TeamManager to handle this request
+        team_manager = TeamManager()
+        return team_manager.create_team_from_config(team_key, **kwargs)
     
     # --- Methods from TeamAssigner ---
     

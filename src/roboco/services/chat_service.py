@@ -16,7 +16,8 @@ logger = logger.bind(module=__name__)
 from roboco.core.project_fs import ProjectFS
 from roboco.core.config import load_config, get_llm_config, get_workspace
 from roboco.teams.planning import PlanningTeam
-from roboco.core.project_manager import ProjectManager
+from roboco.core.task_manager import TaskManager
+from roboco.core.project import Project
 from roboco.services.project_service import ProjectService
 from roboco.core.models.chat import ChatRequest, ChatResponse
 from roboco.utils.id_generator import generate_short_id
@@ -92,7 +93,7 @@ class ChatService:
         project_id = conversation.get("project_id")
         
         # Create planner for general chat
-        planning_team = PlanningTeam(workspace_dir=self.workspace_dir)
+        planning_team = PlanningTeam(project_id=project_id)
         
         # Get project status if available
         project_status = None
@@ -153,17 +154,9 @@ class ChatService:
         conversation_id: str,
         chat_request: ChatRequest
     ) -> ChatResponse:
-        """
-        Create and execute a project based on the chat request.
-        
-        Args:
-            conversation_id: ID of the conversation
-            chat_request: The chat request containing the query
-            
-        Returns:
-            ChatResponse with the results
-        """
-        logger.info(f"Creating project from query: {chat_request.query}")
+        """Create and execute a project based on the chat request."""
+        # Generate project ID if not provided in the request
+        project_id = chat_request.project_id or generate_short_id()
         
         # Create a project
         project = await self.project_service.create_project_from_query(
@@ -172,16 +165,20 @@ class ChatService:
             metadata={
                 "conversation_id": conversation_id,
                 "chat_request": chat_request.dict()
-            }
+            },
+            project_id=project_id
         )
         
-        # Initialize project executor using the project
-        logger.info(f"Initializing project executor for project: {project.project_dir}")
+        # Store the project ID in the conversation
+        conversation = self.conversations[conversation_id]
+        conversation["project_id"] = project.project_id
         
-        project_manager = ProjectManager(config=self.config)
-        result = await project_manager.execute_project(project.project_dir)
+        # Initialize TaskManager for the project
+        logger.info(f"Initializing Project for execution: {project.project_id}")
+        project_obj = Project.load(project.project_id)
         
-        # TODO: Store the result in the conversation?
+        # Execute project tasks
+        result = await project_obj.execute_tasks()
         
         # Create chat response
         response = ChatResponse(
@@ -189,7 +186,7 @@ class ChatService:
             project_id=project.id,
             message=f"Project {project.name} created and executed successfully",
             content={
-                "project_dir": project.project_dir
+                "project_id": project.project_id
             },
             status="completed"
         )

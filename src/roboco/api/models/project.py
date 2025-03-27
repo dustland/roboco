@@ -10,8 +10,7 @@ from datetime import datetime
 from pydantic import BaseModel, Field
 
 from roboco.api.models.task import Task
-from roboco.core.models.project import Project as CoreProject
-
+from roboco.core.models.project_manifest import ProjectManifest
 
 class ProjectBase(BaseModel):
     """Base model for project data."""
@@ -41,8 +40,8 @@ class ProjectUpdate(BaseModel):
 class Project(ProjectBase):
     """Response model for a project."""
     id: str
-    created_at: datetime
-    updated_at: datetime
+    created_at: str
+    updated_at: str
     directory: str
     jobs: List[str] = []
     tasks: List[Task] = []
@@ -54,7 +53,7 @@ class Project(ProjectBase):
         from_attributes = True
 
     @classmethod
-    def from_core_model(cls, project: CoreProject) -> 'Project':
+    def from_core_model(cls, project: ProjectManifest) -> 'Project':
         """Create an API Project from a core Project model.
         
         Args:
@@ -73,7 +72,6 @@ class Project(ProjectBase):
                 assigned_to=task.assigned_to,
                 priority=task.priority,
                 depends_on=task.depends_on or [],
-                tags=task.tags or [],
                 created_at=task.created_at,
                 updated_at=task.updated_at,
                 completed_at=task.completed_at,

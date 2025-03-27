@@ -12,11 +12,12 @@ from pathlib import Path
 from typing import Dict, Any, List, Optional, Union
 import concurrent.futures
 import json
+import traceback
 
+from roboco.core.project_fs import ProjectFS
 from roboco.core.tool import Tool, command
 from loguru import logger
 from roboco.core.models.project_manifest import ProjectManifest, dict_to_project_manifest
-from roboco.core.project_fs import FileSystem, ProjectFS
 
 # Initialize logger
 logger = logger.bind(module=__name__)
@@ -29,7 +30,7 @@ class FileSystemTool(Tool):
     like AutoGen. It handles file operations within a specified workspace directory.
     """
     
-    def __init__(self, fs: FileSystem):
+    def __init__(self, fs: ProjectFS):
         """Initialize the file system tool.
         
         FileSystem must be provided.
@@ -273,7 +274,7 @@ class FileSystemTool(Tool):
             }
     
     @command()
-    def execute_project_manifest(self, manifest: Dict[str, Any]) -> Dict[str, Any]:
+    def execute_project_manifest(self, manifest: ProjectManifest) -> Dict[str, Any]:
         """
         Execute a project manifest to create a new project.
         
@@ -294,39 +295,18 @@ class FileSystemTool(Tool):
         """
         logger.info(f"Executing project manifest")
         
-        # Check if the manifest is empty or missing required fields
-        if not manifest:
-            error_msg = "Empty manifest provided - manifest must contain project details"
-            logger.error(f"Error executing project manifest: {error_msg}")
-            return {
-                "status": "error",
-                "message": f"Failed to execute project manifest: {error_msg}"
-            }
-        
-        # Check for required fields
-        required_fields = ['name', 'description']
-        missing_fields = [field for field in required_fields if field not in manifest]
-        
-        if missing_fields:
-            error_msg = f"Missing required fields in manifest: {', '.join(missing_fields)}"
-            logger.error(f"Error executing project manifest: {error_msg}")
-            return {
-                "status": "error",
-                "message": f"Failed to execute project manifest: {error_msg}"
-            }
-        
         try:
             # Use ProjectFS.initialize directly, avoiding circular imports
-            from roboco.core.project_fs import ProjectFS
+            from roboco.core.project import Project
             from roboco.core.models.project_manifest import dict_to_project_manifest
             
             # Check if we have name and description in the manifest
             if isinstance(manifest, dict) and 'name' in manifest and 'description' in manifest:
                 # Create the project using ProjectFS.initialize with extracted values
-                project_fs = ProjectFS.initialize(
+                project = Project.initialize(
                     name=manifest['name'],
                     description=manifest['description'],
-                    project_dir=manifest.get('project_dir', manifest.get('directory_name')),
+                    project_id=manifest.get('id'),
                     manifest=manifest
                 )
             else:
@@ -334,32 +314,38 @@ class FileSystemTool(Tool):
                 project_manifest = dict_to_project_manifest(manifest) if isinstance(manifest, dict) else manifest
                 
                 # Create the project using ProjectFS.initialize with extracted values
-                project_fs = ProjectFS.initialize(
+                project = Project.initialize(
                     name=project_manifest.name,
                     description=project_manifest.description,
-                    project_dir=project_manifest.project_dir,
-                    manifest=manifest
+                    project_id=project_manifest.id,
+                    manifest=project_manifest
                 )
                 
             # Get the project details to return
-            project_data = project_fs.get_project()
+            try:
+                project_data = self.fs.read_json_sync("project.json")
+            except FileNotFoundError:
+                raise ValueError(f"Project file not found: project.json")
+            except json.JSONDecodeError:
+                raise ValueError(f"Invalid JSON in project file: project.json")
             
             # Log the project data for debugging
             logger.debug(f"Project data: {project_data}")
             
-            # Access the project_dir safely with a fallback
-            project_dir = project_data.get("project_dir", "unknown_directory")
-            logger.debug(f"Project directory determined to be: {project_dir}")
+            # Access the project_id safely with a fallback
+            project_id = project_data.get("id", "unknown_id")
+            logger.debug(f"Project id determined to be: {project_id}")
             
             return {
                 "status": "success",
                 "message": f"Project manifest executed successfully",
-                "project_dir": project_dir
+                "project_id": project_id
             }
             
         except ValueError as e:
             error_msg = str(e)
             logger.error(f"Error executing project manifest: {error_msg}")
+            logger.error(f"Traceback: {traceback.format_exc()}")
             return {
                 "status": "error",
                 "message": f"Failed to execute project manifest: {error_msg}"
@@ -367,6 +353,7 @@ class FileSystemTool(Tool):
         except FileNotFoundError as e:
             error_msg = f"File not found: {str(e)}"
             logger.error(f"Error executing project manifest: {error_msg}")
+            logger.error(f"Traceback: {traceback.format_exc()}")
             return {
                 "status": "error",
                 "message": f"Failed to execute project manifest: {error_msg}"
@@ -388,6 +375,7 @@ class FileSystemTool(Tool):
         except Exception as e:
             error_msg = str(e)
             logger.error(f"Error executing project manifest: {error_msg}")
+            logger.error(f"Traceback: {traceback.format_exc()}")
             return {
                 "status": "error",
                 "message": f"Failed to execute project manifest: {error_msg}"

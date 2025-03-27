@@ -11,10 +11,11 @@ from roboco.core.team import Team
 from roboco.core.agent_factory import AgentFactory
 from roboco.core.tool import Tool, command
 from roboco.core.config import load_config, save_config, create_default_config
-from roboco.core.project_fs import FileSystem, ProjectFS, ProjectNotFoundError, get_project_fs
+from roboco.core.project_fs import ProjectFS, ProjectNotFoundError, get_project_fs
+from roboco.core.project import Project
 
 # Models
-from roboco.core.models import Task, Project, RobocoConfig, LLMConfig, ToolConfig, TeamConfig
+from roboco.core.models import Task, RobocoConfig, LLMConfig, ToolConfig, TeamConfig
 
 # Logging
 from loguru import logger
@@ -23,7 +24,6 @@ from roboco.core.logger import configure_logger, enable_file_logging, disable_fi
 # These managers are included last to avoid circular imports
 from roboco.core.task_manager import TaskManager
 from roboco.core.team_manager import TeamManager
-from roboco.core.project_manager import ProjectManager
 
 __all__ = [
     # Core classes
@@ -42,10 +42,8 @@ __all__ = [
     # Managers
     "TaskManager",
     "TeamManager", 
-    "ProjectManager",
     
     # Filesystem
-    "FileSystem",
     "ProjectFS",
     "ProjectNotFoundError",
     "get_project_fs",

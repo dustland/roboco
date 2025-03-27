@@ -30,15 +30,11 @@ load_config_settings()  # Now it's safe to load config because all imports are r
 logger.info("Configuration loaded, log level set from config")
 
 # Now import and use other modules that depend on logging
-from roboco.core.project_manager import ProjectManager
 from roboco.core.task_manager import TaskManager
 
 def main():
     """Main application entry point"""
     logger.info("Initializing application components...")
-    
-    # Initialize components
-    project_manager = ProjectManager()
     
     # Example logging at different levels
     logger.debug("This is a debug message - only shown if log_level is DEBUG")

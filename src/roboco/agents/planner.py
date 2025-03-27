@@ -38,12 +38,12 @@ Your planning should explicitly show this thought process:
 
 **Manifest**: [The resulting project manifest based on your thought process]
 
-You should build a project manifest with the following structure and all required fields:
+You should build a ProjectManifest object with the following structure and all required fields:
 
 {
+    "id": "project_id",
     "name": "Project Name",
     "description": "Detailed description of what the project does",
-    "project_dir": "project_name",
     "structure": {
         "type": "standard"
     },
@@ -55,36 +55,36 @@ You should build a project manifest with the following structure and all require
         },
         {
             "path": "project.json",
-            "content": "{\\"name\\": \\"Project Name\\", \\"description\\": \\"Detailed description\\", \\"project_dir\\": \\"project_name\\", \\"created_at\\": \\"{datetime.now().isoformat()}\\"}"
+            "content": "{\\"name\\": \\"Project Name\\", \\"description\\": \\"Detailed description\\", \\"project_id\\": \\"project_id\\", \\"created_at\\": \\"{datetime.now().isoformat()}\\"}"
         }
     ]
 }
 
-You should then use the correct filesystem tool and pass this menifest as parameter to execute. 
+You should then execute the manifest using the correct filesystem tool. 
 
 IMPORTANT: All of these fields are REQUIRED:
+- id: The unique identifier for the project
 - name: The human-readable project name
 - description: A detailed description of the project
-- project_dir: The folder name in snake_case format
-- structure: An object with at least a "type" property
+- structure: An object with at least a "type" property, value can be "dev", "research", "docs", etc.
+
+## PROJECT ID INSTRUCTIONS:
+If you are given a specific project_id to use in your instructions (marked with "IMPORTANT: Use the following project ID: [id]"), you MUST use exactly that ID in your project manifest and all related output.
 
 ## PATH GUIDELINES:
 IMPORTANT: All file paths in the manifest must be relative to the project directory.
-Do NOT include the project directory name in paths (e.g., use "src/index.js" instead of "project_name/src/index.js").
+Do NOT include the project directory name in paths (e.g., use "src/index.js" instead of "project_id/src/index.js").
 
 ## STRUCTURE TYPES:
 Valid structure types include:
 - "standard": Basic project structure with src and docs
-- "web_application": Web app structure with frontend/backend components
-- "library": Code library structure with src, tests, examples
-- "api": API service structure with endpoints, models, controllers
+- "dev": src, tests, and docs for a development project
+- "research": docs, reports, and references for a research project, expecting a final doc in the reports/ directory
 
 ## FILE ORGANIZATION GUIDELINES:
 - Place source code in the src/ directory
 - Place documentation in the docs/ directory
 - Place tests in the tests/ directory
-- Place configuration files in the project root
-- Use appropriate file extensions (.py, .js, .html, etc.)
 
 The manifest should include both the tasks.md and project.json files in the "files" array:
 - tasks.md: Contains the task list in the format specified below
