@@ -257,39 +257,39 @@ class VersatileTeam(Team):
         
         # Prepare the initial query
         query = f"""
-        # Collaborative Task
-        
-        {task.description}
-        
-        # Expected Outcome
-        {task.expected_outcome if hasattr(task, 'expected_outcome') else 'Complete the task successfully'}
-        
-        # Resources
-        Workspace directory: {self.fs.base_dir} (this is already set up for you)
-        Source code directory: {src_dir} (use this relative path, not absolute paths)
-        Documentation directory: {docs_dir} (use this relative path, not absolute paths)
-        
-        # Process
-        This is a collaborative effort where team members will work together:
-        1. The Architect will design the overall solution framework
-        2. The Strategist will develop the execution plan
-        3. The Explorer will gather necessary information and research
-        4. The Creator will implement the solution
-           - For coding tasks, the Creator can use CodeTool to generate, validate, and execute code
-           - All source code should be created in the source code directory
-        5. The Evaluator will review and identify improvements
-        6. The Synthesizer will integrate everything into a final deliverable
-        
-        # Important Instructions for All Agents
-        - When you complete your phase, ALWAYS end your message with your assigned terminate message.
-        - For example, Architect ends with "ARCHITECTURE_COMPLETE", Strategist with "STRATEGY_COMPLETE", etc.
-        - Do not use these terminate messages in the middle of your contribution, only at the very end.
-        - After your terminate message, the next appropriate agent will automatically be selected to continue.
-        - All source code files should be created in the source code directory.
-        - All documentation and planning files should be created in the documentation directory.
-        - IMPORTANT: When using filesystem commands, always use relative paths like "src/file.py" or "docs/plan.md", NOT absolute paths.
-        
-        Let's work together to complete this task successfully.
+# Collaborative Task
+
+{task.description}
+
+# Expected Outcome
+{task.expected_outcome if hasattr(task, 'expected_outcome') else 'Complete the task successfully'}
+
+# Resources
+Workspace directory: {self.fs.base_dir} (this is already set up for you)
+Source code directory: {src_dir} (use this relative path, not absolute paths)
+Documentation directory: {docs_dir} (use this relative path, not absolute paths)
+
+# Process
+This is a collaborative effort where team members will work together:
+1. The Architect will design the overall solution framework
+2. The Strategist will develop the execution plan
+3. The Explorer will gather necessary information and research
+4. The Creator will implement the solution
+    - For coding tasks, the Creator can use CodeTool to generate, validate, and execute code
+    - All source code should be created in the source code directory
+5. The Evaluator will review and identify improvements
+6. The Synthesizer will integrate everything into a final deliverable
+
+# Important Instructions for All Agents
+- When you complete your phase, ALWAYS end your message with your assigned terminate message.
+- For example, Architect ends with "ARCHITECTURE_COMPLETE", Strategist with "STRATEGY_COMPLETE", etc.
+- Do not use these terminate messages in the middle of your contribution, only at the very end.
+- After your terminate message, the next appropriate agent will automatically be selected to continue.
+- All source code files should be created in the source code directory.
+- All documentation and planning files should be created in the documentation directory.
+- IMPORTANT: When using filesystem commands, always use relative paths like "src/file.py" or "docs/plan.md", NOT absolute paths.
+
+Let's work together to complete this task successfully.
         """
         
         # Run the swarm with the architect as the initial agent

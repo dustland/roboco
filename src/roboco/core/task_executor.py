@@ -118,29 +118,29 @@ class TaskExecutor:
         try:
             # Format the task prompt
             task_prompt = f"""
-            Execute the following task:
-            
-            {task.description}
-            
-            CONTEXT:
-            {execution_context}
-            
-            Instructions:
-            - You have access to the filesystem tool for all file operations
-            - Use the filesystem tool's commands to:
-              * `list_directory` to explore directories and see what files exist
-              * `read_file` to read file contents
-              * `save_file` to create or modify files
-              * `file_exists` to check if a file exists
-              * `create_directory` to create new directories
-              * `delete_file` to remove files
-              * `read_json` to read and parse JSON files
-            - Always place source code files (js, py, etc.) in the src directory
-            - Always place documentation files (md, txt, etc.) in the docs directory
-            - Maintain a clean, organized directory structure
-            - Do not create files directly in the project root
-            - When modifying files, use the filesystem tool's commands instead of trying to edit files directly
-            """
+Execute the following task:
+
+{task.description}
+
+CONTEXT:
+{execution_context}
+
+Instructions:
+- You have access to the filesystem tool for all file operations
+- Use the filesystem tool's commands to:
+    * `list_directory` to explore directories and see what files exist
+    * `read_file` to read file contents
+    * `save_file` to create or modify files
+    * `file_exists` to check if a file exists
+    * `create_directory` to create new directories
+    * `delete_file` to remove files
+    * `read_json` to read and parse JSON files
+- Always place source code files (js, py, etc.) in the src directory
+- Always place documentation files (md, txt, etc.) in the docs directory
+- Maintain a clean, organized directory structure
+- Do not create files directly in the project root
+- When modifying files, use the filesystem tool's commands instead of trying to edit files directly
+"""
             
             # Execute task using the team
             task_result = await team.run_chat(query=task_prompt)
