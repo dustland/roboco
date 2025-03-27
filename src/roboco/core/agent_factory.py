@@ -6,13 +6,23 @@ allowing for role-driven agent creation.
 """
 
 import os
-import yaml
 from typing import Dict, Any, Optional, Type, List, Union, ClassVar
 from loguru import logger
+from pathlib import Path
 
 from roboco.core.agent import Agent
 from roboco.agents.human_proxy import HumanProxy
+from roboco.core.models.config import RobocoConfig
 from roboco.core.tool import Tool
+from roboco.core.models import AgentConfig, RoleConfig
+from roboco.core.config import (
+    load_config, 
+    get_llm_config, 
+    load_roles_config, 
+    get_role_config,
+    get_validated_role_config,
+    create_agent_config
+)
 
 class AgentFactory:
     """Factory for creating agents based on role definitions.
@@ -49,33 +59,24 @@ class AgentFactory:
             roles_config_path: Path to the roles configuration file
             prompts_dir: Directory containing markdown files with detailed role prompts
         """
-        # Skip initialization if already initialized (singleton pattern)
+        # Skip full initialization if already initialized (singleton pattern)
         if AgentFactory._instance is not None:
+            # Make sure instance variables are always available
+            if not hasattr(self, 'roles_config'):
+                self.roles_config = load_roles_config(roles_config_path)
+            if not hasattr(self, 'main_config'):
+                self.main_config = load_config()
+            if not hasattr(self, 'prompts_dir'):
+                self.prompts_dir = prompts_dir
+            if not hasattr(self, 'agent_registry'):
+                self.agent_registry = {}
             return
             
-        self.roles_config = self._load_roles_config(roles_config_path)
-        self.prompts_dir = prompts_dir
-        self.agent_registry = {}  # Registry of specialized agent classes
+        self.roles_config: Dict = load_roles_config(roles_config_path)
+        self.main_config: RobocoConfig = load_config()  # Use core.config to load the main configuration
+        self.prompts_dir: str = prompts_dir
+        self.agent_registry: Dict[str, Type[Agent]] = {}  # Registry of specialized agent classes
         
-    def _load_roles_config(self, config_path: str) -> Dict[str, Any]:
-        """Load the roles configuration from YAML file.
-        
-        Args:
-            config_path: Path to the roles configuration file
-            
-        Returns:
-            Dictionary containing role configurations
-        """
-        try:
-            with open(config_path, 'r', encoding='utf-8') as file:
-                config = yaml.safe_load(file)
-                logger.info(f"Successfully loaded roles configuration from {config_path}")
-                return config
-        except Exception as e:
-            logger.warning(f"Failed to load roles config from {config_path}: {str(e)}")
-            logger.warning("Using default empty configuration")
-            return {"roles": {}}
-    
     def _load_markdown_prompt(self, role_key: str) -> Optional[str]:
         """Load a detailed prompt from a markdown file.
         
@@ -114,13 +115,13 @@ class AgentFactory:
             return markdown_prompt
         
         # If no markdown prompt exists, create a default prompt based on role name
-        try:
-            # Get role name from config if available
-            role_name = self.roles_config["roles"][role_key].get("name", role_key.replace('_', ' ').title())
+        role_config = get_role_config(self.roles_config, role_key)
+        if role_config:
+            role_name = role_config.name
             default_prompt = f"You are the {role_name} agent."
             logger.info(f"Using default prompt for role '{role_key}': '{default_prompt}'")
             return default_prompt
-        except (KeyError, TypeError):
+        else:
             # Create a generic prompt based on role key
             default_prompt = f"You are the {role_key.replace('_', ' ').title()} agent."
             logger.warning(f"Role '{role_key}' not found in config, using default prompt: '{default_prompt}'")
@@ -129,7 +130,8 @@ class AgentFactory:
     def _get_llm_config(self, role_key: str) -> Optional[Dict[str, Any]]:
         """Get the LLM configuration for a specific role.
         
-        Extracts the LLM configuration from the role definition in roles.yaml.
+        Extracts the LLM configuration from the role definition in roles.yaml,
+        then uses core.config functions to properly merge with provider settings.
         
         Args:
             role_key: The key of the role in the configuration
@@ -137,17 +139,24 @@ class AgentFactory:
         Returns:
             Dictionary containing LLM configuration or None if not specified
         """
-        try:
-            role_config = self.roles_config["roles"][role_key]
-            if "llm" in role_config:
-                llm_config = role_config["llm"].copy()
-                logger.info(f"Found LLM configuration for role '{role_key}': {llm_config}")
-                return llm_config
-        except (KeyError, TypeError):
-            pass
+        # Always start with the base LLM config from config.yaml
+        base_llm_config = get_llm_config(self.main_config, provider="llm")
         
-        logger.info(f"No LLM configuration found for role '{role_key}'")
-        return None
+        # Get role-specific config
+        role_config = get_role_config(self.roles_config, role_key)
+        if role_config and role_config.llm:
+            # Get role-specific LLM config
+            role_llm_config = role_config.llm.copy()
+            
+            # Merge base config with role-specific config
+            # Role settings take precedence over base settings
+            merged_config = {**base_llm_config, **role_llm_config}
+            
+            logger.info(f"Created merged LLM configuration for role '{role_key}'")
+            return merged_config
+        
+        # If no role-specific config, return the base config
+        return base_llm_config
     
     def register_agent_class(self, role_key: str, agent_class: Type[Agent]):
         """Register a specialized agent class for a specific role.
@@ -165,6 +174,7 @@ class AgentFactory:
         name: Optional[str] = None,
         system_message: Optional[str] = None,
         tools: Optional[List[Union[Tool, Dict]]] = None,
+        llm_config: Optional[Dict[str, Any]] = None,
         **kwargs
     ) -> Agent:
         """Create an agent for a specific role.
@@ -177,16 +187,20 @@ class AgentFactory:
             name: Optional custom name for the agent (defaults to role name from config)
             system_message: Optional custom system message (overrides role prompt)
             tools: Optional list of tools to register with the agent
+            llm_config: Optional explicit LLM configuration to use (will be merged with base config)
             **kwargs: Additional arguments passed to the agent constructor
             
         Returns:
             An initialized agent instance (either Agent or HumanProxy)
         """
-        # Get the agent name (from parameter, config, or role key)
+        # Get the validated role configuration
+        role_config = get_role_config(self.roles_config, role_key)
+        
+        # Get the agent name (from parameter, role config, or role key)
         if name is None:
-            try:
-                name = self.roles_config["roles"][role_key]["name"]
-            except (KeyError, TypeError):
+            if role_config:
+                name = role_config.name
+            else:
                 name = role_key.replace('_', ' ').title()
         
         # Ensure the name doesn't contain whitespace (AG2 requirement)
@@ -203,33 +217,40 @@ class AgentFactory:
             else:
                 tools.extend(kwargs.pop('tools'))
         
+        # Extract llm_config from kwargs if provided there
+        if 'llm_config' in kwargs and llm_config is None:
+            llm_config = kwargs.pop('llm_config')
+        
         # Determine if this is a human proxy or agent role
         role_type = "agent"  # Default to agent
-        try:
-            role_type = self.roles_config["roles"][role_key].get("type", "agent").lower()
-        except (KeyError, TypeError):
-            pass
+        if role_config:
+            role_type = role_config.type.lower()
+        
+        # Create validated agent configuration
+        agent_config = create_agent_config(
+            role_key=role_key,
+            name=name,
+            system_message=system_message,
+            llm_config=llm_config,
+            **kwargs
+        )
         
         # Set up common parameters for agent creation
         agent_params = {
-            "name": name,
-            "system_message": system_message,
+            "name": agent_config.name,
+            "system_message": agent_config.system_message or system_message,
             **kwargs  # Include all additional parameters
         }
         
-        # Get LLM configuration from role definition if not explicitly provided
-        if "llm_config" not in agent_params:
-            llm_config = self._get_llm_config(role_key)
-            if llm_config:
-                # Extract provider if specified
-                provider = llm_config.pop("provider", "llm")
-                
-                # If using a specific provider, set it in the agent parameters
-                if provider != "llm":
-                    agent_params["llm_provider"] = provider
-                
-                # Add the rest of the LLM configuration
-                agent_params["llm_config"] = llm_config
+        # Handle LLM configuration - just get the role config and pass it through
+        # Any provider extraction will be handled by Agent.__init__
+        if llm_config is None:
+            role_llm_config = self._get_llm_config(role_key)
+            if role_llm_config:
+                agent_params["llm_config"] = role_llm_config
+        else:
+            # If explicit config provided, use it directly
+            agent_params["llm_config"] = llm_config
         
         # Create agent based on role type and registry
         if role_key in self.agent_registry:
@@ -253,6 +274,9 @@ class AgentFactory:
         
     def debug_registry(self):
         """Print the current state of the agent registry for debugging purposes."""
-        logger.info(f"Agent Registry contains {len(self.agent_registry)} entries:")
-        for role_key, agent_class in self.agent_registry.items():
+        # Ensure we're using the correct registry (from singleton if needed)
+        registry = getattr(self, 'agent_registry', None) or getattr(AgentFactory._instance, 'agent_registry', {})
+        
+        logger.info(f"Agent Registry contains {len(registry)} entries:")
+        for role_key, agent_class in registry.items():
             logger.info(f"  - {role_key}: {agent_class.__name__}") 

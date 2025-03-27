@@ -18,11 +18,11 @@ from typing import Optional, List, Union, Dict, Any
 from datetime import datetime
 import uuid
 from loguru import logger
+import shutil
 
-from roboco.core.models.project import Project
-from roboco.core.models.task import Task
 from roboco.core.config import load_config, get_workspace
 from roboco.core.models.project_manifest import ProjectManifest, dict_to_project_manifest
+from roboco.utils.id_generator import generate_short_id
 
 
 class FileSystem:
@@ -431,37 +431,33 @@ class ProjectFS(FileSystem):
     Project filesystem abstraction.
     
     This class extends the FileSystem class to provide project-specific
-    functionality, such as project metadata management, task tracking,
-    and artifact organization.
+    functionality, such as project metadata management and structure initialization.
     """
     
     def __init__(self, project_dir: str):
         """
         Initialize the project filesystem.
         
-        If project_dir is empty, the project will be created in the projects base directory.
-        
         Args:
             project_dir: Direct path to the project directory
         """
-
-            
         # Load configuration to get projects base directory
         self.config = load_config()
         self.project_dir = project_dir
         
-        # If project_dir is provided, use it directly
-        super().__init__(get_workspace(self.config) / self.project_dir)
+        # Initialize with the base directory
+        workspace_root = get_workspace(self.config)
+        super().__init__(os.path.join(workspace_root, self.project_dir))
             
         # Cache for project data
         self._project_data = None
     
-    async def get_project(self) -> Project:
+    def get_project(self) -> Dict[str, Any]:
         """
-        Get the project data.
+        Get the project data.`
         
         Returns:
-            Project object with the project data
+            Dictionary containing the project data
         
         Raises:
             ProjectNotFoundError: If the project data cannot be found
@@ -469,277 +465,322 @@ class ProjectFS(FileSystem):
         if self._project_data:
             return self._project_data
             
-        data = await self.read_json("project.json")
-        if not data:
-            raise ProjectNotFoundError(f"Project data not found at {self.base_dir}")
+        try:
+            data = self.read_json_sync("project.json")
+            if not data:
+                logger.error(f"Project data is empty in {self.base_dir}/project.json")
+                raise ProjectNotFoundError(f"Project data is empty at {self.base_dir}")
             
-        self._project_data = Project.from_dict(data)
-        return self._project_data
+            # Also log the data for debugging
+            logger.debug(f"Read project data from {self.base_dir}/project.json: {data}")
+            
+            # Add project_dir if missing
+            if "project_dir" not in data:
+                base_dir_name = os.path.basename(self.base_dir)
+                data["project_dir"] = base_dir_name
+                logger.info(f"Added missing project_dir field: {base_dir_name}")
+                
+                # Save the updated data
+                self.write_sync("project.json", json.dumps(data, indent=2))
+            
+            self._project_data = data
+            return self._project_data
+        except FileNotFoundError:
+            logger.error(f"Project file not found at {self.base_dir}/project.json")
+            raise ProjectNotFoundError(f"Project file not found at {self.base_dir}")
+        except json.JSONDecodeError:
+            logger.error(f"Invalid JSON in project file at {self.base_dir}/project.json")
+            raise ProjectNotFoundError(f"Invalid JSON in project file at {self.base_dir}")
+        except Exception as e:
+            logger.error(f"Error reading project data from {self.base_dir}: {str(e)}")
+            raise ProjectNotFoundError(f"Error reading project data: {str(e)}")
     
-    async def save_project(self, project: Project) -> None:
+    def save_project(self, project_data: Dict[str, Any]) -> None:
         """
-        Save project data.
+        Update and save project metadata to project.json.
         
         Args:
-            project: Project object to save
-            
-        Returns:
-            None
+            project_data: Updated project data to save
         """
-        # Update the directory field to match the folder name
-        project.directory = os.path.basename(self.base_dir)
+        # Ensure required fields are present
+        required_fields = ["name", "description", "project_dir"]
+        for field in required_fields:
+            if field not in project_data:
+                raise ValueError(f"Required field '{field}' is missing from project data")
+                
+        # Ensure the project has an id
+        if "id" not in project_data:
+            project_data["id"] = generate_short_id()
+            logger.info(f"Adding missing id {project_data['id']} to project {project_data['name']}")
         
-        # Update the project data
-        project.updated_at = datetime.now()
+        # Update timestamp
+        project_data["updated_at"] = datetime.now().isoformat()
         
-        # Save the project data as properly serialized JSON
-        await self.write("project.json", json.dumps(project.to_dict(), indent=2))
+        # Write the updated data back to project.json
+        self.write_sync("project.json", json.dumps(project_data, indent=2))
         
-        # Update the cache
-        self._project_data = project
+        logger.debug(f"Saved project data to {self.base_dir}/project.json")
+        
+        # Enable writing further files
+        self._project_data = project_data
     
     @classmethod
-    async def create(
+    def initialize(
         cls,
         name: str,
         description: str,
-        directory: Optional[str] = None,
+        project_dir: Optional[str] = None,
         teams: Optional[List[str]] = None,
-        tags: Optional[List[str]] = None
+        tags: Optional[List[str]] = None,
+        manifest: Optional[Union[ProjectManifest, Dict[str, Any]]] = None
     ) -> "ProjectFS":
         """
-        Create a new project.
+        Initialize a new project with the necessary structure and metadata.
         
         Args:
             name: Name of the project
             description: Description of the project
-            directory: Optional custom directory name
-            teams: Teams involved in the project
-            tags: Tags for the project
+            project_dir: Optional directory name (defaults to name with underscores)
+            teams: Optional list of team names
+            tags: Optional list of tags
+            manifest: Optional complete project manifest (if provided, other args are ignored)
+                     File paths in the manifest can be either:
+                     - Relative to the project directory (preferred)
+                     - Prefixed with the project directory name (will be made relative)
             
         Returns:
             ProjectFS instance for the new project
         """
-        # Create a new project instance
-        project = Project(
-            name=name,
-            description=description,
-            directory=directory or name.lower().replace(" ", "_"),
-            teams=teams or [],
-            tags=tags or []
-        )
+        # Generate project ID
+        project_id = generate_short_id()
+        now = datetime.now().isoformat()
         
-        # Generate a unique ID
-        project.id = str(uuid.uuid4())
-        
-        # Create a folder name
-        folder_name = cls._create_folder_name(project)
-        project.directory = folder_name
-        
-        # Get the projects base directory
+        # Load config and get workspace root
         config = load_config()
-        projects_base_dir = get_workspace(config)
+        workspace_root = get_workspace(config)
         
-        # Create the project directory
-        project_dir = os.path.join(projects_base_dir, folder_name)
-        
-        # Create a ProjectFS instance
-        project_fs = ProjectFS(project_dir=project_dir)
-        
-        try:
-            # Create base directories
-            await project_fs._ensure_directories()
+        # If a complete manifest is provided, use that
+        if manifest:
+            if isinstance(manifest, dict):
+                manifest = dict_to_project_manifest(manifest)
+        else:
+            # If no directory specified, generate from name
+            if not project_dir:
+                project_dir = name.lower().replace(' ', '_')
             
-            # Save the project data
-            await project_fs.save_project(project)
-            
-            return project_fs
-            
-        except Exception as e:
-            # If anything fails during setup, clean up by removing the project directory
-            await project_fs.rmdir("")
-            raise e
-
-    async def _ensure_directories(self) -> None:
-        """
-        Ensure the base project directory exists.
-        """
-        # Create only the base project directory
-        await self.mkdir("")
-
-    @classmethod
-    async def list_all(cls) -> List[Project]:
-        """
-        List all projects.
+            # Create a project manifest
+            manifest = ProjectManifest(
+                name=name,
+                description=description,
+                project_dir=project_dir,
+                structure={"type": "standard"},
+                folder_structure=["src", "docs"],
+                meta={
+                    "teams": teams or [],
+                    "tags": tags or []
+                }
+            )
         
-        Returns:
-            List of all projects
-        """
-        # Get the projects base directory
-        config = load_config()
-        projects_base_dir = get_workspace(config)
+        # Extract values from manifest
+        name = manifest.name
+        description = manifest.description
+        project_dir = manifest.project_dir
         
-        projects = []
-        
-        # Check if projects directory exists
-        if not os.path.exists(projects_base_dir):
-            return projects
-        
-        # Iterate through project directories
-        for project_dir in os.listdir(projects_base_dir):
-            project_path = os.path.join(projects_base_dir, project_dir)
-            if os.path.isdir(project_path):
-                config_path = os.path.join(project_path, "project.json")
-                if os.path.exists(config_path):
-                    try:
-                        with open(config_path, "r") as f:
-                            project_data = json.load(f)
-                            project = Project.from_dict(project_data)
-                            projects.append(project)
-                    except Exception as e:
-                        logger.error(f"Failed to load project from {config_path}: {str(e)}")
-        
-        return projects
-    
-    @classmethod
-    async def find_by_name(cls, name: str) -> List[Project]:
-        """
-        Find projects by name.
-        
-        Args:
-            name: Name to search for (case-insensitive partial match)
-            
-        Returns:
-            List of matching projects
-        """
-        projects = await cls.list_all()
-        return [p for p in projects if name.lower() in p.name.lower()]
-    
-    @classmethod
-    async def find_by_tag(cls, tag: str) -> List[Project]:
-        """
-        Find projects by tag.
-        
-        Args:
-            tag: Tag to search for (exact match)
-            
-        Returns:
-            List of matching projects
-        """
-        projects = await cls.list_all()
-        return [p for p in projects if tag in p.tags]
-    
-    @classmethod
-    async def get_by_id(cls, project_id: str) -> "ProjectFS":
-        """
-        Get a project by its ID.
-        
-        Args:
-            project_id: ID of the project
-            
-        Returns:
-            ProjectFS instance for the project
-            
-        Raises:
-            ProjectNotFoundError: If the project cannot be found
-        """
-        return ProjectFS(project_id=project_id)
-    
-    async def delete(self) -> bool:
-        """
-        Delete the project, removing all its files.
-        
-        Returns:
-            True if successful, False otherwise
-        """
-        try:
-            # Use rmdir instead of delete for recursive directory removal
-            return await self.rmdir("")
-        except Exception as e:
-            logger.error(f"Failed to delete project: {str(e)}")
-            return False
-
-    async def execute_project_manifest(self, manifest: Union[ProjectManifest, Dict[str, Any]], override_base_path: str = "") -> Dict[str, Any]:
-        """Execute a project manifest to create a complete project structure.
-        
-        Args:
-            manifest: Project manifest containing directories and files to create
-            override_base_path: Optional path within the project to use as base path
-            
-        Returns:
-            Dict containing results of the operation
-        """
-        results = {
-            "success": True,
-            "created_directories": [],
-            "created_files": [],
-            "errors": []
+        # Extract/convert structure information
+        structure = {
+            "type": manifest.structure.get("type", "standard"),
+            "folder_structure": manifest.folder_structure,
+            "files": [
+                {"path": file.path, "content": file.content} 
+                for file in (manifest.files or [])
+            ]
         }
         
+        # Set default directories from manifest or use standard defaults
+        source_code_dir = "src"  # Default
+        docs_dir = "docs"  # Default
+        
+        # Optional metadata might contain these settings
+        if manifest.meta:
+            source_code_dir = manifest.meta.get("source_code_dir", source_code_dir)
+            docs_dir = manifest.meta.get("docs_dir", docs_dir)
+        
+        # Validate required parameters
+        if not name or not description:
+            raise ValueError("Project name and description are required in manifest")
+        
+        # Create the project data as a dictionary (no Project class dependency)
+        project_data = {
+            "id": project_id,  # Always include the id
+            "name": name,
+            "description": description,
+            "project_dir": project_dir,
+            "created_at": now,
+            "updated_at": now,
+            "teams": manifest.meta.get("teams", []) if manifest.meta else [],
+            "jobs": manifest.meta.get("jobs", []) if manifest.meta else [],
+            "tasks": manifest.meta.get("tasks", []) if manifest.meta else [],
+            "tags": manifest.meta.get("tags", []) if manifest.meta else [],
+            "source_code_dir": source_code_dir,
+            "docs_dir": docs_dir,
+            "metadata": manifest.meta or {}
+        }
+        
+        # Create project directory structure
+        full_project_dir = os.path.join(workspace_root, project_dir)
+        
+        if os.path.exists(full_project_dir):
+            logger.warning(f"Project directory already exists: {full_project_dir} - Deleting it before proceeding")
+            shutil.rmtree(full_project_dir)
+        
+        # Create ProjectFS for the new project
+        project_fs = cls(project_dir=project_dir)
+        
+        # Create basic directory structure using ProjectFS methods instead of direct OS calls
+        # First ensure the project root directory exists
+        os.makedirs(full_project_dir, exist_ok=True)
+        
+        # Then use project_fs methods to create subdirectories
+        project_fs.mkdir_sync(source_code_dir)
+        project_fs.mkdir_sync(docs_dir)
+        
+        # Save the project metadata to project.json using ProjectFS
+        project_fs.write_sync('project.json', json.dumps(project_data, indent=2))
+        
+        # Create tasks.md with empty content or from manifest tasks
+        tasks_content = f"# {name}\n\n"
+        if project_data["tasks"]:
+            # Create tasks.md with the tasks from the manifest
+            for task in project_data["tasks"]:
+                # Get task status and description
+                status = task.get("status", "TODO")
+                checkbox = "[x]" if status.upper() == "DONE" else "[ ]"
+                description = task.get("description", "")
+                
+                # Write the high-level task
+                tasks_content += f"- {checkbox} {description}\n"
+                
+                # Write the task details
+                details = task.get("details", [])
+                for detail in details:
+                    tasks_content += f"  * {detail}\n"
+                
+                # Add a blank line between tasks
+                tasks_content += "\n"
+        
+        # Save tasks.md using ProjectFS
+        project_fs.write_sync('tasks.md', tasks_content)
+        
+        # Create custom structure if provided
+        if structure:
+            # Create any additional directories
+            if structure.get('folder_structure'):
+                for folder in structure['folder_structure']:
+                    if folder not in [source_code_dir, docs_dir]:  # Skip already created dirs
+                        project_fs.mkdir_sync(folder)
+                
+            # Create any specified files
+            if structure.get('files'):
+                for file_info in structure['files']:
+                    # Make path relative to project directory by removing project directory prefix if present
+                    file_path = file_info['path']
+                    
+                    # If the path starts with the project directory name, remove it
+                    if file_path.startswith(f"{project_dir}/") or file_path.startswith(f"{project_dir}\\"):
+                        relative_path = file_path[len(project_dir)+1:]  # +1 for the slash
+                        logger.debug(f"Adjusting file path from '{file_path}' to '{relative_path}' (removing project directory prefix)")
+                        file_path = relative_path
+                    elif file_path == project_dir:
+                        logger.debug(f"Adjusting file path from '{file_path}' to root of project directory")
+                        file_path = ""
+                    
+                    # Write file with the adjusted path
+                    project_fs.write_sync(file_path, file_info['content'])
+        
+        logger.info(f"Created project '{name}' in directory: {full_project_dir}")
+        return project_fs
+    
+    def get_overview(self) -> Dict[str, Any]:
+        """
+        Get an overview of the project for task execution.
+        
+        Returns a comprehensive overview of the project including metadata,
+        directory structure, and task status for use in task prompts.
+        
+        Returns:
+            Dictionary with project overview
+        """
         try:
-            # Convert dict to ProjectManifest if needed
-            if isinstance(manifest, dict):
-                try:
-                    manifest = dict_to_project_manifest(manifest)
-                except Exception as e:
-                    results["errors"].append(f"Invalid project manifest format: {str(e)}")
-                    results["success"] = False
-                    return results
+            # Get project metadata
+            project_data = self.get_project()
             
-            # Create directories
-            for directory in manifest.directories or []:
-                dir_path = os.path.join(override_base_path, directory) if override_base_path else directory
-                try:
-                    await self.mkdir(dir_path)
-                    results["created_directories"].append(directory)
-                except Exception as e:
-                    results["errors"].append(f"Error creating directory {directory}: {str(e)}")
-                    results["success"] = False
+            # Get directory structure
+            directory_structure = {
+                "src": self.list_sync("src"),
+                "docs": self.list_sync("docs")
+            }
             
-            # Create files
-            for file_info in manifest.files or []:
-                file_path = os.path.join(override_base_path, file_info.path) if override_base_path else file_info.path
-                content = file_info.content
-                
-                # Create parent directory if it doesn't exist
-                parent_dir = os.path.dirname(file_path)
-                if parent_dir:
-                    try:
-                        await self.mkdir(parent_dir)
-                        # Only add if not already in the created directories list
-                        if parent_dir not in results["created_directories"]:
-                            results["created_directories"].append(parent_dir)
-                    except Exception as e:
-                        results["errors"].append(f"Error creating parent directory for {file_info.path}: {str(e)}")
-                        results["success"] = False
-                        continue
-                
-                try:
-                    await self.write(file_path, content)
-                    results["created_files"].append(file_info.path)
-                except Exception as e:
-                    results["errors"].append(f"Error creating file {file_info.path}: {str(e)}")
-                    results["success"] = False
-        
+            # Get additional directories
+            for folder in project_data.get("folder_structure", []):
+                if folder not in ["src", "docs"] and self.exists_sync(folder):
+                    directory_structure[folder] = self.list_sync(folder)
+            
+            # Get tasks information
+            tasks_content = ""
+            if self.exists_sync("tasks.md"):
+                tasks_content = self.read_sync("tasks.md")
+            
+            # Count completed vs total tasks
+            completed_tasks = 0
+            total_tasks = 0
+            
+            for line in tasks_content.splitlines():
+                line = line.strip()
+                if line.startswith("- ["):
+                    total_tasks += 1
+                    if line.startswith("- [x]"):
+                        completed_tasks += 1
+            
+            # Calculate progress percentage
+            progress = (completed_tasks / total_tasks * 100) if total_tasks > 0 else 0
+            
+            # Build the overview
+            overview = {
+                "project": {
+                    "id": project_data.get("id", ""),
+                    "name": project_data.get("name", ""),
+                    "description": project_data.get("description", ""),
+                    "created_at": project_data.get("created_at", ""),
+                    "updated_at": project_data.get("updated_at", "")
+                },
+                "structure": directory_structure,
+                "tasks": {
+                    "total": total_tasks,
+                    "completed": completed_tasks,
+                    "progress": round(progress, 2),
+                    "content": tasks_content
+                },
+                "metadata": project_data.get("metadata", {})
+            }
+            
+            return overview
+            
         except Exception as e:
-            results["errors"].append(f"Error executing project manifest: {str(e)}")
-            results["success"] = False
-        
-        return results
+            logger.error(f"Failed to get project overview: {str(e)}")
+            return {
+                "error": f"Failed to get project overview: {str(e)}"
+            }
 
 
 # Function to get a ProjectFS instance for a project
-def get_project_fs(project_id: str) -> ProjectFS:
+def get_project_fs(project_dir: str) -> ProjectFS:
     """
     Get a ProjectFS instance for a specific project.
     
     Args:
-        project_id: ID of the project
+        project_dir: Directory name of the project
         
     Returns:
         ProjectFS instance for the project
-        
-    Raises:
-        ProjectNotFoundError: If the project cannot be found
     """
-    return ProjectFS(project_id=project_id) 
+    return ProjectFS(project_dir=project_dir) 

@@ -11,10 +11,10 @@ import json
 import subprocess
 import tempfile
 from typing import Dict, List, Optional, Union, Any
-from roboco.core.logger import get_logger
+from loguru import logger
 
 # Initialize logger
-logger = get_logger(__name__)
+logger = logger.bind(module=__name__)
 
 from roboco.core.project_fs import ProjectFS
 from roboco.core.tool import Tool, command

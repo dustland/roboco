@@ -9,13 +9,17 @@ from typing import List, Optional, Dict, Any
 from pathlib import Path
 import os
 from datetime import datetime
+import json
+from uuid import uuid4
 
 from roboco.core.config import load_config, get_workspace
-from roboco.core.logger import get_logger
+from loguru import logger
 from roboco.core.models import Project
 from roboco.core.project_fs import ProjectFS, ProjectNotFoundError, get_project_fs
+from roboco.teams.planning import PlanningTeam
+from roboco.utils.id_generator import generate_short_id
 
-logger = get_logger(__name__)
+logger = logger.bind(module=__name__)
 
 
 class ProjectService:
@@ -45,8 +49,26 @@ class ProjectService:
         Raises:
             ProjectNotFoundError: If the project cannot be found.
         """
-        project_fs = await ProjectFS.get_by_id(project_id)
-        return await project_fs.get_project()
+        # Search for the project in the workspace
+        workspace_dir = get_workspace(self.config)
+        
+        for project_dir in os.listdir(workspace_dir):
+            project_path = os.path.join(workspace_dir, project_dir)
+            
+            if os.path.isdir(project_path):
+                json_path = os.path.join(project_path, 'project.json')
+                
+                if os.path.exists(json_path):
+                    try:
+                        with open(json_path, 'r') as f:
+                            project_data = json.load(f)
+                            if project_data.get("id") == project_id:
+                                # Convert the dictionary to a Project object for compatibility
+                                return Project(**project_data)
+                    except Exception as e:
+                        logger.error(f"Error loading project from {json_path}: {str(e)}")
+        
+        raise ProjectNotFoundError(f"Project with ID {project_id} not found")
 
     async def list_projects(self) -> List[Project]:
         """
@@ -55,7 +77,25 @@ class ProjectService:
         Returns:
             List of all projects.
         """
-        return await ProjectFS.list_all()
+        projects = []
+        workspace_dir = get_workspace(self.config)
+        
+        for project_dir in os.listdir(workspace_dir):
+            project_path = os.path.join(workspace_dir, project_dir)
+            
+            if os.path.isdir(project_path):
+                json_path = os.path.join(project_path, 'project.json')
+                
+                if os.path.exists(json_path):
+                    try:
+                        with open(json_path, 'r') as f:
+                            project_data = json.load(f)
+                            # Convert the dictionary to a Project object for compatibility
+                            projects.append(Project(**project_data))
+                    except Exception as e:
+                        logger.error(f"Error loading project from {json_path}: {str(e)}")
+        
+        return projects
 
     async def create_project(
         self,
@@ -78,15 +118,21 @@ class ProjectService:
         Returns:
             The newly created Project.
         """
-        project_fs = await ProjectFS.create(
+        from roboco.core.project_fs import ProjectFS
+        
+        # Create the project using ProjectFS directly
+        project_fs = ProjectFS.initialize(
             name=name,
             description=description,
             directory=directory,
-            teams=teams or [],
-            tags=tags or []
+            teams=teams,
+            tags=tags
         )
         
-        return await project_fs.get_project()
+        # Get and return the project
+        project_data = project_fs.get_project()
+        # Convert to Project object for compatibility
+        return Project(**project_data)
 
     async def get_project_status(self, project_id: str) -> Dict[str, Any]:
         """
@@ -101,17 +147,21 @@ class ProjectService:
         Raises:
             ProjectNotFoundError: If the project cannot be found.
         """
-        # Get the project
-        project_fs = await ProjectFS.get_by_id(project_id)
-        project = await project_fs.get_project()
+        # Find the project directory
+        project_directory = await self.get_project_directory(project_id)
+        if not project_directory:
+            raise ProjectNotFoundError(f"Project with ID {project_id} not found")
+        
+        # Create ProjectFS instance
+        project_fs = ProjectFS(project_dir=project_directory)
+        
+        # Get the project data
+        project_data = project_fs.get_project()
         
         # Get task information from tasks.md
-        tasks_file_path = Path(project_fs.path) / "tasks.md"
         tasks_content = ""
-        
-        if tasks_file_path.exists():
-            with open(tasks_file_path, "r", encoding="utf-8") as f:
-                tasks_content = f.read()
+        if project_fs.exists_sync("tasks.md"):
+            tasks_content = project_fs.read_sync("tasks.md")
         
         # Count completed vs total tasks
         completed_tasks = 0
@@ -129,17 +179,17 @@ class ProjectService:
         
         # Return comprehensive status information
         return {
-            "id": project.id,
-            "name": project.name,
-            "description": project.description,
+            "id": project_data["id"],
+            "name": project_data["name"],
+            "description": project_data["description"],
             "status": "completed" if completed_tasks == total_tasks and total_tasks > 0 else "in_progress",
             "progress": round(progress, 2),
             "total_tasks": total_tasks,
             "completed_tasks": completed_tasks,
-            "created_at": project.created_at,
-            "updated_at": project.updated_at,
-            "directory": project.directory,
-            "path": str(project_fs.path)
+            "created_at": project_data["created_at"],
+            "updated_at": project_data["updated_at"],
+            "directory": project_data["directory"],
+            "path": str(project_fs.base_dir)
         }
 
     async def find_projects_by_name(self, name: str) -> List[Project]:
@@ -152,7 +202,28 @@ class ProjectService:
         Returns:
             List of projects matching the name.
         """
-        return await ProjectFS.find_by_name(name)
+        projects = []
+        workspace_dir = get_workspace(self.config)
+        name_lower = name.lower()
+        
+        for project_dir in os.listdir(workspace_dir):
+            project_path = os.path.join(workspace_dir, project_dir)
+            
+            if os.path.isdir(project_path):
+                json_path = os.path.join(project_path, 'project.json')
+                
+                if os.path.exists(json_path):
+                    try:
+                        with open(json_path, 'r') as f:
+                            project_data = json.load(f)
+                            # Check if name matches
+                            if name_lower in project_data.get("name", "").lower():
+                                # Convert the dictionary to a Project object for compatibility
+                                projects.append(Project(**project_data))
+                    except Exception as e:
+                        logger.error(f"Error loading project from {json_path}: {str(e)}")
+        
+        return projects
 
     async def get_project_directory(self, project_id: str) -> Optional[str]:
         """
@@ -165,19 +236,24 @@ class ProjectService:
             The directory name of the project, or None if not found.
         """
         try:
-            project_fs = await ProjectFS.get_by_id(project_id)
+            # Get all projects and find the one with matching ID
+            workspace_dir = get_workspace(self.config)
             
-            # Prioritize path attribute
-            if hasattr(project_fs, 'path'):
-                return os.path.basename(str(project_fs.path))
-            
-            # Fall back to base_dir if path not available
-            if hasattr(project_fs, 'base_dir'):
-                return os.path.basename(str(project_fs.base_dir))
-            
-            # Last resort: get project and use directory attribute
-            project = await project_fs.get_project()
-            return project.directory if project.directory else None
+            for project_dir in os.listdir(workspace_dir):
+                project_path = os.path.join(workspace_dir, project_dir)
+                
+                if os.path.isdir(project_path):
+                    json_path = os.path.join(project_path, 'project.json')
+                    
+                    if os.path.exists(json_path):
+                        try:
+                            with open(json_path, 'r') as f:
+                                project_data = json.load(f)
+                                if project_data.get("id") == project_id:
+                                    return project_data.get("directory")
+                        except Exception:
+                            pass
+            return None
         except Exception:
             # Return None if project not found
             return None
@@ -202,7 +278,7 @@ class ProjectService:
         Returns:
             The created project with all details
         """
-        from roboco.teams.planning import PlanningTeam
+        from roboco.core.project_fs import ProjectFS
         
         # Log the start of project creation
         logger.info(f"Creating project from query: {query}")
@@ -229,17 +305,27 @@ class ProjectService:
         project_fs = ProjectFS(project_dir=project_dir)
                 
         # Get project and add metadata
-        project = await project_fs.get_project()
+        project_data = project_fs.get_project()
         
+        # Add ID if not present
+        if "id" not in project_data:
+            project_data["id"] = generate_short_id()
+            logger.info(f"Added missing ID {project_data['id']} to newly created project")
+            
+        # Ensure metadata dict exists
+        if "metadata" not in project_data:
+            project_data["metadata"] = {}
+            
         # Add metadata if provided
         if metadata:
-            project.metadata.update(metadata)
+            project_data["metadata"].update(metadata)
         
-        project.metadata["summary"] = planning_result.get("summary", "")
-        project.metadata["created_at"] = datetime.now().isoformat()
+        project_data["metadata"]["summary"] = planning_result.get("summary", "")
+        project_data["metadata"]["created_at"] = datetime.now().isoformat()
         
         # Save updates
-        await project_fs.save_project(project)
+        project_fs.save_project(project_data)
         
-        return project
+        # Convert to Project object for compatibility
+        return Project(**project_data)
     

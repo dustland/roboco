@@ -20,7 +20,7 @@ from pydantic import BaseModel, Field
 from roboco.core.tool import Tool, command
 from roboco.core.models import ToolConfig
 from roboco.core.config import get_workspace
-from roboco.core.logger import get_logger
+from loguru import logger
 
 
 class GitHubConfig(ToolConfig):
@@ -64,7 +64,7 @@ class GitHubTool(Tool):
         elif config is None:
             config = GitHubConfig()
             
-        self.logger = get_logger(__name__)
+        self.logger = logger.bind(module=__name__)
         
         self.token = config.token or os.environ.get("GITHUB_TOKEN", "")
         if not self.token:

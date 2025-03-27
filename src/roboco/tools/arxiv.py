@@ -18,12 +18,14 @@ import logging
 import arxiv
 from pydantic import BaseModel, Field
 from roboco.core.tool import Tool
-from roboco.core.workspace import Workspace
-from roboco.core.logger import get_logger
+from roboco.core.config import get_workspace
+from loguru import logger
 from roboco.core.models import ToolConfig
+from autogen.agentchat.contrib.retrieve_assistant_agent import RetrieveAssistantAgent
+from autogen.agentchat.contrib.retrieve_user_proxy_agent import RetrieveUserProxyAgent
 
 # Initialize logger
-logger = get_logger(__name__)
+logger = logger.bind(module=__name__)
 
 
 class ArxivConfig(ToolConfig):
@@ -217,8 +219,10 @@ class ArxivTool(Tool):
         try:
             # Create workspace research directory
             if save_to_workspace:
-                workspace = Workspace(self.config.get("workspace_dir", "workspace"))
-                save_path = workspace.research_path / "papers" / f"{paper_id}.pdf"
+                # Import ProjectManager here to avoid circular imports
+                from roboco.core.project_manager import ProjectManager
+                workspace = ProjectManager(self.config.get("workspace_dir", "workspace"))
+                save_path = workspace.get_research_path("papers") / f"{paper_id}.pdf"
                 save_path.parent.mkdir(parents=True, exist_ok=True)
             else:
                 temp_dir = Path(self.config.get("temp_dir", "/tmp/arxiv_papers"))
@@ -340,8 +344,8 @@ class ArxivTool(Tool):
 """
             
             # Create workspace research notes directory
-            workspace = Workspace(self.config.get("workspace_dir", "workspace"))
-            workspace_path = workspace.research_path / "notes"
+            workspace = ProjectManager(self.config.get("workspace_dir", "workspace"))
+            workspace_path = workspace.get_research_path("notes")
             if topic:
                 topic_safe = topic.lower().replace(" ", "_").replace("-", "_")
                 workspace_path = workspace_path / topic_safe

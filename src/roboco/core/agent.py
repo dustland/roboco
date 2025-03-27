@@ -11,6 +11,9 @@ from loguru import logger
 from autogen import AssistantAgent, UserProxyAgent, ConversableAgent, register_function
 from roboco.core.config import load_config, get_llm_config
 
+# Get a logger instance for this module
+logger = logger.bind(module=__name__)
+
 class Agent(AssistantAgent):
     """Base agent class that all roboco assistant agents inherit from.
     
@@ -53,13 +56,17 @@ class Agent(AssistantAgent):
                          This allows different agents to use different LLM providers.
             **kwargs: Additional arguments passed to AssistantAgent
         """
-        # Use provided llm_config or load from config if None
-        if llm_config is None and 'llm_config' not in kwargs:
-            config = load_config(config_path)
-            llm_config = get_llm_config(config, provider=llm_provider)
-            logger.debug(f"Loaded llm_config for {name} using provider {llm_provider}: {llm_config}")
-        else:
-            logger.debug(f"Using provided llm_config for {name}")
+        # Extract llm_config from kwargs if provided
+        kwargs_llm_config = kwargs.pop('llm_config', None)
+        
+        # Prepare the LLM configuration using the internal method
+        final_provider, final_llm_config = self._prepare_llm_config(
+            name=name,
+            config_path=config_path,
+            llm_config=llm_config,
+            kwargs_llm_config=kwargs_llm_config,
+            llm_provider=llm_provider
+        )
         
         # Store termination message
         self.terminate_msg = terminate_msg
@@ -75,12 +82,68 @@ class Agent(AssistantAgent):
         super().__init__(
             name=name,
             system_message=system_message,
-            llm_config=llm_config,
+            llm_config=final_llm_config,
             is_termination_msg=is_termination_msg,
             **kwargs
         )
         
         logger.info(f"Initialized Agent: {name}")
+    
+    def _prepare_llm_config(
+        self,
+        name: str,
+        config_path: Optional[str],
+        llm_config: Optional[Dict[str, Any]],
+        kwargs_llm_config: Optional[Dict[str, Any]],
+        llm_provider: str
+    ) -> tuple[str, Dict[str, Any]]:
+        """Prepare the LLM configuration by extracting provider and merging configs.
+        
+        Args:
+            name: Name of the agent (for logging purposes)
+            config_path: Optional path to agent configuration file
+            llm_config: Optional LLM configuration from parameters
+            kwargs_llm_config: Optional LLM configuration from kwargs
+            llm_provider: Default LLM provider to use
+            
+        Returns:
+            Tuple of (final_provider, final_llm_config)
+        """
+        # Extract provider from llm_config if present
+        # This allows the provider to be specified in the llm_config directly
+        extracted_provider = None
+        if llm_config and "provider" in llm_config:
+            extracted_provider = llm_config.pop("provider")
+            logger.debug(f"Extracted provider '{extracted_provider}' from llm_config for {name}")
+            
+        # Use provider in this priority order:
+        # 1. Extracted from llm_config
+        # 2. Explicitly provided llm_provider parameter
+        # 3. Default "llm"
+        final_provider = extracted_provider or llm_provider
+        
+        # Determine the final llm_config to use
+        # Always start with the base config from config file
+        config = load_config(config_path)
+        base_llm_config = get_llm_config(config, provider=final_provider)
+        
+        # Merge configs in this order (later ones take precedence):
+        # 1. Base config from config file with correct provider
+        # 2. llm_config parameter if provided
+        # 3. llm_config from kwargs if provided
+        final_llm_config = base_llm_config
+        
+        if llm_config:
+            final_llm_config = {**final_llm_config, **llm_config}
+            logger.debug(f"Merged provided llm_config parameter with base config for {name}")
+            
+        if kwargs_llm_config:
+            final_llm_config = {**final_llm_config, **kwargs_llm_config}
+            logger.debug(f"Merged kwargs llm_config with previous config for {name}")
+        
+        logger.debug(f"Final llm_config for {name} using provider {final_provider}: {final_llm_config}")
+        
+        return final_provider, final_llm_config
     
     def register_tool(self, function: Callable, executor_agent: ConversableAgent, description: str = None) -> None:
         """
@@ -94,6 +157,12 @@ class Agent(AssistantAgent):
             executor_agent: The agent that will execute the tool
             description: Optional description of the tool for the LLM
         """
+        # Ensure description is a string, not a boolean
+        if description is None:
+            description = f"Function {function.__name__} provided by {self.name}"
+        elif not isinstance(description, str):
+            description = str(description)
+            
         register_function(
             function,
             caller=self,

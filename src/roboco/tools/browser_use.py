@@ -14,13 +14,13 @@ from browser_use.browser.browser import Browser, BrowserConfig as BrowserUseLibC
 from langchain_openai import ChatOpenAI
 
 from roboco.core.tool import Tool
-from roboco.core.logger import get_logger
+from loguru import logger
 from roboco.core.models import ToolConfig
 from roboco.utils.browser_utils import get_chrome_path, get_platform, is_chrome_installed
 
 import os
 
-logger = get_logger(__name__)
+logger = logger.bind(module=__name__)
 
 # Define context type variable
 Context = TypeVar('Context')
@@ -100,7 +100,7 @@ class BrowserUseTool(Generic[Context], Tool):
         elif isinstance(config, dict):
             config = BrowserUseConfig(**config)
             
-        self.logger = get_logger(__name__)
+        self.logger = logger.bind(module=__name__)
         
         # Configure LLM
         self.llm_config = {

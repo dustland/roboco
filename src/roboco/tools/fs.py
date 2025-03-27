@@ -14,12 +14,12 @@ import concurrent.futures
 import json
 
 from roboco.core.tool import Tool, command
-from roboco.core.logger import get_logger
+from loguru import logger
 from roboco.core.models.project_manifest import ProjectManifest, dict_to_project_manifest
 from roboco.core.project_fs import FileSystem, ProjectFS
 
 # Initialize logger
-logger = get_logger(__name__)
+logger = logger.bind(module=__name__)
 
 class FileSystemTool(Tool):
     """
@@ -275,7 +275,16 @@ class FileSystemTool(Tool):
     @command()
     def execute_project_manifest(self, manifest: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Execute a project manifest to create directories and files.
+        Execute a project manifest to create a new project.
+        
+        The ProjectManifest is a domain object that describes the structure of a project, 
+        including its name, description, directory structure, and files. This follows
+        Domain-Driven Design principles by using the domain object as the primary way to 
+        create projects.
+        
+        Note: File paths in the manifest should be relative to the project directory,
+        not prefixed with the project directory name. Any project directory prefixes 
+        will be automatically removed.
         
         Args:
             manifest: Project manifest data
@@ -285,49 +294,62 @@ class FileSystemTool(Tool):
         """
         logger.info(f"Executing project manifest")
         
+        # Check if the manifest is empty or missing required fields
+        if not manifest:
+            error_msg = "Empty manifest provided - manifest must contain project details"
+            logger.error(f"Error executing project manifest: {error_msg}")
+            return {
+                "status": "error",
+                "message": f"Failed to execute project manifest: {error_msg}"
+            }
+        
+        # Check for required fields
+        required_fields = ['name', 'description']
+        missing_fields = [field for field in required_fields if field not in manifest]
+        
+        if missing_fields:
+            error_msg = f"Missing required fields in manifest: {', '.join(missing_fields)}"
+            logger.error(f"Error executing project manifest: {error_msg}")
+            return {
+                "status": "error",
+                "message": f"Failed to execute project manifest: {error_msg}"
+            }
+        
         try:
-            # Convert dictionary to ProjectManifest object
-            project_manifest = dict_to_project_manifest(manifest)
+            # Use ProjectFS.initialize directly, avoiding circular imports
+            from roboco.core.project_fs import ProjectFS
+            from roboco.core.models.project_manifest import dict_to_project_manifest
             
-            # Use only the directory_name as the project directory without any path prefixes
-            # This ensures projects are created directly in the workspace without nesting
-            project_dir = project_manifest.directory_name
-
-            # Log the current working directory and where we're creating the project
-            logger.info(f"Current working directory: {os.getcwd()}")
-            logger.info(f"Creating project in workspace: {self.fs.base_dir}")
-            
-            # Check if project directory already exists
-            if self.fs.exists_sync(project_dir):
-                logger.warning(f"Project directory {project_dir} already exists")
-                # Let's delete this dir
-                self.fs.rmdir_sync(project_dir)
-                logger.info(f"Deleted existing project directory: {project_dir}")
-
-            # Create the project directory using the synchronous filesystem method
-            self.fs.mkdir_sync(project_dir)
-            logger.info(f"Created project directory: {project_dir}")
-            
-            # Create folder structure
-            for folder in project_manifest.folder_structure:
-                folder_path = os.path.join(project_dir, folder)
-                self.fs.mkdir_sync(folder_path)
-                logger.info(f"Created folder: {folder_path}")
+            # Check if we have name and description in the manifest
+            if isinstance(manifest, dict) and 'name' in manifest and 'description' in manifest:
+                # Create the project using ProjectFS.initialize with extracted values
+                project_fs = ProjectFS.initialize(
+                    name=manifest['name'],
+                    description=manifest['description'],
+                    project_dir=manifest.get('project_dir', manifest.get('directory_name')),
+                    manifest=manifest
+                )
+            else:
+                # Convert to ProjectManifest first to extract required fields
+                project_manifest = dict_to_project_manifest(manifest) if isinstance(manifest, dict) else manifest
                 
-            # Create files
-            if project_manifest.files:
-                for file_info in project_manifest.files:
-                    # Get the file path
-                    file_path = file_info.path
-                    
-                    # Create parent directory if needed
-                    parent_dir = os.path.dirname(file_path)
-                    if parent_dir:
-                        self.fs.mkdir_sync(parent_dir)
-                    
-                    # Write the file with the synchronous filesystem method
-                    self.fs.write_sync(file_path, file_info.content)
-                    logger.info(f"Created file: {file_path}")
+                # Create the project using ProjectFS.initialize with extracted values
+                project_fs = ProjectFS.initialize(
+                    name=project_manifest.name,
+                    description=project_manifest.description,
+                    project_dir=project_manifest.project_dir,
+                    manifest=manifest
+                )
+                
+            # Get the project details to return
+            project_data = project_fs.get_project()
+            
+            # Log the project data for debugging
+            logger.debug(f"Project data: {project_data}")
+            
+            # Access the project_dir safely with a fallback
+            project_dir = project_data.get("project_dir", "unknown_directory")
+            logger.debug(f"Project directory determined to be: {project_dir}")
             
             return {
                 "status": "success",
@@ -335,11 +357,40 @@ class FileSystemTool(Tool):
                 "project_dir": project_dir
             }
             
-        except Exception as e:
-            logger.error(f"Error executing project manifest: {str(e)}")
+        except ValueError as e:
+            error_msg = str(e)
+            logger.error(f"Error executing project manifest: {error_msg}")
             return {
                 "status": "error",
-                "message": f"Failed to execute project manifest: {str(e)}"
+                "message": f"Failed to execute project manifest: {error_msg}"
+            }
+        except FileNotFoundError as e:
+            error_msg = f"File not found: {str(e)}"
+            logger.error(f"Error executing project manifest: {error_msg}")
+            return {
+                "status": "error",
+                "message": f"Failed to execute project manifest: {error_msg}"
+            }
+        except PermissionError as e:
+            error_msg = f"Permission denied: {str(e)}"
+            logger.error(f"Error executing project manifest: {error_msg}")
+            return {
+                "status": "error",
+                "message": f"Failed to execute project manifest: {error_msg}"
+            }
+        except KeyError as e:
+            error_msg = f"Missing key in manifest: {str(e)}"
+            logger.error(f"Error executing project manifest: {error_msg}")
+            return {
+                "status": "error", 
+                "message": f"Failed to execute project manifest: {error_msg}"
+            }
+        except Exception as e:
+            error_msg = str(e)
+            logger.error(f"Error executing project manifest: {error_msg}")
+            return {
+                "status": "error",
+                "message": f"Failed to execute project manifest: {error_msg}"
             }
     
     @command()

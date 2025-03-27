@@ -9,9 +9,9 @@ from typing import List, Optional, Dict, Any, Union
 from datetime import datetime
 import uuid
 import os
-from roboco.core.logger import get_logger
+from loguru import logger
 
-logger = get_logger(__name__)
+logger = logger.bind(module=__name__)
 
 from roboco.services.project_service import ProjectService
 from roboco.services.agent_service import AgentService
@@ -120,16 +120,13 @@ class ApiService:
             The created project in API format
         """
         # Create the project using the domain service
-        project_id = await self.project_service.create_project(
+        domain_project = await self.project_service.create_project(
             name=project_create.name,
             description=project_create.description,
             directory=project_create.directory,
             teams=project_create.teams,
             tags=project_create.tags
         )
-        
-        # Get the created project
-        domain_project = await self.project_service.get_project(project_id)
         
         # Convert domain project to API project
         pydantic_project = project_to_pydantic(domain_project)

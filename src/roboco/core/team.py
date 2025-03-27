@@ -23,6 +23,8 @@ from roboco.core.config import load_config, get_llm_config
 from roboco.core.models import Task
 from roboco.core.project_fs import ProjectFS
 
+# Get a logger instance for this module
+logger = logger.bind(module=__name__)
 
 class Team(ABC):
     """
@@ -112,6 +114,57 @@ class Team(ABC):
         logger.info(f"Saved file artifact to {file_path}")
         return file_path
     
+    def _convert_to_dict(self, obj):
+        """
+        Convert potentially non-serializable objects to dictionaries.
+        
+        This method handles conversion of AutoGen's ChatResult and other complex objects
+        into JSON-serializable dictionaries. It's used to ensure data can be properly
+        serialized when saving results.
+        
+        Args:
+            obj: Any object to convert
+            
+        Returns:
+            A JSON-serializable equivalent
+        """
+        # Handle None
+        if obj is None:
+            return None
+            
+        # Handle basic types
+        if isinstance(obj, (str, int, float, bool)):
+            return obj
+            
+        # Handle lists
+        if isinstance(obj, list):
+            return [self._convert_to_dict(item) for item in obj]
+            
+        # Handle dictionaries
+        if isinstance(obj, dict):
+            return {k: self._convert_to_dict(v) for k, v in obj.items()}
+            
+        # Handle ChatResult from AutoGen
+        if hasattr(obj, '__class__') and obj.__class__.__name__ == 'ChatResult':
+            result = {}
+            # Add the key attributes we know are commonly used
+            for attr in ['chat_history', 'summary', 'cost', 'human_input']:
+                if hasattr(obj, attr):
+                    result[attr] = self._convert_to_dict(getattr(obj, attr))
+            return result
+            
+        # Handle other objects with to_dict or dict methods
+        if hasattr(obj, 'to_dict') and callable(getattr(obj, 'to_dict')):
+            return self._convert_to_dict(obj.to_dict())
+        if hasattr(obj, 'dict') and callable(getattr(obj, 'dict')):
+            return self._convert_to_dict(obj.dict())
+            
+        # Last resort: convert to string
+        try:
+            return str(obj)
+        except:
+            return f"<Non-serializable object of type {type(obj).__name__}>"
+    
     # ===== Swarm Management Methods =====
     
     def enable_swarm(self, shared_context: Optional[Dict[str, Any]] = None) -> None:
@@ -195,23 +248,30 @@ class Team(ABC):
                 updated_context = chat_result[1]
                 self.shared_context.update(updated_context)
                 
-                # Prepare the result
+                # Prepare the result with converted chat_result to ensure JSON serialization
                 result = {
-                    "chat_result": chat_result[0],
-                    "context": updated_context
+                    "chat_result": self._convert_to_dict(chat_result[0]),
+                    "context": self._convert_to_dict(updated_context),
+                    "messages": self._convert_to_dict(chat_result[0].chat_history) if hasattr(chat_result[0], 'chat_history') else []
                 }
                 
                 if len(chat_result) > 2:
                     result["last_agent"] = chat_result[2].name
             else:
                 # Handle case where chat_result is not a tuple
-                result = {"chat_result": chat_result}
+                result = {
+                    "chat_result": self._convert_to_dict(chat_result),
+                    "messages": self._convert_to_dict(getattr(chat_result, 'chat_history', [])) if hasattr(chat_result, 'chat_history') else []
+                }
                 
             return result
             
         except Exception as e:
+            import traceback
+            error_tb = traceback.format_exc()
             logger.error(f"Error in swarm execution: {str(e)}")
-            return {"error": str(e)}
+            logger.error(f"Traceback: {error_tb}")
+            return {"error": str(e), "traceback": error_tb}
 
     def add_to_context(self, key: str, value: Any) -> None:
         """

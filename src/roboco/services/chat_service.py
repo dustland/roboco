@@ -9,16 +9,17 @@ from typing import Dict, Any, List, Optional
 from datetime import datetime
 import uuid
 import os
-from roboco.core.logger import get_logger
+from loguru import logger
 
-logger = get_logger(__name__)
+logger = logger.bind(module=__name__)
 
 from roboco.core.project_fs import ProjectFS
 from roboco.core.config import load_config, get_llm_config, get_workspace
 from roboco.teams.planning import PlanningTeam
-from roboco.core.project_executor import ProjectExecutor
+from roboco.core.project_manager import ProjectManager
 from roboco.services.project_service import ProjectService
 from roboco.core.models.chat import ChatRequest, ChatResponse
+from roboco.utils.id_generator import generate_short_id
 
 
 class ChatService:
@@ -46,18 +47,17 @@ class ChatService:
         # Create services - reuse instances instead of creating new ones per request
         self.project_service = ProjectService()
     
-    async def start_chat(self, chat_request):
-        """
-        Process a chat request with the project agent.
+    async def start_chat(self, chat_request: ChatRequest) -> ChatResponse:
+        """Start a new chat session and process the request.
         
         Args:
-            chat_request: The chat request containing query and other parameters
+            chat_request: The chat request containing the query and other parameters
             
         Returns:
-            ChatResponse object with response details
+            Response with conversation ID and results
         """
-        # Create or get conversation ID
-        conversation_id = chat_request.conversation_id or str(uuid.uuid4())
+        # Generate unique conversation ID if not provided
+        conversation_id = chat_request.conversation_id or generate_short_id()
         
         # Initialize conversation if it doesn't exist
         conversation = self.conversations.get(conversation_id)
@@ -165,25 +165,36 @@ class ChatService:
         """
         logger.info(f"Creating project from query: {chat_request.query}")
         
-        # Create project from query
+        # Create a project
         project = await self.project_service.create_project_from_query(
-            chat_request.query
+            query=chat_request.query, 
+            teams=chat_request.teams,
+            metadata={
+                "conversation_id": conversation_id,
+                "chat_request": chat_request.dict()
+            }
         )
         
-        logger.info(f"Initializing project executor for project: {project.directory}")
-        # Initialize project executor
-        executor = ProjectExecutor(project.directory)
+        # Initialize project executor using the project
+        logger.info(f"Initializing project executor for project: {project.project_dir}")
         
-        # Execute the project
-        results = await executor.execute_project()
+        project_manager = ProjectManager(config=self.config)
+        result = await project_manager.execute_project(project.project_dir)
         
-        return ChatResponse(
+        # TODO: Store the result in the conversation?
+        
+        # Create chat response
+        response = ChatResponse(
             conversation_id=conversation_id,
-            message=f"Project {project.name} created and executed successfully",
-            status="completed",
             project_id=project.id,
-            project_details={"directory": project.directory}
+            message=f"Project {project.name} created and executed successfully",
+            content={
+                "project_dir": project.project_dir
+            },
+            status="completed"
         )
+        
+        return response
     
     async def get_conversation_history(self, conversation_id: str) -> Optional[Dict[str, Any]]:
         """

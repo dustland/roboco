@@ -15,9 +15,25 @@ from typing import Dict, Any, Optional
 # Add parent directory to path to allow importing from src
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 
+# Initialize logging with default settings first
+from loguru import logger
+logger.info("Starting chat example application...")
+
+# Import core configuration
+from roboco.core.config import load_config
+from roboco.core.logger import load_config_settings
+
+# After importing configuration modules, load logging settings from config
+logger.info("Loading configuration...")
+config = load_config()
+load_config_settings()  # Configure logging based on config.yaml
+
+# Now it's safe to import service modules
 from roboco.services.project_service import ProjectService
 from roboco.services.api_service import ApiService
 from roboco.core.models.chat import ChatRequest
+
+logger.info("All modules imported successfully")
 
 
 async def start_chat(query: str, conversation_id: Optional[str] = None) -> Dict[str, Any]:
@@ -50,7 +66,9 @@ async def start_chat(query: str, conversation_id: Optional[str] = None) -> Dict[
     print("Please wait, this may take a few minutes...")
     
     # Send the request
+    logger.info(f"Processing chat request: {query}")
     response = await api_service.start_chat(chat_request)
+    logger.info("Chat request processed successfully")
     
     return response
 

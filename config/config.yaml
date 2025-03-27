@@ -20,7 +20,7 @@ llm:
   model: "gpt-4o"
   api_key: "${OPENAI_API_KEY}" # Set in environment or .env file
   max_tokens: 8000
-  temperature: 0.7
+  temperature: 0.2
   base_url: "https://api.openai.com/v1"
   terminate_msg: "TERMINATE"
 
@@ -42,9 +42,16 @@ llm:
 
   # DeepSeek models
   deepseek:
-    model: "deepseek-coder"
+    model: "deepseek-chat"
     base_url: "https://api.deepseek.com/v1"
     api_key: "${DEEPSEEK_API_KEY}"
+    max_tokens: 8192
+    temperature: 0.7
+
+  anthropic:
+    model: "claude-3-7-sonnet-20250219"
+    base_url: "https://api.gptsapi.net/v1"
+    api_key: "${ANTHROPIC_API_KEY}"
     max_tokens: 8192
     temperature: 0.7
 

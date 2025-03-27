@@ -78,6 +78,12 @@ class HumanProxy(UserProxyAgent):
             function: The function to register as a tool
             description: Optional description of the tool
         """
+        # Ensure description is a string, not a boolean
+        if description is None:
+            description = f"Function {function.__name__} provided by {self.name}"
+        elif not isinstance(description, str):
+            description = str(description)
+            
         register_function(
             function,
             executor=self,

@@ -9,8 +9,10 @@ from typing import List, Optional, Dict, Any
 from datetime import datetime
 import uuid
 from loguru import logger
+import os
 
 from roboco.core.models.task import Task
+from roboco.utils.id_generator import generate_short_id
 
 
 class Project:
@@ -28,7 +30,7 @@ class Project:
         self,
         name: str,
         description: str,
-        directory: str,
+        project_dir: str,
         id: Optional[str] = None,
         created_at: Optional[datetime] = None,
         updated_at: Optional[datetime] = None,
@@ -45,7 +47,7 @@ class Project:
         Args:
             name: Name of the project
             description: Description of the project goals
-            directory: Directory where project files are stored
+            project_dir: Directory where project files are stored
             id: Unique identifier for the project
             created_at: When the project was created
             updated_at: When the project was last updated
@@ -57,10 +59,10 @@ class Project:
             docs_dir: Directory for documentation within the project directory
             metadata: Additional metadata for the project
         """
-        self.id = id or str(uuid.uuid4())
+        self.id = id or generate_short_id()
         self.name = name
         self.description = description
-        self.directory = directory
+        self.project_dir = project_dir
         self.created_at = created_at or datetime.now()
         self.updated_at = updated_at or datetime.now()
         self.teams = teams or []
@@ -140,9 +142,9 @@ class Project:
             "id": self.id,
             "name": self.name,
             "description": self.description,
-            "directory": self.directory,
-            "created_at": self.created_at.isoformat() if self.created_at else None,
-            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+            "project_dir": self.project_dir,
+            "created_at": self.created_at.isoformat(),
+            "updated_at": self.updated_at.isoformat(),
             "teams": self.teams,
             "jobs": self.jobs,
             "tasks": [task.dict() for task in self.tasks],
@@ -162,34 +164,17 @@ class Project:
         Returns:
             Project instance
         """
-        # Convert string dates to datetime
-        created_at = data.get("created_at")
-        if created_at and isinstance(created_at, str):
-            created_at = datetime.fromisoformat(created_at)
-            
-        updated_at = data.get("updated_at")
-        if updated_at and isinstance(updated_at, str):
-            updated_at = datetime.fromisoformat(updated_at)
-        
-        # Convert task dictionaries to Task objects
-        tasks = []
-        for task_data in data.get("tasks", []):
-            if isinstance(task_data, dict):
-                tasks.append(Task(**task_data))
-            else:
-                tasks.append(task_data)
-        
         return cls(
-            id=data.get("id"),
             name=data.get("name"),
             description=data.get("description"),
-            directory=data.get("directory"),
-            created_at=created_at,
-            updated_at=updated_at,
-            teams=data.get("teams", []),
-            jobs=data.get("jobs", []),
-            tasks=tasks,
-            tags=data.get("tags", []),
+            project_dir=data.get("project_dir"),
+            id=data.get("id"),
+            created_at=datetime.fromisoformat(data.get("created_at")) if data.get("created_at") else None,
+            updated_at=datetime.fromisoformat(data.get("updated_at")) if data.get("updated_at") else None,
+            teams=data.get("teams"),
+            jobs=data.get("jobs"),
+            tasks=[Task.from_dict(task) for task in data.get("tasks", [])],
+            tags=data.get("tags"),
             source_code_dir=data.get("source_code_dir", "src"),
             docs_dir=data.get("docs_dir", "docs"),
             metadata=data.get("metadata", {})

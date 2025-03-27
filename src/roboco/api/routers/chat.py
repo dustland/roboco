@@ -121,16 +121,14 @@ async def execute_project(
         else:
             response_message = "I've successfully executed your project:\n\n"
             
-            # Add phase results to the response
-            if "phases" in execution_result:
-                for phase_name, phase_result in execution_result["phases"].items():
-                    response_message += f"\n## {phase_name}\n"
-                    for task_name, task_result in phase_result.get("tasks", {}).items():
-                        task_status = task_result.get("status", "unknown")
-                        if task_status == "completed":
-                            response_message += f"- ✅ {task_name}\n"
-                        else:
-                            response_message += f"- ❌ {task_name}: {task_result.get('error', 'Failed')}\n"
+            # Add task results to the response
+            if "tasks" in execution_result:
+                for task_name, task_result in execution_result.get("tasks", {}).items():
+                    task_status = task_result.get("status", "unknown")
+                    if task_status == "completed" or task_status == "already_completed":
+                        response_message += f"- ✅ {task_name}\n"
+                    else:
+                        response_message += f"- ❌ {task_name}: {task_result.get('error', 'Failed')}\n"
             
             response_message += f"\nYou can find all project files in: {project.directory}"
             status = "completed"

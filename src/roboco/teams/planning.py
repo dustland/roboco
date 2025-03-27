@@ -43,7 +43,7 @@ class PlanningTeam:
         from roboco.tools.fs import FileSystemTool
         fs_tool = FileSystemTool(fs=FileSystem(base_dir=get_workspace()))
 
-        fs_tool.register_with_agents(planner, executer)
+        fs_tool.register_with_agents(planner, executor_agent=executer)
         
     def get_agent(self, name: str) -> Agent:
         """Get an agent by name.
@@ -83,7 +83,7 @@ class PlanningTeam:
         chat_result = executer.initiate_chat(
             recipient=planner,
             message=message,
-            max_turns=4,
+            max_turns=20,
         )
         
         # Extract project directory from the response

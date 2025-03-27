@@ -20,12 +20,12 @@ except ImportError:
 
 from roboco.core.models import ToolConfig
 from roboco.core.tool import Tool, command
-from roboco.core.logger import get_logger
+
 
 from langchain_core.tools import Tool as LangchainTool
 
 # Initialize logger
-logger = get_logger(__name__)
+logger = logger.bind(module=__name__)
 
 class WebSearchConfig(ToolConfig):
     """Configuration for WebSearchTool."""
@@ -120,7 +120,7 @@ class WebSearchTool(Tool):
         if exclude_domains is None:
             exclude_domains = []
             
-        self.logger = get_logger(__name__)
+        self.logger = logger.bind(module=__name__)
         
         # Get API key from parameter or environment variable
         self.api_key = api_key or os.environ.get("TAVILY_API_KEY", "")

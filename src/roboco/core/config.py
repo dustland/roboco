@@ -9,10 +9,14 @@ This module handles loading and managing configuration from various sources:
 
 import os
 from pathlib import Path
-from typing import Optional, Dict, Any, Union
+from typing import Optional, Dict, Any, Union, List, TypeVar, Generic, cast
 from dotenv import load_dotenv
 import yaml
-from roboco.core.models import RobocoConfig
+from loguru import logger
+from roboco.core.models import RobocoConfig, RoleConfig, AgentConfig
+
+# Type variables for generic functions
+T = TypeVar('T')
 
 
 def load_env_vars() -> None:
@@ -234,3 +238,131 @@ def get_workspace(config: Optional[RobocoConfig] = None) -> Path:
         workspace_path.mkdir(parents=True, exist_ok=True)
     
     return workspace_path
+
+
+def load_roles_config(config_path: Union[str, Path] = "config/roles.yaml") -> Dict[str, RoleConfig]:
+    """
+    Load and validate the roles configuration from YAML file.
+    
+    Args:
+        config_path: Path to the roles configuration file
+        
+    Returns:
+        Dictionary of role configurations, keyed by role ID
+    """
+    # Convert to Path if string
+    if isinstance(config_path, str):
+        path = Path(config_path)
+    else:
+        path = config_path
+        
+    try:
+        with open(path, 'r', encoding='utf-8') as file:
+            raw_config = yaml.safe_load(file)
+            logger.info(f"Successfully loaded roles configuration from {path}")
+            
+            # Extract the roles dictionary from the config
+            raw_roles = raw_config.get("roles", {}) if raw_config else {}
+            
+            # Convert role dictionaries to RoleConfig objects
+            roles_dict = {}
+            for role_key, role_data in raw_roles.items():
+                try:
+                    roles_dict[role_key] = RoleConfig(**role_data)
+                except Exception as e:
+                    logger.warning(f"Failed to validate role config for '{role_key}': {str(e)}")
+                    # Skip invalid roles
+                    continue
+            
+            return roles_dict
+            
+    except Exception as e:
+        logger.warning(f"Failed to load roles config from {path}: {str(e)}")
+        logger.warning("Using default empty configuration")
+        return {}
+
+
+def get_role_config(roles_config: Dict[str, RoleConfig], role_key: str) -> Optional[RoleConfig]:
+    """
+    Get configuration for a specific role.
+    
+    Args:
+        roles_config: Dictionary of role configurations
+        role_key: The key of the role to retrieve
+        
+    Returns:
+        RoleConfig object or None if not found
+    """
+    return roles_config.get(role_key)
+
+
+def get_validated_role_config(roles_config: Union[Dict[str, RoleConfig], Dict[str, Any]], role_key: str) -> Optional[RoleConfig]:
+    """
+    Get validated configuration for a specific role using the RoleConfig model.
+    
+    Args:
+        roles_config: Dictionary of role configurations (either Dict[str, RoleConfig] or raw dict)
+        role_key: The key of the role to retrieve
+        
+    Returns:
+        RoleConfig object or None if the role is not found
+    """
+    # Handle the case where we have a Dict[str, RoleConfig]
+    if role_key in roles_config and isinstance(roles_config[role_key], RoleConfig):
+        return roles_config[role_key]
+    
+    # Handle the case where we have a raw dictionary
+    if isinstance(roles_config, dict) and "roles" in roles_config:
+        try:
+            role_data = roles_config["roles"].get(role_key)
+            if role_data:
+                try:
+                    # Create validated RoleConfig object
+                    return RoleConfig(**role_data)
+                except Exception as e:
+                    logger.warning(f"Failed to validate role config for '{role_key}': {str(e)}")
+        except (KeyError, TypeError, AttributeError) as e:
+            logger.warning(f"Role '{role_key}' not found in configuration: {str(e)}")
+    
+    return None
+
+
+def create_agent_config(
+    role_key: str,
+    name: Optional[str] = None,
+    system_message: Optional[str] = None,
+    llm_config: Optional[Dict[str, Any]] = None,
+    **kwargs
+) -> AgentConfig:
+    """
+    Create an AgentConfig object for a specific role.
+    
+    Args:
+        role_key: The key of the role this agent fulfills
+        name: Optional custom name for the agent
+        system_message: Optional custom system message
+        llm_config: Optional LLM configuration
+        **kwargs: Additional agent configuration parameters
+        
+    Returns:
+        An AgentConfig object
+    """
+    # If name is not provided, use role_key as name
+    if name is None:
+        name = role_key.replace('_', ' ').title().replace(' ', '_')
+    
+    # Create agent config
+    agent_config = {
+        "name": name,
+        "role_key": role_key,
+        **kwargs
+    }
+    
+    # Add optional parameters if provided
+    if system_message is not None:
+        agent_config["system_message"] = system_message
+    
+    if llm_config is not None:
+        agent_config["llm_config"] = llm_config
+    
+    return AgentConfig(**agent_config)

@@ -28,3 +28,4 @@ class Task(BaseModel):
     completed_at: Optional[datetime] = Field(None, description="When the task was completed")
     depends_on: List[str] = Field(default_factory=list, description="IDs of tasks this task depends on")
     tags: List[str] = Field(default_factory=list, description="Tags for categorizing the task")
+    details: List[str] = Field(default_factory=list, description="Detailed bullet points for the task")

@@ -19,7 +19,7 @@ from roboco.services.chat_service import ChatService
 from roboco.services.project_service import ProjectService
 from roboco.services.agent_service import AgentService
 from roboco.core.models.chat import ChatRequest, ChatResponse
-from roboco.core.logger import get_logger
+
 from roboco.core.config import get_workspace, load_config
 
 

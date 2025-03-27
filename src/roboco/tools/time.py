@@ -9,7 +9,7 @@ from typing import Dict, Any, Optional
 from pydantic import BaseModel, Field
 
 from roboco.core.tool import Tool
-from roboco.core.logger import get_logger
+from loguru import logger
 from roboco.core.models import ToolConfig
 
 
@@ -49,7 +49,7 @@ class TimeTool(Tool):
         elif isinstance(config, dict):
             config = TimeConfig(**config)
             
-        self.logger = get_logger(__name__)
+        self.logger = logger.bind(module=__name__)
         self.default_format = config.default_format
         self.timezone = config.timezone
         
