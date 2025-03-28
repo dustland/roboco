@@ -359,9 +359,10 @@ teams:
       - architect
       - strategist
       - explorer
-      - creator
+      - developer
+      - writer
       - evaluator
-      - synthesizer
+      - lead
       - human_proxy
     workflow:
       - from: architect
@@ -369,12 +370,16 @@ teams:
       - from: strategist
         to: explorer
       - from: explorer
-        to: creator
-      - from: creator
+        to: developer
+      - from: explorer
+        to: writer
+      - from: developer
+        to: evaluator
+      - from: writer
         to: evaluator
       - from: evaluator
-        to: synthesizer
-      - from: synthesizer
+        to: lead
+      - from: lead
         to: architect
     tools:
       - fs

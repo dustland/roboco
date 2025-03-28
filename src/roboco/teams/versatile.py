@@ -56,9 +56,10 @@ class VersatileTeam(Team):
         self.enable_swarm({
             "project_phase": "initial",
             "allow_research": True,
-            "allow_creation": True,
+            "allow_development": True,
+            "allow_writing": True,
             "allow_evaluation": False,
-            "allow_integration": False
+            "allow_leadership": False
         })
         
         # Register handoffs for the swarm
@@ -83,10 +84,16 @@ class VersatileTeam(Team):
             terminate_msg="RESEARCH_COMPLETE"
         )
         
-        # Creator implements the solution
-        creator = agent_factory.create_agent(
-            role_key="creator",
-            terminate_msg="CREATION_COMPLETE"
+        # Developer implements the solution
+        developer = agent_factory.create_agent(
+            role_key="developer",  # Updated from creator to developer
+            terminate_msg="DEVELOPMENT_COMPLETE"  # Updated from CREATION_COMPLETE
+        )
+        
+        # Writer creates written content and documentation
+        writer = agent_factory.create_agent(
+            role_key="writer",
+            terminate_msg="WRITING_COMPLETE"
         )
         
         # Evaluator tests and validates the implementation
@@ -95,10 +102,10 @@ class VersatileTeam(Team):
             terminate_msg="EVALUATION_COMPLETE"
         )
         
-        # Integrator finalizes and delivers the complete solution
-        integrator = agent_factory.create_agent(
-            role_key="integrator",  # Updated from synthesizer to integrator
-            terminate_msg="INTEGRATION_COMPLETE"
+        # Lead finalizes and delivers the complete solution
+        lead = agent_factory.create_agent(
+            role_key="lead",  # Updated from integrator to lead
+            terminate_msg="LEADERSHIP_COMPLETE"  # Updated from INTEGRATION_COMPLETE
         )
         
         # Human Proxy - Interface for human input when needed
@@ -108,11 +115,12 @@ class VersatileTeam(Team):
         )
         
         # Add all agents to the team
-        self.add_agent("researcher", researcher)
-        self.add_agent("creator", creator)
-        self.add_agent("evaluator", evaluator)
-        self.add_agent("integrator", integrator)
         self.add_agent("executor", executor)
+        self.add_agent("lead", lead)  # Updated from integrator to lead
+        self.add_agent("researcher", researcher)
+        self.add_agent("developer", developer)
+        self.add_agent("writer", writer)
+        self.add_agent("evaluator", evaluator)
     
     def _register_tools(self):
         """Register necessary tools with the agents."""
@@ -125,7 +133,9 @@ class VersatileTeam(Team):
             )
             
             for agent_name, agent in self.agents.items():
-                fs_tool.register_with_agents(agent)
+                # Skip registering the executor with itself
+                if agent_name != "executor":
+                    fs_tool.register_with_agents(agent, executor_agent=self.get_agent("executor"))
             
             # Register web search tool if available
             try:
@@ -137,14 +147,15 @@ class VersatileTeam(Team):
                 
                 # Register with researcher for research capabilities
                 web_search_tool.register_with_agents(
-                    self.get_agent("researcher")
+                    self.get_agent("researcher"),
+                    executor_agent=self.get_agent("executor")
                 )
             except ImportError:
                 logger.warning("WebSearchTool not available")
             except Exception as e:
                 logger.warning(f"Could not initialize WebSearchTool: {str(e)}")
             
-            # Register code tool with creator, evaluator, and integrator
+            # Register code tool with developer, evaluator, and lead
             try:
                 from roboco.tools.code import CodeTool
                 code_tool = CodeTool(
@@ -155,9 +166,10 @@ class VersatileTeam(Team):
                 
                 # Register with appropriate agents
                 code_tool.register_with_agents(
-                    self.get_agent("creator"),
+                    self.get_agent("developer"),
                     self.get_agent("evaluator"),
-                    self.get_agent("integrator")
+                    self.get_agent("lead"),
+                    executor_agent=self.get_agent("executor")
                 )
                 
             except ImportError:
@@ -171,113 +183,119 @@ class VersatileTeam(Team):
     def _register_handoffs(self):
         """Register handoffs between agents for a collaborative swarm pattern."""
         researcher = self.get_agent("researcher")
-        creator = self.get_agent("creator")
+        developer = self.get_agent("developer")
+        writer = self.get_agent("writer")
         evaluator = self.get_agent("evaluator")
-        integrator = self.get_agent("integrator")
+        lead = self.get_agent("lead")
         executor = self.get_agent("executor")
         
-        # Researcher can handoff to either Creator or self (for more research)
+        # Researcher can handoff to Developer, Writer, or self (for more research)
         register_hand_off(researcher, [
-            # If research identifies implementation approach, go to Creator
+            # If research identifies implementation approach for code, go to Developer
             OnCondition(
-                condition="Route to Creator when implementation plan is ready",
-                target=creator
+                condition="Message contains RESEARCH_COMPLETE and mentions code implementation or development",
+                target=developer,
+                available="allow_development"
             ),
-            # Otherwise, stay with Researcher for deeper exploration
-            AfterWork(agent=researcher)
+            # If research identifies content writing needs, go to Writer
+            OnCondition(
+                condition="Message contains RESEARCH_COMPLETE and mentions documentation or writing needs",
+                target=writer,
+                available="allow_writing"
+            ),
+            # Default to Developer if no specific conditions are met
+            AfterWork(agent=developer)
         ])
         
-        # Creator can handoff to Evaluator, Researcher (if stuck), or self (to continue work)
-        register_hand_off(creator, [
+        # Developer can handoff to Evaluator, Researcher (if stuck), or self (to continue work)
+        register_hand_off(developer, [
             # If implementation needs research help, go back to Researcher
             OnCondition(
-                condition="Route to Researcher when more research is needed",
+                condition="Message contains DEVELOPMENT_BLOCKED and mentions research or design issues",
                 target=researcher,
                 available="allow_research"
             ),
             # If implementation is ready for testing, go to Evaluator
             OnCondition(
-                condition="Route to Evaluator when implementation is ready for testing",
+                condition="Message contains DEVELOPMENT_COMPLETE",
                 target=evaluator,
                 available="allow_evaluation"
             ),
             # Otherwise, continue implementation
-            AfterWork(agent=creator)
+            AfterWork(agent=developer)
         ])
         
-        # Evaluator can handoff to Creator (if issues found), Integrator (if approved), or Researcher (if conceptual issues)
-        register_hand_off(evaluator, [
-            # If evaluation finds implementation issues, go back to Creator
+        # Writer can handoff to Evaluator, Researcher (if stuck), or self (to continue work)
+        register_hand_off(writer, [
+            # If writing needs research help, go back to Researcher
             OnCondition(
-                condition="Route to Creator when implementation issues are found",
-                target=creator,
-                available="allow_creation"
-            ),
-            # If evaluation finds conceptual/design issues, go back to Researcher
-            OnCondition(
-                condition="Route to Researcher when conceptual issues are found",
+                condition="Message contains WRITING_BLOCKED and mentions research or information needs",
                 target=researcher,
                 available="allow_research"
             ),
-            # If evaluation approves, move to Integration
+            # If writing is ready for review, go to Evaluator
             OnCondition(
-                condition="Route to Integrator when implementation is approved",
-                target=integrator,
-                available="allow_integration"
+                condition="Message contains WRITING_COMPLETE",
+                target=evaluator,
+                available="allow_evaluation"
             ),
-            # Continue evaluation if more assessment needed
+            # Otherwise, continue writing
+            AfterWork(agent=writer)
+        ])
+        
+        # Evaluator can handoff to Developer (if code issues), Writer (if document issues),
+        # Lead (if approved), or Researcher (if conceptual issues)
+        register_hand_off(evaluator, [
+            # If evaluation finds implementation issues, go back to Developer
+            OnCondition(
+                condition="Message contains EVALUATION_ISSUES and mentions code or implementation problems",
+                target=developer,
+                available="allow_development"
+            ),
+            # If evaluation finds documentation issues, go back to Writer
+            OnCondition(
+                condition="Message contains EVALUATION_ISSUES and mentions documentation or writing problems",
+                target=writer,
+                available="allow_writing"
+            ),
+            # If evaluation finds conceptual issues, go back to Researcher
+            OnCondition(
+                condition="Message contains EVALUATION_ISSUES and mentions research or design problems",
+                target=researcher,
+                available="allow_research"
+            ),
+            # If evaluation approves, go to Lead for final review
+            OnCondition(
+                condition="Message contains EVALUATION_COMPLETE and mentions approval or completion",
+                target=lead,
+                available="allow_leadership"
+            ),
+            # Otherwise, continue evaluation
             AfterWork(agent=evaluator)
         ])
         
-        # Integrator can consult any other agent as needed or terminate
-        register_hand_off(integrator, [
-            # If integration reveals implementation gaps, consult Creator
+        # Lead can handoff back to any role if issues are found
+        register_hand_off(lead, [
             OnCondition(
-                condition="Route to Creator when implementation gaps are found",
-                target=creator
+                condition="Message contains LEADERSHIP_ISSUES and mentions research or design problems",
+                target=researcher,
+                available="allow_research"
             ),
-            # If integration reveals research/design issues, consult Researcher
             OnCondition(
-                condition="Route to Researcher when design issues are found",
-                target=researcher
+                condition="Message contains LEADERSHIP_ISSUES and mentions code or implementation problems",
+                target=developer,
+                available="allow_development"
             ),
-            # If integration needs validation, consult Evaluator
             OnCondition(
-                condition="Route to Evaluator when validation is needed",
-                target=evaluator
+                condition="Message contains LEADERSHIP_ISSUES and mentions documentation or writing problems",
+                target=writer,
+                available="allow_writing"
             ),
-            # Terminate when integration is complete
-            OnCondition(
-                condition="Terminate when integration is complete",
-                target=None
-            ),
-            # Terminate the swarm explicitly if integration is complete
-            AfterWork(agent=AfterWorkOption.TERMINATE)
+            # Otherwise, continue leadership tasks
+            AfterWork(agent=lead)
         ])
         
-        # Human proxy can direct to any agent based on need
-        register_hand_off(executor, [
-            OnCondition(
-                condition="Route to Researcher when requested",
-                target=researcher
-            ),
-            OnCondition(
-                condition="Route to Creator when requested",
-                target=creator
-            ),
-            OnCondition(
-                condition="Route to Evaluator when requested",
-                target=evaluator
-            ),
-            OnCondition(
-                condition="Route to Integrator when requested",
-                target=integrator
-            ),
-            # Default to researcher if no specific direction
-            AfterWork(agent=researcher)
-        ])
-        
-        logger.info("Registered dynamic handoffs for collaborative swarm pattern with feedback loops")
+        logger.info("Registered handoffs between all team roles")
     
     def _chat_result_to_dict(self, chat_result):
         """
@@ -468,30 +486,80 @@ class VersatileTeam(Team):
         if phase == "initial":
             self.shared_context.update({
                 "allow_research": True,
-                "allow_creation": True,
+                "allow_development": True,
+                "allow_writing": True,
                 "allow_evaluation": False,
-                "allow_integration": False
+                "allow_leadership": False
             })
         elif phase == "development":
             self.shared_context.update({
                 "allow_research": True,
-                "allow_creation": True,
+                "allow_development": True,
+                "allow_writing": True,
                 "allow_evaluation": True,
-                "allow_integration": False
+                "allow_leadership": False
             })
         elif phase == "testing":
             self.shared_context.update({
                 "allow_research": True,
-                "allow_creation": True,
+                "allow_development": True,
+                "allow_writing": True,
                 "allow_evaluation": True,
-                "allow_integration": True
+                "allow_leadership": True
             })
         elif phase == "integration":
             self.shared_context.update({
                 "allow_research": False,
-                "allow_creation": False,
+                "allow_development": False,
+                "allow_writing": False,
                 "allow_evaluation": True,
-                "allow_integration": True
+                "allow_leadership": True
             })
         
         logger.info(f"Updated project phase to {phase} with context: {self.shared_context}")
+
+    async def update_task_state(self, task: Task, phase: str, role: str) -> None:
+        """Update the task state and trigger appropriate transitions.
+        
+        Args:
+            task: The current task being worked on
+            phase: The new phase to transition to
+            role: The role that completed their work
+        """
+        self.update_project_phase(phase)
+        
+        # Update task tracking
+        timestamp = datetime.now().isoformat()
+        task_log = {
+            "timestamp": timestamp,
+            "phase": phase,
+            "role": role,
+            "status": "completed"
+        }
+        
+        # Save task state
+        task_state_path = os.path.join(self.fs.base_dir, "task_state.json")
+        try:
+            with open(task_state_path, "w") as f:
+                json.dump(task_log, f, indent=2)
+        except Exception as e:
+            logger.error(f"Failed to save task state: {str(e)}")
+        
+        # Trigger appropriate transitions based on phase
+        if phase == "research" and role == "researcher":
+            # Enable development phase
+            self.context.update({"allow_development": True})
+            logger.info("Research complete, enabling development phase")
+        elif phase == "development" and role == "developer":
+            # Enable evaluation phase
+            self.context.update({"allow_evaluation": True})
+            logger.info("Development complete, enabling evaluation phase")
+        elif phase == "writing" and role == "writer":
+            # Enable evaluation phase for documentation review
+            self.context.update({"allow_evaluation": True})
+            logger.info("Writing complete, enabling evaluation phase")
+            
+        # Update task status
+        task.status = f"{phase}_complete"
+        
+        logger.info(f"Updated task state: {phase} completed by {role}")

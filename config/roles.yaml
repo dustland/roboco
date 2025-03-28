@@ -7,14 +7,24 @@ roles:
     name: Researcher
     type: agent
     llm:
+      provider: "deepseek"
+      temperature: 0.7
+      max_tokens: 4000
+
+  # Developer (Implementation)
+  developer:
+    description: "Implements solutions based on designs"
+    name: Developer
+    type: agent
+    llm:
       provider: "anthropic"
       temperature: 0.7
       max_tokens: 4000
 
-  # Creator (Implementation)
-  creator:
-    description: "Implements solutions based on designs"
-    name: Creator
+  # Writer (Content Creation)
+  writer:
+    description: "Creates written content, reports, and documentation"
+    name: Writer
     type: agent
     llm:
       provider: "llm"
@@ -31,12 +41,12 @@ roles:
       temperature: 0.5
       max_tokens: 4000
 
-  # Integrator (Integration and Finalization) - formerly Synthesizer
-  integrator:
-    description: "Integrates and finalizes the complete solution"
-    name: Integrator
+  # Lead (Leadership and Integration) - formerly Integrator
+  lead:
+    description: "Leads the team and integrates the complete solution"
+    name: Lead
     type: agent
     llm:
-      provider: "llm"
+      provider: "deepseek"
       temperature: 0.6
       max_tokens: 4000
