@@ -58,7 +58,15 @@ class ChatService:
             Response with conversation ID and results
         """
         # Generate unique conversation ID if not provided
-        conversation_id = chat_request.conversation_id or generate_short_id()
+        if chat_request.conversation_id is None:
+            chat_request.conversation_id = generate_short_id()
+        
+        conversation_id = chat_request.conversation_id
+        
+        if chat_request.project_id is None:
+            chat_request.project_id = generate_short_id()
+        
+        project_id = chat_request.project_id
         
         # Initialize conversation if it doesn't exist
         conversation = self.conversations.get(conversation_id)
@@ -66,7 +74,7 @@ class ChatService:
             conversation = {
                 "messages": [],
                 "created_at": datetime.now().isoformat(),
-                "project_id": None
+                "project_id": project_id
             }
             self.conversations[conversation_id] = conversation
         
@@ -168,6 +176,9 @@ class ChatService:
             },
             project_id=project_id
         )
+        
+        if project.project_id != project_id:
+            logger.warning(f"Project ID changed from {project_id} to {project.project_id}")
         
         # Store the project ID in the conversation
         conversation = self.conversations[conversation_id]

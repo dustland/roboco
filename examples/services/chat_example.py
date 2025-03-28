@@ -32,6 +32,7 @@ load_config_settings()  # Configure logging based on config.yaml
 from roboco.services.project_service import ProjectService
 from roboco.services.api_service import ApiService
 from roboco.core.models.chat import ChatRequest
+from roboco.utils import generate_short_id
 
 logger.info("All modules imported successfully")
 
@@ -57,6 +58,7 @@ async def start_chat(query: str, conversation_id: Optional[str] = None) -> Dict[
     chat_request = ChatRequest(
         query=query,
         teams=["versatile"],
+        project_id=generate_short_id(),
         conversation_id=conversation_id
     )
     

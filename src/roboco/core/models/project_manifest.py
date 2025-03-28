@@ -21,13 +21,13 @@ class ProjectManifest(BaseModel):
     id: str = Field(..., description="Project unique identifier")
     name: str = Field(..., description="Human-readable project name")
     description: str = Field(..., description="Project description")
-    structure: Dict[str, Any] = Field(..., description="Project structure type")
-    folder_structure: List[str] = Field(..., description="List of top-level directories")
-    meta: Optional[Dict[str, Any]] = Field(None, description="Additional metadata")
+    structure: Dict[str, Any] = Field(default_factory=dict, description="Project structure type")
+    folder_structure: List[str] = Field(default_factory=list, description="List of top-level directories")
+    meta: Optional[Dict[str, Any]] = Field(default_factory=dict, description="Additional metadata")
     created_at: str = Field(default_factory=lambda: datetime.now().isoformat(), description="Creation timestamp")
     task_file: str = Field("tasks.md", description="Name of the task file")
-    directories: Optional[List[str]] = Field(None, description="Deprecated: use folder_structure")
-    files: Optional[List[ProjectFile]] = Field(None, description="Files to create")
+    directories: Optional[List[str]] = Field(default_factory=list, description="Deprecated: use folder_structure")
+    files: Optional[List[ProjectFile]] = Field(default_factory=list, description="Files to create")
     
     class Config:
         """Pydantic configuration."""
@@ -40,11 +40,10 @@ class ProjectManifest(BaseModel):
                 "folder_structure": ["src", "docs", "tests"],
                 "meta": {
                     "teams": ["frontend", "backend"],
-                    "tags": ["web", "productivity"]
                 },
                 "files": [
                     {
-                        "path": "README.md",
+                        "path": "tasks.md",
                         "content": "# Todo App\n\nA simple todo application."
                     }
                 ]

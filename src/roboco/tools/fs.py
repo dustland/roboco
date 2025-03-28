@@ -27,7 +27,7 @@ class FileSystemTool(Tool):
     Tool for file system operations including reading and writing files.
     
     This tool provides a command-based interface for file operations that can be used with agent frameworks
-    like AutoGen. It handles file operations within a specified workspace directory.
+    like AutoGen. It handles file operations within a specified project directory.
     """
     
     def __init__(self, fs: ProjectFS):
@@ -90,7 +90,7 @@ class FileSystemTool(Tool):
         
         Args:
             content: The content to save to the file
-            file_path: The path where the file should be saved (relative to workspace)
+            file_path: The path where the file should be saved (relative to project root)
             mode: File opening mode ('w' for write, 'a' for append)
             
         Returns:
@@ -134,7 +134,7 @@ class FileSystemTool(Tool):
         Read content from a file at the specified path.
         
         Args:
-            file_path: The path of the file to read (relative to workspace)
+            file_path: The path of the file to read (relative to project root)
             
         Returns:
             Dictionary with file content and operation info
@@ -181,7 +181,7 @@ class FileSystemTool(Tool):
         List contents of a directory.
         
         Args:
-            directory_path: The path of the directory to list (relative to workspace)
+            directory_path: The path of the directory to list (relative to project root)
             
         Returns:
             Dictionary with directory contents and operation info
@@ -240,7 +240,7 @@ class FileSystemTool(Tool):
         Create a directory at the specified path.
         
         Args:
-            directory_path: The path where the directory should be created (relative to workspace)
+            directory_path: The path where the directory should be created (relative to project root)
             
         Returns:
             Dictionary with operation result info
@@ -302,7 +302,7 @@ class FileSystemTool(Tool):
             
             # Check if we have name and description in the manifest
             if isinstance(manifest, dict) and 'name' in manifest and 'description' in manifest:
-                # Create the project using ProjectFS.initialize with extracted values
+                # Create the project using Project.initialize with extracted values
                 project = Project.initialize(
                     name=manifest['name'],
                     description=manifest['description'],
@@ -313,28 +313,17 @@ class FileSystemTool(Tool):
                 # Convert to ProjectManifest first to extract required fields
                 project_manifest = dict_to_project_manifest(manifest) if isinstance(manifest, dict) else manifest
                 
-                # Create the project using ProjectFS.initialize with extracted values
+                # Create the project using Project.initialize with extracted values
                 project = Project.initialize(
                     name=project_manifest.name,
                     description=project_manifest.description,
                     project_id=project_manifest.id,
                     manifest=project_manifest
                 )
-                
-            # Get the project details to return
-            try:
-                project_data = self.fs.read_json_sync("project.json")
-            except FileNotFoundError:
-                raise ValueError(f"Project file not found: project.json")
-            except json.JSONDecodeError:
-                raise ValueError(f"Invalid JSON in project file: project.json")
             
-            # Log the project data for debugging
-            logger.debug(f"Project data: {project_data}")
-            
-            # Access the project_id safely with a fallback
-            project_id = project_data.get("id", "unknown_id")
-            logger.debug(f"Project id determined to be: {project_id}")
+            # Get the project ID for the result 
+            project_id = project.id
+            logger.debug(f"Created project with id: {project_id}")
             
             return {
                 "status": "success",
@@ -387,7 +376,7 @@ class FileSystemTool(Tool):
         Delete a file at the specified path.
         
         Args:
-            file_path: The path of the file to delete (relative to workspace)
+            file_path: The path of the file to delete (relative to project root)
             
         Returns:
             Dictionary with operation result info
@@ -434,7 +423,7 @@ class FileSystemTool(Tool):
         Check if a file exists at the specified path.
         
         Args:
-            file_path: The path of the file to check (relative to workspace)
+            file_path: The path of the file to check (relative to project root)
             
         Returns:
             Dictionary with existence info
@@ -464,7 +453,7 @@ class FileSystemTool(Tool):
         Read and parse a JSON file at the specified path.
         
         Args:
-            file_path: The path of the JSON file to read (relative to workspace)
+            file_path: The path of the JSON file to read (relative to project root)
             
         Returns:
             Dictionary with parsed JSON content and operation info

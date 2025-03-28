@@ -25,6 +25,8 @@ from roboco.utils.file_utils import (
     write_yaml_file,
 )
 
+from roboco.utils.id_generator import generate_short_id
+
 __all__ = [
     "ensure_directory",
     "read_file",
@@ -39,6 +41,7 @@ __all__ = [
     "write_json_file",
     "read_yaml_file",
     "write_yaml_file",
+    "generate_short_id",
 ]
 
 """Utility modules for Roboco.""" 

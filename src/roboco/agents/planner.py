@@ -55,7 +55,7 @@ You should build a ProjectManifest object with the following structure and all r
         },
         {
             "path": "project.json",
-            "content": "{\\"name\\": \\"Project Name\\", \\"description\\": \\"Detailed description\\", \\"project_id\\": \\"project_id\\", \\"created_at\\": \\"{datetime.now().isoformat()}\\"}"
+            "content": "{\\"id\\": \\"project_id\\", \\"name\\": \\"Project Name\\", \\"description\\": \\"Detailed description\\", \\"created_at\\": \\"{datetime.now().isoformat()}\\"}"
         }
     ]
 }
@@ -90,11 +90,10 @@ The manifest should include both the tasks.md and project.json files in the "fil
 - tasks.md: Contains the task list in the format specified below
 - project.json: Contains basic project metadata
 
-After executing the manifest, respond with the project directory in this format: PROJECT_DIRECTORY: [directory_name]
+After executing the manifest, respond with the project directory in this format: PROJECT_ID: [project_id]
 
 ## PROJECT MANIFEST GUIDELINES:
 - Project name is used for display purposes and can include spaces and proper casing
-- directory_name is used as the project directory name: Short (2-4 words), lowercase with underscores
 - Put a tasks.md file in the root of the project directory that contains a list of tasks for the project.
 - Put a project.json file in the root of the project directory that contains project information including name, description, created_at, etc.
 
@@ -103,7 +102,7 @@ After executing the manifest, respond with the project directory in this format:
 Create a clean, structured task list with high-level goals and detailed subtasks following this format:
 
 ```
-# [Project Name]
+# [Project Name] - Tasks
 
 - [ ] High-level task goal 1
   * Detailed task description 1.1

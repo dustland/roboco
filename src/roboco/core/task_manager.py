@@ -5,6 +5,8 @@ This module provides functionality for managing tasks, including parsing,
 updating, executing, and tracking task completion.
 """
 import logging
+import re
+import traceback
 from datetime import datetime
 from typing import List, Optional, Dict, Any
 
@@ -37,13 +39,15 @@ class TaskManager:
         from roboco.tools.fs import FileSystemTool
         self.file_tool = FileSystemTool(fs)
         
-        logger.debug(f"Initialized TaskManager for project: {self.fs.project_id}")
+        # Log initialization without accessing potentially missing attributes
+        logger.debug(f"Initialized TaskManager")
     
-    def load(self, tasks_path: str) -> List[Dict[str, Any]]:
-        """Parse tasks.md into structured Task objects.
+    def load_tasks(self, tasks_path: str = "tasks.md") -> List[Task]:
+        """
+        Load tasks from tasks.md into Task objects.
         
         Args:
-            tasks_path: Path to the tasks.md file
+            tasks_path: Path to the tasks file, defaults to "tasks.md"
             
         Returns:
             List of Task objects
@@ -85,7 +89,7 @@ class TaskManager:
                 current_task = Task(
                     description=task_description,
                     status=TaskStatus.DONE if is_completed else TaskStatus.TODO,
-                    completed_at=datetime.now().isoformat() if is_completed else None,
+                    completed_at=datetime.now() if is_completed else None,
                     details=[]
                 )
             
@@ -99,64 +103,210 @@ class TaskManager:
             current_task.details = task_details
             tasks.append(current_task)
         
+        logger.debug(f"Loaded {len(tasks)} tasks from {tasks_path}")
         return tasks
     
-    def mark_task_completed(self, tasks: List[Task], task_description: str) -> bool:
-        """Mark a specific task as completed.
+    def mark_task_completed(self, task: Task, tasks_path: str = "tasks.md") -> bool:
+        """
+        Mark a specific task as completed in the tasks file.
+        This method updates only the checkbox status in the tasks.md file without
+        overwriting the entire file content.
         
         Args:
-            tasks: List of tasks
-            task_description: Description of the task to mark as completed
+            task: The task to mark as completed
+            tasks_path: Path to the tasks file, defaults to "tasks.md"
             
         Returns:
-            True if the task was found and marked, False otherwise
+            True if the task was successfully marked, False otherwise
         """
-        for task in tasks:
-            if task.description == task_description:
-                task.status = TaskStatus.DONE
-                task.completed_at = datetime.now().isoformat()
-                return True
+        try:
+            # Try to read the existing file
+            content = self.fs.read_sync(tasks_path)
+            
+            # Use regex to update task status while preserving all other content
+            updated_lines = []
+            task_found = False
+            
+            for line in content.split('\n'):
+                # Check if this line has a task marker
+                task_match = re.match(r'^- \[([ x])\] (.+)$', line)
+                if task_match:
+                    status_char = task_match.group(1)
+                    task_desc = task_match.group(2)
+                    
+                    # If this task matches our target, update its status
+                    if task_desc == task.description:
+                        task_found = True
+                        if status_char != 'x':  # Only update if not already completed
+                            logger.info(f"Updating task status: '{task_desc}' -> DONE")
+                            line = f"- [x] {task_desc}"
+                
+                updated_lines.append(line)
+            
+            # If task wasn't found, no updates needed
+            if not task_found:
+                logger.warning(f"Task '{task.description}' not found in {tasks_path}")
+                return False
+            
+            # Write the updated content back to the file
+            updated_content = '\n'.join(updated_lines)
+            self.fs.write_sync(tasks_path, updated_content)
+            logger.info(f"Updated task status for '{task.description}' in {tasks_path}")
+            return True
+            
+        except FileNotFoundError:
+            logger.error(f"Tasks file not found: {tasks_path}")
+            return False
+        except Exception as e:
+            logger.error(f"Error updating task status: {str(e)}")
+            logger.error(f"Traceback: {traceback.format_exc()}")
+            return False
+            
+    def create_initial_tasks_file(self, tasks: List[Task], tasks_path: str = "tasks.md") -> bool:
+        """
+        Create initial tasks.md file with proper formatting.
+        Only use this if the file doesn't exist yet.
         
-        return False
+        Args:
+            tasks: List of tasks to include
+            tasks_path: Path to the tasks file, defaults to "tasks.md"
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            # Start with the project title
+            content = f"# Project Tasks\n\n"
+            
+            # Write each task with its proper format
+            for task in tasks:
+                status_char = 'x' if task.status == TaskStatus.DONE else ' '
+                content += f"- [{status_char}] {task.description}\n"
+                
+                # Add task details as bullet points
+                if task.details:
+                    for detail in task.details:
+                        content += f"  * {detail}\n"
+                content += "\n"
+                
+            # Write to file
+            self.fs.write_sync(tasks_path, content)
+            logger.info(f"Created new tasks file at {tasks_path}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error creating tasks file: {str(e)}")
+            logger.error(f"Traceback: {traceback.format_exc()}")
+            return False
+            
+    def generate_task_context(self, current_task: Task, tasks: List[Task], project_info: Dict[str, Any]) -> str:
+        """
+        Generate context information about a task and its project.
+        
+        Args:
+            current_task: The current task being executed
+            tasks: List of all tasks in the project
+            project_info: Dictionary with project information
+            
+        Returns:
+            String containing formatted context information
+        """
+        # Create list of context information
+        context_parts = []
+        
+        # Project information
+        context_parts.append(f"# Project Context\n")
+        context_parts.append(f"- Project name: {project_info.get('name', 'Unknown')}")
+        context_parts.append(f"- Description: {project_info.get('description', 'No description')}")
+        context_parts.append(f"- Project root: {project_info.get('id', 'Unknown')}")
+        
+        # Add other tasks for context
+        task_summaries = []
+        for task in tasks:
+            if task.description != current_task.description:
+                status = "DONE" if task.status == TaskStatus.DONE else "TODO"
+                task_summaries.append(f"- {task.description} [{status}]")
+        
+        if task_summaries:
+            context_parts.append("\nOther tasks in project:")
+            context_parts.extend(task_summaries)
+        
+        # Add project structure if we have that info
+        src_dir = project_info.get('source_code_dir', 'src')
+        docs_dir = project_info.get('docs_dir', 'docs')
+        
+        try:
+            context_parts.append("\nProject Structure:")
+            context_parts.append(f"- Project root: {project_info.get('id', 'Unknown')}")
+            context_parts.append(f"- Source code directory: {src_dir}")
+            context_parts.append(f"- Documentation directory: {docs_dir}")
+            
+            # List top-level directories and files if we have access
+            if hasattr(self.fs, 'list_sync'):
+                root_items = self.fs.list_sync(".")
+                if root_items:
+                    context_parts.append("\nRoot Directory Contents:")
+                    for item in root_items:
+                        if item not in [src_dir, docs_dir]:
+                            context_parts.append(f"- {item}")
+            
+        except Exception as e:
+            logger.warning(f"Could not get project structure: {e}")
+        
+        return "\n".join(context_parts)
     
-    def save_tasks_md(self, tasks_path: str, tasks: List[Dict[str, Any]]) -> None:
-        """Save tasks to tasks.md file in a structured format.
+    def create_task_header(self, task: Task) -> str:
+        """
+        Create a visually distinct header for task execution.
+        
+        Args:
+            task: The task being executed
+            
+        Returns:
+            A formatted header string
+        """
+        separator = "=" * 80
+        task_title = f" EXECUTING TASK: {task.description} "
+        
+        # Center the task title within the separator
+        centered_title = task_title.center(80, "=")
+        
+        header = f"\n{separator}\n{centered_title}\n{separator}\n"
+        return header
+            
+    def create_task_completion_header(self, task: Task, status: str) -> str:
+        """
+        Create a visually distinct header for task completion.
+        
+        Args:
+            task: The task that was executed
+            status: The completion status
+            
+        Returns:
+            A formatted completion header string
+        """
+        separator = "-" * 80
+        status_symbol = "✅" if status == "completed" else "❌" if status == "failed" else "⏩"
+        task_title = f" {status_symbol} TASK COMPLETE: {task.description} [{status.upper()}] "
+        
+        # Center the task title within the separator
+        centered_title = task_title.center(80, "-")
+        
+        header = f"\n{separator}\n{centered_title}\n{separator}\n"
+        return header
+    
+    def load(self, tasks_path: str) -> List[Dict[str, Any]]:
+        """
+        Legacy method. Use load_tasks() instead.
         
         Args:
             tasks_path: Path to the tasks.md file
-            tasks: List of task dictionaries
+            
+        Returns:
+            List of Task objects
         """
-        try:
-            # Extract project name from path
-            project_name = self.fs.project_id
-            
-            # Start with the project title
-            content = f"# {project_name}\n\n"
-            
-            # Write each high-level task with its details
-            for task in tasks:
-                # Get task status and description
-                status = task.get("status", "TODO")
-                checkbox = "[x]" if status.upper() == "DONE" else "[ ]"
-                description = task.get("description", "")
-                
-                # Write the high-level task
-                content += f"- {checkbox} {description}\n"
-                
-                # Write the task details
-                details = task.get("details", [])
-                for detail in details:
-                    content += f"  * {detail}\n"
-                
-                # Add a blank line between tasks
-                content += "\n"
-            
-            # Save to file
-            self.fs.save_sync(tasks_path, content)
-            logger.info(f"Saved tasks to {tasks_path}")
-            
-        except Exception as e:
-            logger.error(f"Error saving tasks.md: {str(e)}")
+        logger.warning("Using deprecated load() method, consider switching to load_tasks()")
+        return self.load_tasks(tasks_path)
     
     def get_task_by_description(self, tasks: List[Task], task_description: str) -> Optional[Task]:
         """Get a task by description.
@@ -496,9 +646,8 @@ Instructions:
         # Add project structure
         try:
             context_parts.append("\nProject Structure:")
-            context_parts.append(f"- Project root: {self.fs.project_id}")
-            context_parts.append(f"- Source code directory: {self.src_dir}")
-            context_parts.append(f"- Documentation directory: {self.docs_dir}")
+            context_parts.append("- Source code directory: src")
+            context_parts.append("- Documentation directory: docs")
             
             # List top-level directories and files
             root_items = self.fs.list_sync(".")

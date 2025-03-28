@@ -6,15 +6,18 @@ It incorporates project data, loading/saving, and task execution.
 """
 
 import json
+import re
 from typing import List, Optional, Dict, Any
 from datetime import datetime
 from loguru import logger
+import traceback
 
 from roboco.core.models.task import Task, TaskStatus
 from roboco.core.models.project_metadata import ProjectMetadata
 from roboco.core.models.project_manifest import ProjectManifest, dict_to_project_manifest
 from roboco.core.project_fs import ProjectFS, ProjectNotFoundError
 from roboco.core.team_manager import TeamManager
+from roboco.core.task_manager import TaskManager
 from roboco.utils.id_generator import generate_short_id
 
 
@@ -70,7 +73,10 @@ class Project:
         self.fs = fs or ProjectFS(project_id=project_id)
         
         # Initialize team manager for task execution
-        self._team_manager = None
+        self._team_manager = TeamManager(self.fs)
+        
+        # Initialize task manager for task operations 
+        self._task_manager = TaskManager(self.fs)
     
     # Property accessors for common metadata fields
     @property
@@ -138,9 +144,6 @@ class Project:
     @property
     def team_manager(self) -> TeamManager:
         """Get the team manager instance, initializing it if needed."""
-        if self._team_manager is None:
-            self._team_manager = TeamManager()
-            self._team_manager.set_fs(self.fs)
         return self._team_manager
     
     def update_metadata(self, key: str, value: Any) -> None:
@@ -267,116 +270,23 @@ class Project:
         Returns:
             List of Task objects
         """
-        tasks = []
-        current_task = None
-        task_details = []
+        # Use the task manager to load tasks
+        self.tasks = self._task_manager.load_tasks()
+        return self.tasks
         
-        try:
-            content = self.fs.read_sync("tasks.md")
-            lines = content.split('\n')
-        except FileNotFoundError:
-            logger.error(f"Tasks file not found: tasks.md")
-            return tasks
-        
-        for line in lines:
-            line = line.strip()
-            
-            # Skip empty lines
-            if not line:
-                continue
-            
-            # Skip the project title (first line)
-            if line.startswith('# ') and not tasks:
-                continue
-            
-            # Parse task items (high-level tasks)
-            if line.startswith('- [ ]') or line.startswith('- [x]'):
-                # If we were processing a task, save it with its details
-                if current_task is not None:
-                    current_task.details = task_details
-                    tasks.append(current_task)
-                    task_details = []
-                
-                is_completed = line.startswith('- [x]')
-                task_description = line[5:].strip()
-                
-                # Create Task
-                current_task = Task(
-                    description=task_description,
-                    status=TaskStatus.DONE if is_completed else TaskStatus.TODO,
-                    completed_at=datetime.now() if is_completed else None,
-                    details=[]
-                )
-            
-            # Parse task details (bullet points)
-            elif line.startswith('  * ') and current_task is not None:
-                detail = line[4:].strip()  # Extract the detail text
-                task_details.append(detail)
-        
-        # Add the last task if there is one
-        if current_task is not None:
-            current_task.details = task_details
-            tasks.append(current_task)
-        
-        # Update the project's tasks
-        self.tasks = tasks
-        return tasks
-    
-    def save_tasks_to_md(self) -> None:
+    def mark_task_completed(self, task: Task) -> bool:
         """
-        Save tasks to tasks.md for manual inspection and editing.
-        
-        This method creates a Markdown file containing task descriptions,
-        progress, and completion status for a more human-readable view.
-        """
-        tasks_md = "# Project Tasks\n\n"
-        
-        for task in self.tasks:
-            tasks_md += self._create_task_header(task)
-            tasks_md += f"{task.description}\n\n"
-        
-        self.fs.write_file("tasks.md", tasks_md)
-        logger.info(f"Saved tasks to {self.project_id}/tasks.md")
-    
-    def _create_task_header(self, task: Task) -> str:
-        """
-        Create a visually distinct header for task execution.
+        Mark a specific task as completed in tasks.md.
+        Updates only the task status without destroying file content.
         
         Args:
-            task: The task being executed
+            task: The task to mark as completed
             
         Returns:
-            A formatted header string
+            True if the task was successfully marked, False otherwise
         """
-        separator = "=" * 80
-        task_title = f" EXECUTING TASK: {task.description} "
-        
-        # Center the task title within the separator
-        centered_title = task_title.center(80, "=")
-        
-        header = f"\n{separator}\n{centered_title}\n{separator}\n"
-        return header
-            
-    def _create_task_completion_header(self, task: Task, status: str) -> str:
-        """
-        Create a visually distinct header for task completion.
-        
-        Args:
-            task: The task that was executed
-            status: The completion status
-            
-        Returns:
-            A formatted completion header string
-        """
-        separator = "-" * 80
-        status_symbol = "✅" if status == "completed" else "❌" if status == "failed" else "⏩"
-        task_title = f" {status_symbol} TASK COMPLETE: {task.description} [{status.upper()}] "
-        
-        # Center the task title within the separator
-        centered_title = task_title.center(80, "-")
-        
-        header = f"\n{separator}\n{centered_title}\n{separator}\n"
-        return header
+        # Use the task manager to mark the task as completed
+        return self._task_manager.mark_task_completed(task)
     
     def _convert_to_dict(self, obj):
         """
@@ -475,56 +385,6 @@ class Project:
         header = f"\n{separator}\n{centered_title}\n{separator}\n"
         return header
     
-    def _get_minimal_context(self, current_task: Task) -> str:
-        """
-        Get minimal context about the project and task.
-        
-        Args:
-            current_task: The current task being executed
-            
-        Returns:
-            String containing minimal context
-        """
-        # Create list of context information
-        context_parts = []
-        
-        # Project information
-        context_parts.append(f"# Project Context\n")
-        context_parts.append(f"- Project name: {self.name}")
-        context_parts.append(f"- Description: {self.description}")
-        context_parts.append(f"- Project root: {self.project_id}")
-        
-        # Add other tasks for context
-        task_summaries = []
-        for task in self.tasks:
-            if task != current_task:
-                status = "DONE" if task.status == TaskStatus.DONE else "TODO"
-                task_summaries.append(f"- {task.description} [{status}]")
-        
-        if task_summaries:
-            context_parts.append("\nOther tasks in project:")
-            context_parts.extend(task_summaries)
-        
-        # Add project structure
-        try:
-            context_parts.append("\nProject Structure:")
-            context_parts.append(f"- Project root: {self.project_id}")
-            context_parts.append(f"- Source code directory: {self.source_code_dir}")
-            context_parts.append(f"- Documentation directory: {self.docs_dir}")
-            
-            # List top-level directories and files
-            root_items = self.fs.list_sync(".")
-            if root_items:
-                context_parts.append("\nRoot Directory Contents:")
-                for item in root_items:
-                    if item not in [self.source_code_dir, self.docs_dir]:
-                        context_parts.append(f"- {item}")
-        
-        except Exception as e:
-            logger.warning(f"Could not get project structure: {e}")
-        
-        return "\n".join(context_parts)
-    
     async def execute_task(self, task: Task) -> Dict[str, Any]:
         """
         Execute a single task.
@@ -544,15 +404,22 @@ class Project:
             }
         
         # Create and log an outstanding header for this task
-        task_header = self._create_task_header(task)
+        task_header = self._task_manager.create_task_header(task)
         logger.info(task_header)
         logger.info(f"Executing task: {task.description}")
         
         # Get appropriate team for this task
         team = self.team_manager.get_team_for_task(task)
         
-        # Get minimal context
-        execution_context = self._get_minimal_context(task)
+        # Get minimal context using the task manager
+        project_info = {
+            "name": self.name,
+            "description": self.description,
+            "id": self.project_id,
+            "source_code_dir": self.source_code_dir,
+            "docs_dir": self.docs_dir
+        }
+        execution_context = self._task_manager.generate_task_context(task, self.tasks, project_info)
         
         # Track results
         results = {
@@ -581,8 +448,12 @@ Instructions:
     * `create_directory` to create new directories
     * `delete_file` to remove files
     * `read_json` to read and parse JSON files
+- IMPORTANT: All file paths must be relative to the project root. DO NOT include the project ID in any path
+- For example, use "src/main.py" not "{self.project_id}/src/main.py"
 - Always place source code files (js, py, etc.) in the src directory
 - Always place documentation files (md, txt, etc.) in the docs directory
+- The root directory already exists (it's the project directory)
+- Always use simple paths: "src/file.py", "docs/readme.md", etc.
 - Maintain a clean, organized directory structure
 - Do not create files directly in the project root
 - When modifying files, use the filesystem tool's commands instead of trying to edit files directly
@@ -598,14 +469,15 @@ Instructions:
             if "error" not in task_result:
                 task.status = TaskStatus.DONE
                 task.completed_at = datetime.now().isoformat()
+                
+                # Mark task as completed in tasks.md
+                self.mark_task_completed(task)
+                
                 results.update({
                     "status": "completed",
                     "response": task_result.get("response", "")
                 })
                 logger.info(f"Task '{task.description}' completed successfully")
-                
-                # Save the updated tasks
-                self.save_tasks_to_md()
             else:
                 results.update({
                     "status": "failed",
@@ -614,7 +486,6 @@ Instructions:
                 logger.error(f"Task '{task.description}' failed: {task_result.get('error', 'Unknown error')}")
             
         except Exception as e:
-            import traceback
             error_details = traceback.format_exc()
             results.update({
                 "status": "failed",
@@ -625,15 +496,16 @@ Instructions:
             logger.error(f"Traceback: {error_details}")
         
         # Add completion header
-        completion_header = self._create_task_completion_header(task, results["status"])
+        completion_header = self._task_manager.create_task_completion_header(task, results["status"])
         logger.info(completion_header)
         
         logger.info(f"Task '{task.description}' execution completed with status: {results['status']}")
-        return results
-    
+        return results 
+
     async def execute_tasks(self, keyword_filter: Optional[str] = None) -> Dict[str, Any]:
         """
         Execute all tasks in the project, optionally filtered by a keyword.
+        Fails immediately if any task fails.
         
         Args:
             keyword_filter: Optional keyword to filter tasks by description
@@ -664,10 +536,6 @@ Instructions:
             tasks_to_execute = filtered_tasks
             logger.info(f"Filtered to {len(tasks_to_execute)} tasks")
         
-        # Create and log batch header
-        batch_header = self._create_batch_task_header(len(tasks_to_execute))
-        logger.info(batch_header)
-        
         # Track results
         results = {
             "tasks": {},
@@ -689,18 +557,17 @@ Instructions:
             # Update completion stats
             if task_result["status"] == "completed" or task_result["status"] == "already_completed":
                 completed_count += 1
-            
-            # Update overall status if any task failed
-            if task_result["status"] != "completed" and task_result["status"] != "already_completed":
-                results["status"] = "partial_failure"
-        
-        # Create and log batch completion header
-        batch_completion_header = self._create_batch_completion_header(
-            results["status"], 
-            completed_count, 
-            len(tasks_to_execute)
-        )
-        logger.info(batch_completion_header)
+            else:
+                # Task failed, stop execution immediately
+                results["status"] = "failed"
+                logger.error(f"Task '{task.description}' failed. Stopping further execution.")
+                
+                # Update the project's last updated time and save
+                self.project_metadata.updated_at = datetime.now().isoformat()
+                self.save()
+                
+                logger.info(f"Project tasks execution stopped with status: failed")
+                return results
         
         # Create a summary of files created in each directory
         src_files = self.fs.list_sync(self.source_code_dir)
@@ -717,7 +584,7 @@ Instructions:
         
         logger.info(f"Project tasks execution completed with status: {results['status']}")
         return results
-    
+        
     @classmethod
     def initialize(
         cls,
@@ -748,8 +615,9 @@ Instructions:
         if isinstance(manifest, dict):
             manifest = dict_to_project_manifest(manifest)
         
-        # If we have a manifest, adjust project_id
-        project_id = manifest.id
+        # Use manifest's ID if available, otherwise use the provided project_id
+        project_id = manifest.id if manifest.id else project_id
+        logger.debug(f"Using project_id: {project_id}")
         
         # Create ProjectFS for the new project
         fs = ProjectFS(project_id=project_id)
@@ -758,7 +626,13 @@ Instructions:
         if manifest.folder_structure:
             # Create any additional directories
             for folder in manifest.folder_structure:
-                fs.mkdir_sync(folder)
+                # Ensure folder path is relative to project root
+                folder_path = folder
+                if folder_path.startswith(f"{project_id}/") or folder_path.startswith(f"{project_id}\\"):
+                    folder_path = folder_path[len(project_id)+1:]  # +1 for the slash
+                
+                fs.mkdir_sync(folder_path)
+                logger.debug(f"Created directory: {folder_path}")
                 
             # Create any specified files
             if manifest.files:
@@ -776,6 +650,7 @@ Instructions:
                     
                     # Write file with the adjusted path
                     fs.write_sync(relative_path, file_info.content)
+                    logger.debug(f"Created file: {relative_path}")
         
         logger.info(f"Created project '{name}' in directory: {project_id}")
         return cls(

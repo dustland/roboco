@@ -384,9 +384,23 @@ class VersatileTeam(Team):
         
         # Save the results
         # Create a file name based on the first few words of the description
-        task_file_name = "task_" + "_".join(task.description.split()[:5]).lower()
+        task_file_name = "_".join(task.description.split()[:5]).lower()
         task_file_name = "".join(c if c.isalnum() or c == "_" else "_" for c in task_file_name)
-        results_path = os.path.join(self.fs.base_dir, f"{task_file_name}_results.md")
+        
+        # Create logs directory if it doesn't exist
+        logs_dir = "logs"
+        if not self.fs.exists_sync(logs_dir):
+            try:
+                # Use the filesystem to create the logs directory
+                self.fs.mkdir_sync(logs_dir)
+                logger.info(f"Created logs directory at {logs_dir}")
+            except Exception as e:
+                logger.warning(f"Failed to create logs directory: {str(e)}")
+        
+        # Save results in the logs directory
+        results_file = f"{task_file_name}_results.md"
+        results_path_relative = os.path.join(logs_dir, results_file)
+        results_path = os.path.join(self.fs.base_dir, results_path_relative)
         
         if "error" not in swarm_result:
             chat_result = swarm_result.get("chat_result", "")
@@ -420,13 +434,13 @@ class VersatileTeam(Team):
                     f.write(f"- **{agent}**: {len(sizes)} contributions, {sum(sizes)} total characters\n")
             
             logger.info(f"Collaborative session completed with {len(agent_sequence)} agent handoffs")
-            logger.info(f"Results saved to {results_path}")
+            logger.info(f"Results saved to {results_path_relative}")
             
             # Format the response to match PlanningTeam's run_chat format
             return {
                 "response": self._chat_result_to_dict(chat_result),
                 "chat_history": messages,
-                "results_path": results_path,
+                "results_path": results_path_relative,
                 "collaboration_stats": {
                     "agent_sequence": agent_sequence,
                     "agent_contributions": agent_contributions

@@ -236,7 +236,7 @@ class Team(ABC):
             chat_result = initiate_swarm_chat(
                 initial_agent=initial_agent,
                 agents=all_agents,
-                messages=[query],
+                messages=[{"role": "user", "content": query}],
                 context_variables=context,
                 max_rounds=max_rounds,
                 after_work=AfterWorkOption.TERMINATE

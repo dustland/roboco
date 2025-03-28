@@ -148,8 +148,8 @@ def extract_project_id(chat_history) -> Optional[str]:
         except json.JSONDecodeError:
             pass
 
-    # Look for the standardized format: PROJECT_DIRECTORY: [directory_name]
-    match = re.search(r'PROJECT_DIRECTORY:\s*([a-zA-Z0-9_\-]+)', response)
+    # Look for the standardized format: PROJECT_ID: [project_id]
+    match = re.search(r'PROJECT_ID:\s*([a-zA-Z0-9_\-]+)', response)
     if match:
         return match.group(1)
     
@@ -157,19 +157,9 @@ def extract_project_id(chat_history) -> Optional[str]:
     match = re.search(r'[\'"]?project_id[\'"]?:\s*[\'"]([a-zA-Z0-9_\-]+)[\'"]', response)
     if match:
         return match.group(1)
-    
-    # Try to find the project_id in a success message
-    match = re.search(r'successfully.*[\'"]([a-zA-Z0-9_\-]+)[\'"]', response, re.IGNORECASE)
-    if match:
-        return match.group(1)
         
     # Try to find project_id in json
     match = re.search(r'"project_id":\s*"([a-zA-Z0-9_\-]+)"', response)
-    if match:
-        return match.group(1)
-    
-    # Look for a reference to a created directory
-    match = re.search(r'created\s+(?:at|in|directory|folder|project)\s+[\'"]?([a-zA-Z0-9_\-]+)[\'"]?', response, re.IGNORECASE)
     if match:
         return match.group(1)
     
