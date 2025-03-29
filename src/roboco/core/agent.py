@@ -4,6 +4,7 @@ Base Agent Module
 This module defines the Agent class that extends AG2's AssistantAgent.
 """
 
+from datetime import datetime
 from typing import Dict, Any, List, Optional, Callable, Union
 from loguru import logger
 
@@ -72,6 +73,8 @@ class Agent(AssistantAgent):
         self.terminate_msg = terminate_msg
         
         is_termination_msg = None
+        
+        system_message = f"{system_message}\n\nCurrent date and time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
         
         # Append termination instructions to system message if a termination message is provided
         if terminate_msg:

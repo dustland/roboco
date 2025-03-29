@@ -39,6 +39,7 @@ Use these technology choices for common application types:
    - HTML5, CSS3, and vanilla JavaScript
    - Minimal dependencies and frameworks
    - Responsive design using CSS Grid/Flexbox
+   - Should not introduce CORS issue in JavaScript such as loading local files
 
 2. **Complex Web Applications**:
 

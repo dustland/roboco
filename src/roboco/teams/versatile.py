@@ -157,25 +157,23 @@ class VersatileTeam(Team):
             
             # Register code tool with developer, evaluator, and lead
             try:
-                from roboco.tools.code import CodeTool
-                code_tool = CodeTool(
+                from roboco.tools.browser_use import BrowserUseTool
+                browser_tool = BrowserUseTool(
                     fs=self.fs,
-                    name="code",
-                    description="Generate, validate, and execute code in multiple languages"
+                    name="browser",
+                    description="Use the web browser to search the web or navigate to a specific URL"
                 )
                 
                 # Register with appropriate agents
-                code_tool.register_with_agents(
-                    self.get_agent("developer"),
-                    self.get_agent("evaluator"),
-                    self.get_agent("lead"),
+                browser_tool.register_with_agents(
+                    self.get_agent("researcher"),
                     executor_agent=self.get_agent("executor")
                 )
                 
             except ImportError:
-                logger.warning("CodeTool not available")
+                logger.warning("BrowserUseTool not available")
             except Exception as e:
-                logger.warning(f"Could not initialize CodeTool: {str(e)}")
+                logger.warning(f"Could not initialize BrowserUseTool: {str(e)}")
                 
         except Exception as e:
             logger.error(f"Error registering tools: {str(e)}")
