@@ -131,7 +131,7 @@ class AgentFactory:
         """Get the LLM configuration for a specific role.
         
         Extracts the LLM configuration from the role definition in roles.yaml,
-        then uses core.config functions to properly merge with provider settings.
+        then uses core.config functions to properly merge with model settings.
         
         Args:
             role_key: The key of the role in the configuration
@@ -139,24 +139,29 @@ class AgentFactory:
         Returns:
             Dictionary containing LLM configuration or None if not specified
         """
-        # Always start with the base LLM config from config.yaml
-        base_llm_config = get_llm_config(self.main_config, provider="llm")
-        
         # Get role-specific config
         role_config = get_role_config(self.roles_config, role_key)
-        if role_config and role_config.llm:
-            # Get role-specific LLM config
-            role_llm_config = role_config.llm.copy()
-            
-            # Merge base config with role-specific config
-            # Role settings take precedence over base settings
-            merged_config = {**base_llm_config, **role_llm_config}
-            
-            logger.info(f"Created merged LLM configuration for role '{role_key}'")
-            return merged_config
         
-        # If no role-specific config, return the base config
-        return base_llm_config
+        if role_config and role_config.llm:
+            # Get role-specific model
+            role_model = role_config.llm.get("model")
+            
+            if role_model:
+                # Get model-specific configuration from config.yaml
+                model_config = get_llm_config(self.main_config, model=role_model)
+                
+                # Apply role-specific overrides
+                role_llm_config = role_config.llm.copy()
+                role_llm_config.pop("model", None)  # Remove model key
+                
+                # Merge model config with role-specific overrides
+                merged_config = {**model_config, **role_llm_config}
+                
+                logger.info(f"Created merged LLM configuration for role '{role_key}' using model '{role_model}'")
+                return merged_config
+        
+        # If no role-specific model, return the default config
+        return get_llm_config(self.main_config)
     
     def register_agent_class(self, role_key: str, agent_class: Type[Agent]):
         """Register a specialized agent class for a specific role.

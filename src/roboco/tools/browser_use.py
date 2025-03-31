@@ -92,7 +92,9 @@ class BrowserUseTool(Generic[Context], Tool):
             config: Configuration for the browser tool
             **kwargs: Additional keyword arguments
         """
-        super().__init__(config=config, **kwargs)
+        # First extract tool name and description from kwargs to prevent them from being passed twice
+        name = kwargs.pop("name", "browser_use")
+        description = kwargs.pop("description", "Use the browser to perform web tasks like navigation, interaction, data extraction, and more.")
         
         # Initialize with config
         if config is None:
@@ -159,9 +161,10 @@ class BrowserUseTool(Generic[Context], Tool):
             )
             self.browser_config["new_context_config"] = new_context_config
         
+        # Now initialize the Tool parent class with the browser_use function
         super().__init__(
-            name="browser_use",
-            description="Use the browser to perform web tasks like navigation, interaction, data extraction, and more.",
+            name=name,
+            description=description,
             func_or_tool=self.browser_use,
             **kwargs
         )

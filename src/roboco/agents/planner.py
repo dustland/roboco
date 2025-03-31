@@ -5,6 +5,7 @@ This module provides an agent for building project structures based on natural l
 """
 
 from roboco.core.agent import Agent
+from roboco.core.config import get_llm_config
 
 class Planner(Agent):
     """Agent for planning and organizing projects based on natural language queries."""
@@ -151,4 +152,5 @@ For project planning tasks, structure your response as:
 """
 
         # Initialize the agent with the system message
-        super().__init__(name=name, system_message=system_message, terminate_msg=terminate_msg, code_execution_config=False)
+        llm_config = get_llm_config(model="gpt-4o")
+        super().__init__(name=name, system_message=system_message, terminate_msg=terminate_msg, llm_config=llm_config, code_execution_config=False)

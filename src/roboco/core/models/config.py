@@ -20,57 +20,105 @@ class ToolConfig(BaseModel):
         extra = 'allow'  # Allow extra fields for tool-specific configurations
 
 
-class LLMConfig(BaseModel):
-    """Configuration for language model settings."""
-    
+class ModelConfig(BaseModel):
+    """Configuration for a specific language model."""
+    api_type: str = Field(
+        description="The API type for this model (e.g., 'openai', 'anthropic', 'deepseek')"
+    )
     model: str = Field(
-        default="gpt-4",
-        description="The model to use for language generation"
+        description="The actual model name as recognized by the provider API"
     )
-    api_key: str = Field(
-        default="",
-        description="API key for the language model provider"
+    api_key: Optional[str] = Field(
+        default=None,
+        description="API key for this model (falls back to defaults if not specified)"
     )
-    base_url: str = Field(
-        default="https://api.openai.com/v1",
-        description="Base URL for the language model API"
+    base_url: Optional[str] = Field(
+        default=None,
+        description="Base URL for API requests"
+    )
+    temperature: Optional[float] = Field(
+        default=None,
+        ge=0.0,
+        le=2.0,
+        description="Sampling temperature for text generation"
+    )
+    max_tokens: Optional[int] = Field(
+        default=None,
+        gt=0,
+        description="Maximum number of tokens to generate"
+    )
+    
+    class Config:
+        extra = 'allow'  # Allow additional provider-specific parameters
+
+
+class LLMDefaults(BaseModel):
+    """Default configuration values for language models."""
+    api_key: Optional[str] = Field(
+        default=None,
+        description="Default API key for models"
     )
     temperature: float = Field(
         default=0.7,
         ge=0.0,
         le=2.0,
-        description="Sampling temperature for text generation"
+        description="Default sampling temperature"
     )
     max_tokens: int = Field(
         default=4000,
         gt=0,
-        description="Maximum number of tokens to generate"
+        description="Default maximum number of tokens"
     )
     terminate_msg: str = Field(
         default="TERMINATE",
         description="Message used by agents to signal completion"
     )
     
-    # Optional model-specific configurations
-    vision: Optional[Dict[str, Any]] = Field(
-        default=None,
-        description="Configuration for vision-capable models"
+    class Config:
+        extra = 'allow'  # Allow additional default parameters
+
+
+class LLMConfig(BaseModel):
+    """Configuration for language model settings."""
+    
+    default_model: str = Field(
+        default="gpt_4o",
+        description="The default model key to use when none is specified"
     )
-    openai: Optional[Dict[str, Any]] = Field(
-        default=None,
-        description="Configuration for OpenAI models"
+    
+    defaults: LLMDefaults = Field(
+        default_factory=LLMDefaults,
+        description="Default settings for all models"
     )
-    deepseek: Optional[Dict[str, Any]] = Field(
-        default=None,
-        description="Configuration for DeepSeek models"
-    )
-    ollama: Optional[Dict[str, Any]] = Field(
-        default=None,
-        description="Configuration for local Ollama models"
+    
+    models: Dict[str, ModelConfig] = Field(
+        default_factory=dict,
+        description="Configurations for different models"
     )
     
     class Config:
-        extra = 'allow'  # Allow extra fields for model-specific configurations
+        extra = 'allow'  # Allow extra fields for backward compatibility
+    
+    def get_model_config(self, model_name: str) -> Optional[ModelConfig]:
+        """
+        Get configuration for a specific model.
+        
+        Args:
+            model_name: Name of the model to retrieve
+            
+        Returns:
+            ModelConfig for the specified model or None if not found
+        """
+        return self.models.get(model_name)
+    
+    def get_available_models(self) -> List[str]:
+        """
+        Get list of available model configurations.
+        
+        Returns:
+            List of model names
+        """
+        return list(self.models.keys())
 
 
 class TeamConfig(BaseModel):

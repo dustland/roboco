@@ -59,6 +59,12 @@ def process_env_vars(config_data: Dict[str, Any]) -> Dict[str, Any]:
     for key, value in config_data.items():
         if isinstance(value, dict):
             result[key] = process_env_vars(value)
+        elif isinstance(value, list):
+            # Process environment variables in list items
+            result[key] = [
+                process_env_vars(item) if isinstance(item, dict) else item
+                for item in value
+            ]
         elif isinstance(value, str) and "${" in value and "}" in value:
             # Process environment variable
             env_var = value.split("${")[1].split("}")[0]
@@ -152,57 +158,51 @@ def create_default_config() -> RobocoConfig:
     return config
 
 
-def get_llm_config(config: Optional[RobocoConfig] = None, provider: str = "llm") -> Dict[str, Any]:
+def get_llm_config(config: Optional[RobocoConfig] = None, model: str = None) -> Dict[str, Any]:
     """
     Create an LLM configuration dictionary suitable for agent use.
     
     Args:
         config: RobocoConfig instance (if None, will call load_config)
-        provider: The LLM provider to use (e.g., "llm", "openai", "deepseek", "ollama")
-                 This allows different agents to use different LLM providers.
+        model: The model key to use (e.g., "gpt_4o", "deepseek_v3")
+               If None, will use the default_model from config
         
     Returns:
-        Dictionary containing the LLM configuration for agents
+        Dictionary containing the LLM configuration for AG2
     """
     if config is None:
         config = load_config()
     
-    # Extract base LLM configuration
+    # Extract LLM configuration section
     llm_section = config.llm
     
-    # If provider is the default "llm", use the base configuration
-    if provider == "llm":
-        # Create the config dictionary with just the essential parameters
-        agent_llm_config = {
-            "model": llm_section.model,
-            "api_key": llm_section.api_key,
-            "temperature": llm_section.temperature,
-            "max_tokens": llm_section.max_tokens,
-        }
-        
-        # Add base_url if provided
-        if hasattr(llm_section, 'base_url') and llm_section.base_url:
-            agent_llm_config["base_url"] = llm_section.base_url
+    # Get defaults
+    defaults = llm_section.defaults
     
-    # Otherwise, use a specific provider's configuration
-    else:
-        # Check if the provider configuration exists
-        if not hasattr(llm_section, provider) or getattr(llm_section, provider) is None:
-            raise ValueError(f"LLM provider '{provider}' not found in configuration")
-        
-        provider_config = getattr(llm_section, provider)
-        
-        # Create the config dictionary with provider-specific parameters
-        agent_llm_config = {
-            "model": provider_config.get("model", llm_section.model),
-            "api_key": provider_config.get("api_key", llm_section.api_key),
-            "temperature": provider_config.get("temperature", llm_section.temperature),
-            "max_tokens": provider_config.get("max_tokens", llm_section.max_tokens),
-        }
-        
-        # Add base_url if provided in the provider config
-        if "base_url" in provider_config:
-            agent_llm_config["base_url"] = provider_config["base_url"]
+    # If no specific model is requested, use the default_model
+    if model is None:
+        model = llm_section.default_model
+    
+    # Get model configuration from the models dictionary
+    model_config = llm_section.get_model_config(model)
+    
+    if model_config is None:
+        # If model not found, provide helpful error with available models
+        available_models = llm_section.get_available_models()
+        raise ValueError(f"LLM model '{model}' not found in configuration. Available models: {', '.join(available_models)}")
+    
+    # Create the config dictionary in the format AG2 expects
+    agent_llm_config = {
+        "api_type": model_config.api_type,
+        "model": model_config.model,
+        "api_key": model_config.api_key or defaults.api_key,
+        "temperature": model_config.temperature or defaults.temperature,
+        "max_tokens": model_config.max_tokens or defaults.max_tokens,
+    }
+    
+    # Add optional parameters if provided
+    if model_config.base_url:
+        agent_llm_config["base_url"] = model_config.base_url
     
     return agent_llm_config
 

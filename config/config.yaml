@@ -16,44 +16,50 @@ core:
 
 # LLM Settings
 llm:
-  # Global LLM configuration (default for all agents)
-  model: "gpt-4o"
-  api_key: "${OPENAI_API_KEY}" # Set in environment or .env file
-  max_tokens: 8000
-  temperature: 0.2
-  base_url: "https://api.openai.com/v1"
-  terminate_msg: "TERMINATE"
+  # Default model to use when none is specified
+  default_model: "gpt-4o"
 
-  # OpenAI models
-  openai:
-    model: "gpt-4o"
-    base_url: "https://api.openai.com/v1"
-    api_key: "${OPENAI_API_KEY}"
-    max_tokens: 4096
-    temperature: 0.7
-
-  # DeepSeek models
-  deepseek:
-    model: "deepseek-chat"
-    base_url: "https://api.deepseek.com/v1"
-    api_key: "${DEEPSEEK_API_KEY}"
+  # Global defaults that apply when not specified in model configurations
+  defaults:
+    api_key: "${OPENAI_API_KEY}" # Set in environment or .env file
     max_tokens: 8192
-    temperature: 0.7
+    temperature: 0.2
+    terminate_msg: "TERMINATE"
 
-  anthropic:
-    model: "claude-3-7-sonnet-20250219"
-    base_url: "https://api.gptsapi.net/v1"
-    api_key: "${ANTHROPIC_API_KEY}"
-    max_tokens: 8192
-    temperature: 0.7
+  # Model configurations
+  models:
+    "gpt-4o":
+      api_type: "openai"
+      model: "gpt-4o"
+      api_key: "${OPENAI_API_KEY}"
+      base_url: "https://api.openai.com/v1"
+      max_tokens: 8192
+      temperature: 0.7
 
-  # Local models via Ollama (commented out by default)
-  # ollama:
-  #   model: "llama3"
-  #   base_url: "http://localhost:11434/v1"
-  #   api_key: "ollama"
-  #   max_tokens: 4096
-  #   temperature: 0.7
+    "deepseek-chat":
+      api_type: "deepseek"
+      model: "deepseek-chat"
+      api_key: "${DEEPSEEK_API_KEY}"
+      base_url: "https://api.deepseek.com/v1"
+      max_tokens: 8192
+      temperature: 0.7
+
+    "claude-3-5-sonnet-20241022":
+      api_type: "anthropic"
+      model: "claude-3-5-sonnet-20241022"
+      api_key: "${ANTHROPIC_API_KEY}"
+      base_url: "https://api.gptsapi.net/v1"
+      max_tokens: 8192
+      temperature: 0.7
+
+    # Local models via Ollama (commented out by default)
+    # llama3:
+    #   api_type: "openai"  # Ollama uses OpenAI-compatible API
+    #   model: "llama3"
+    #   base_url: "http://localhost:11434/v1"
+    #   api_key: "ollama"
+    #   max_tokens: 4096
+    #   temperature: 0.7
 
 # Agent Settings
 agents:

@@ -179,25 +179,102 @@ class Team(ABC):
     
     def register_handoffs(self) -> None:
         """
-        Register handoffs between agents for swarm orchestration.
+        Register handoffs between agents for swarm orchestration with task-specific logic.
         
-        This method configures the handoff conditions between agents using AfterWork,
-        allowing for automatic transitions during a swarm chat.
+        This method configures handoffs between agents based on their roles and the
+        expected workflow, rather than creating a simple circular pattern.
         """
         if not self.swarm_enabled:
             self.enable_swarm()
             
-        # Create circular handoffs between all agents
-        agent_list = list(self.agents.values())
-        if len(agent_list) >= 2:
-            for i, agent in enumerate(agent_list):
-                next_agent = agent_list[(i + 1) % len(agent_list)]
-                register_hand_off(
-                    agent=agent,
-                    hand_to=[AfterWork(agent=next_agent)]
+        # Get all agents by name for role-based configuration
+        agents_by_name = self.agents
+        
+        # Clear any existing handoffs first
+        for agent in self.agents.values():
+            if hasattr(agent, "_hand_to"):
+                agent._hand_to = []
+        
+        # Define specific handoff logic based on agent roles
+        handoffs = []
+        
+        # 1. Lead should hand off to Researcher to start the research process
+        if "Lead" in agents_by_name and "Researcher" in agents_by_name:
+            handoffs.append((agents_by_name["Lead"], agents_by_name["Researcher"]))
+            logger.info("Registered: Lead → Researcher")
+        
+        # 2. Researcher should hand off to Developer when research is complete
+        if "Researcher" in agents_by_name and "Developer" in agents_by_name:
+            handoffs.append((agents_by_name["Researcher"], agents_by_name["Developer"]))
+            logger.info("Registered: Researcher → Developer")
+        
+        # 3. Developer should hand off to Writer when implementation is complete
+        if "Developer" in agents_by_name and "Writer" in agents_by_name:
+            handoffs.append((agents_by_name["Developer"], agents_by_name["Writer"]))
+            logger.info("Registered: Developer → Writer")
+            
+        # 4. Writer should hand off to Evaluator
+        if "Writer" in agents_by_name and "Evaluator" in agents_by_name:
+            handoffs.append((agents_by_name["Writer"], agents_by_name["Evaluator"]))
+            logger.info("Registered: Writer → Evaluator")
+            
+        # 5. Evaluator should hand off to Lead to complete the cycle
+        if "Evaluator" in agents_by_name and "Lead" in agents_by_name:
+            handoffs.append((agents_by_name["Evaluator"], agents_by_name["Lead"]))
+            logger.info("Registered: Evaluator → Lead")
+            
+        # Handle custom handoffs defined in the configuration
+        if hasattr(self, "config") and hasattr(self.config, "teams"):
+            team_config = getattr(self.config.teams, self.name, None)
+            if team_config and hasattr(team_config, "workflow"):
+                for handoff in team_config.workflow:
+                    if "from" in handoff and "to" in handoff:
+                        from_agent = agents_by_name.get(handoff["from"])
+                        to_agent = agents_by_name.get(handoff["to"])
+                        if from_agent and to_agent:
+                            handoffs.append((from_agent, to_agent))
+                            logger.info(f"Registered custom handoff: {handoff['from']} → {handoff['to']}")
+        
+        # Register all handoffs with appropriate conditions
+        for from_agent, to_agent in handoffs:
+            # Only hand off when the agent has something useful to contribute
+            register_hand_off(
+                agent=from_agent, 
+                hand_to=[
+                    AfterWork(
+                        agent=to_agent,
+                        # Only hand off if the agent has explicitly indicated handoff
+                        condition=lambda msg: (
+                            "I'll hand off to" in (msg.get("content", "") or "") or
+                            "handing off to" in (msg.get("content", "") or "").lower() or
+                            "RESEARCH_COMPLETE" in (msg.get("content", "") or "") or
+                            "IMPLEMENTATION_COMPLETE" in (msg.get("content", "") or "") or
+                            "EVALUATION_COMPLETE" in (msg.get("content", "") or "")
+                        )
+                    )
+                ]
+            )
+        
+        # Add explicit termination conditions for each agent
+        for agent_name, agent in agents_by_name.items():
+            # Set a conditional termination handler
+            def create_termination_condition(agent_name):
+                return lambda msg: (
+                    "TASK_COMPLETE" in (msg.get("content", "") or "") or
+                    "ALL_TASKS_COMPLETED" in (msg.get("content", "") or "") or
+                    "TERMINATE" in (msg.get("content", "") or "")
                 )
             
-        logger.info(f"Registered handoffs between {len(agent_list)} agents")
+            agent.register_reply(
+                [ConversableAgent], 
+                lambda recipient, messages, sender, config: {
+                    "content": "Task complete. Terminating swarm.",
+                    "role": "assistant"
+                },
+                condition=create_termination_condition(agent_name)
+            )
+        
+        logger.info(f"Registered {len(handoffs)} structured handoffs with conditional logic")
     
     def run_swarm(self, 
                 initial_agent_name: str, 
@@ -267,10 +344,38 @@ class Team(ABC):
             
         except Exception as e:
             import traceback
+            import sys
             error_tb = traceback.format_exc()
+            
+            # Log detailed agent information
+            agent_details = []
+            for agent_name, agent in self.agents.items():
+                model_info = "unknown"
+                if hasattr(agent, "llm_config") and agent.llm_config:
+                    model_info = agent.llm_config.get("model", "unknown")
+                    api_type = agent.llm_config.get("api_type", "unknown")
+                    base_url = agent.llm_config.get("base_url", "N/A")
+                    model_info = f"{model_info} ({api_type}, {base_url})"
+                
+                agent_details.append(f"  - {agent_name}: {model_info}")
+            
+            agent_info = "\n".join(agent_details)
+            
             logger.error(f"Error in swarm execution: {str(e)}")
+            logger.error(f"Error type: {type(e).__name__}")
+            logger.error(f"Initial agent: {initial_agent_name}")
+            logger.error(f"Team agents and models:\n{agent_info}")
             logger.error(f"Traceback: {error_tb}")
-            return {"error": str(e), "traceback": error_tb}
+            
+            # Return detailed error information
+            return {
+                "error": str(e),
+                "error_type": type(e).__name__,
+                "traceback": error_tb,
+                "initial_agent": initial_agent_name,
+                "agents": {name: getattr(agent, "llm_config", {}).get("model", "unknown") 
+                          for name, agent in self.agents.items()}
+            }
 
     def add_to_context(self, key: str, value: Any) -> None:
         """

@@ -7,7 +7,7 @@ roles:
     name: Researcher
     type: agent
     llm:
-      provider: "deepseek"
+      model: "gpt-4o"
       temperature: 0.7
       max_tokens: 4000
 
@@ -17,9 +17,9 @@ roles:
     name: Developer
     type: agent
     llm:
-      provider: "anthropic"
-      temperature: 0.7
-      max_tokens: 4000
+      model: "gpt-4o"
+      temperature: 0.3
+      max_tokens: 8000
 
   # Writer (Content Creation)
   writer:
@@ -27,7 +27,7 @@ roles:
     name: Writer
     type: agent
     llm:
-      provider: "llm"
+      model: "gpt-4o"
       temperature: 0.7
       max_tokens: 4000
 
@@ -37,7 +37,7 @@ roles:
     name: Evaluator
     type: agent
     llm:
-      provider: "llm"
+      model: "gpt-4o"
       temperature: 0.5
       max_tokens: 4000
 
@@ -47,6 +47,6 @@ roles:
     name: Lead
     type: agent
     llm:
-      provider: "deepseek"
+      model: "gpt-4o"
       temperature: 0.6
       max_tokens: 4000

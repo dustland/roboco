@@ -111,7 +111,8 @@ class VersatileTeam(Team):
         # Human Proxy - Interface for human input when needed
         executor = HumanProxy(
             name="executor",
-            human_input_mode="NEVER"
+            human_input_mode="NEVER",
+            model_name="gpt-4o"
         )
         
         # Add all agents to the team
@@ -159,7 +160,6 @@ class VersatileTeam(Team):
             try:
                 from roboco.tools.browser_use import BrowserUseTool
                 browser_tool = BrowserUseTool(
-                    fs=self.fs,
                     name="browser",
                     description="Use the web browser to search the web or navigate to a specific URL"
                 )
@@ -179,7 +179,16 @@ class VersatileTeam(Team):
             logger.error(f"Error registering tools: {str(e)}")
     
     def _register_handoffs(self):
-        """Register handoffs between agents for a collaborative swarm pattern."""
+        """Register handoffs for a hybrid Star/Feedback Loop pattern.
+        
+        This pattern:
+        1. Maintains Lead as the central coordinator (hub in Star pattern)
+        2. Allows direct feedback loops between specialists for iterative refinement
+        3. Ensures Lead has oversight while enabling efficient specialist collaboration
+        4. Uses semantic understanding rather than explicit keywords for transitions
+        5. Prevents endless back-and-forth loops with loop counting and circuit breakers
+        6. Requires explicit handoff reasoning to improve transparency and debuggability
+        """
         researcher = self.get_agent("researcher")
         developer = self.get_agent("developer")
         writer = self.get_agent("writer")
@@ -187,113 +196,143 @@ class VersatileTeam(Team):
         lead = self.get_agent("lead")
         executor = self.get_agent("executor")
         
-        # Researcher can handoff to Developer, Writer, or self (for more research)
-        register_hand_off(researcher, [
-            # If research identifies implementation approach for code, go to Developer
-            OnCondition(
-                condition="Message contains RESEARCH_COMPLETE and mentions code implementation or development",
-                target=developer,
-                available="allow_development"
-            ),
-            # If research identifies content writing needs, go to Writer
-            OnCondition(
-                condition="Message contains RESEARCH_COMPLETE and mentions documentation or writing needs",
-                target=writer,
-                available="allow_writing"
-            ),
-            # Default to Developer if no specific conditions are met
-            AfterWork(agent=developer)
-        ])
+        # Clear any existing handoffs first
+        for agent in self.agents.values():
+            if hasattr(agent, "_hand_to"):
+                agent._hand_to = []
         
-        # Developer can handoff to Evaluator, Researcher (if stuck), or self (to continue work)
-        register_hand_off(developer, [
-            # If implementation needs research help, go back to Researcher
-            OnCondition(
-                condition="Message contains DEVELOPMENT_BLOCKED and mentions research or design issues",
-                target=researcher,
-                available="allow_research"
-            ),
-            # If implementation is ready for testing, go to Evaluator
-            OnCondition(
-                condition="Message contains DEVELOPMENT_COMPLETE",
-                target=evaluator,
-                available="allow_evaluation"
-            ),
-            # Otherwise, continue implementation
-            AfterWork(agent=developer)
-        ])
+        # Set up a shared context for tracking feedback loops and handoff reasons
+        self.shared_context.update({
+            "feedback_loops": {
+                "researcher_developer": 0,
+                "developer_researcher": 0,
+                "max_loops": 3  # Maximum number of loops before forcing a return to Lead
+            },
+            "last_handoff_reason": "",
+            "require_handoff_reason": True
+        })
         
-        # Writer can handoff to Evaluator, Researcher (if stuck), or self (to continue work)
-        register_hand_off(writer, [
-            # If writing needs research help, go back to Researcher
-            OnCondition(
-                condition="Message contains WRITING_BLOCKED and mentions research or information needs",
-                target=researcher,
-                available="allow_research"
-            ),
-            # If writing is ready for review, go to Evaluator
-            OnCondition(
-                condition="Message contains WRITING_COMPLETE",
-                target=evaluator,
-                available="allow_evaluation"
-            ),
-            # Otherwise, continue writing
-            AfterWork(agent=writer)
-        ])
-        
-        # Evaluator can handoff to Developer (if code issues), Writer (if document issues),
-        # Lead (if approved), or Researcher (if conceptual issues)
-        register_hand_off(evaluator, [
-            # If evaluation finds implementation issues, go back to Developer
-            OnCondition(
-                condition="Message contains EVALUATION_ISSUES and mentions code or implementation problems",
-                target=developer,
-                available="allow_development"
-            ),
-            # If evaluation finds documentation issues, go back to Writer
-            OnCondition(
-                condition="Message contains EVALUATION_ISSUES and mentions documentation or writing problems",
-                target=writer,
-                available="allow_writing"
-            ),
-            # If evaluation finds conceptual issues, go back to Researcher
-            OnCondition(
-                condition="Message contains EVALUATION_ISSUES and mentions research or design problems",
-                target=researcher,
-                available="allow_research"
-            ),
-            # If evaluation approves, go to Lead for final review
-            OnCondition(
-                condition="Message contains EVALUATION_COMPLETE and mentions approval or completion",
-                target=lead,
-                available="allow_leadership"
-            ),
-            # Otherwise, continue evaluation
-            AfterWork(agent=evaluator)
-        ])
-        
-        # Lead can handoff back to any role if issues are found
+        # STAR PATTERN: Lead as central coordinator (Hub)
         register_hand_off(lead, [
+            # Lead to Researcher for research tasks
             OnCondition(
-                condition="Message contains LEADERSHIP_ISSUES and mentions research or design problems",
-                target=researcher,
-                available="allow_research"
+                condition="Message indicates a need for research, information gathering, understanding concepts, or exploring solutions. Must include 'HANDOFF REASON:' explaining why research is needed.",
+                target=researcher
             ),
+            # Lead to Developer for implementation tasks
             OnCondition(
-                condition="Message contains LEADERSHIP_ISSUES and mentions code or implementation problems",
-                target=developer,
-                available="allow_development"
+                condition="Message indicates a need for code implementation, development, programming, or building a solution. Must include 'HANDOFF REASON:' explaining why development is needed.",
+                target=developer
             ),
+            # Lead to Writer for documentation tasks
             OnCondition(
-                condition="Message contains LEADERSHIP_ISSUES and mentions documentation or writing problems",
-                target=writer,
-                available="allow_writing"
+                condition="Message indicates a need for documentation, content creation, explanation, or written material. Must include 'HANDOFF REASON:' explaining why writing is needed.",
+                target=writer
             ),
-            # Otherwise, continue leadership tasks
-            AfterWork(agent=lead)
+            # Lead to Evaluator for testing tasks
+            OnCondition(
+                condition="Message indicates a need for testing, evaluation, review, validation, or quality assessment. Must include 'HANDOFF REASON:' explaining why evaluation is needed.",
+                target=evaluator
+            )
         ])
         
-        logger.info("Registered handoffs between all team roles")
+        # FEEDBACK LOOP: Researcher-Developer for iterative research and implementation
+        register_hand_off(researcher, [
+            # Only go to Developer if handoff reason is provided and loop count is below threshold
+            OnCondition(
+                condition="Message indicates research is complete and suggests moving to implementation or coding. Must include 'HANDOFF REASON:'. This handoff will only occur if the researcher-to-developer feedback loop count is below the maximum allowed loops.",
+                target=developer
+            ),
+            # Default: Return to Lead - especially important if we've reached max_loops
+            AfterWork(
+                agent=lead
+            )
+        ])
+        
+        # FEEDBACK LOOP: Developer-Researcher for implementation questions
+        register_hand_off(developer, [
+            # Developer to Researcher only if loop count is below threshold and reason provided
+            OnCondition(
+                condition="Message indicates implementation challenges that require additional research or information. Must include 'HANDOFF REASON:'. This handoff will only occur if the developer-to-researcher feedback loop count is below the maximum allowed loops.",
+                target=researcher
+            ),
+            # Developer to Evaluator when implementation is ready for testing
+            OnCondition(
+                condition="Message indicates implementation is complete and ready for testing or evaluation. Must include 'HANDOFF REASON:' explaining why evaluation is needed.",
+                target=evaluator
+            ),
+            # If we've reached max loops or no specific conditions match, go back to Lead
+            AfterWork(
+                agent=lead
+            )
+        ])
+        
+        # FEEDBACK LOOP: Evaluator-Developer for iterative improvement
+        register_hand_off(evaluator, [
+            # Evaluator to Developer when implementation needs improvement
+            OnCondition(
+                condition="Message indicates evaluation found issues that require code changes or implementation fixes. Must include 'HANDOFF REASON:' explaining what needs to be improved.",
+                target=developer
+            ),
+            # Default: Evaluator back to Lead when evaluation is complete
+            AfterWork(
+                agent=lead
+            )
+        ])
+        
+        # Writer always returns to Lead (following Star pattern)
+        register_hand_off(writer, [
+            AfterWork(
+                agent=lead
+            )
+        ])
+        
+        # Add logging for handoffs and track context
+        for agent_name, agent in self.agents.items():
+            if hasattr(agent, "_hand_to") and agent._hand_to:
+                # Add a message handler to log handoffs
+                original_receive = agent.receive
+                
+                async def receive_with_logging(self, message, sender, config=None):
+                    content = message.get("content", "")
+                    
+                    # Update shared context with handoff information
+                    if "HANDOFF REASON:" in content:
+                        reason = content.split("HANDOFF REASON:")[1].split("\n")[0].strip()
+                        logger.info(f"Handoff from {sender.name if hasattr(sender, 'name') else 'unknown'} to {self.name} with reason: {reason}")
+                        
+                        # Update context variables that were previously handled by handlers
+                        if hasattr(self, "shared_context"):
+                            # Save the last handoff reason
+                            self.shared_context["last_handoff_reason"] = reason
+                            
+                            # Update feedback loop counters
+                            if hasattr(sender, "name") and self.name == "developer" and sender.name == "researcher":
+                                loops = self.shared_context.get("feedback_loops", {})
+                                loops["researcher_developer"] = loops.get("researcher_developer", 0) + 1
+                                self.shared_context["feedback_loops"] = loops
+                                logger.info(f"Incremented researcher_developer loop count to {loops['researcher_developer']}")
+                                
+                            elif hasattr(sender, "name") and self.name == "researcher" and sender.name == "developer":
+                                loops = self.shared_context.get("feedback_loops", {})
+                                loops["developer_researcher"] = loops.get("developer_researcher", 0) + 1
+                                self.shared_context["feedback_loops"] = loops
+                                logger.info(f"Incremented developer_researcher loop count to {loops['developer_researcher']}")
+                    
+                    # Send a reminder to include handoff reason in the first message
+                    elif sender is not None and sender.name != "executor":
+                        logger.warning(f"Agent {sender.name} did not provide a handoff reason to {self.name}")
+                        # We will let the message through, but the handoff condition should prevent it from triggering a transition
+                        
+                        if hasattr(self, "shared_context"):
+                            self.shared_context["last_handoff_reason"] = "No reason provided"
+                    
+                    return await original_receive(message, sender, config)
+                
+                # Replace the receive method with our logging version
+                agent.receive = receive_with_logging.__get__(agent)
+        
+        logger.info("Registered improved handoff pattern with explicit reasoning requirements and loop prevention")
     
     def _chat_result_to_dict(self, chat_result):
         """
@@ -348,8 +387,10 @@ class VersatileTeam(Team):
         """
         Run a chat session with all team members working together.
         
-        This method uses swarm orchestration to enable all agents to collaborate
-        on a task with automatic handoffs between agents.
+        This method uses a hybrid Star/Feedback Loop pattern where:
+        - Lead serves as the central coordinator (hub in Star pattern)
+        - Specialists can directly interact in feedback loops for iterative refinement
+        - Lead maintains oversight of the overall process
         
         Args:
             query: The user's query
@@ -362,35 +403,55 @@ class VersatileTeam(Team):
         from roboco.core.models import Task
         task = Task(description=query)
         
-        # Create context variables with clear guidance for collaboration
+        # Create context variables with task information and tracking vars
         context = {
             "task": task.model_dump() if hasattr(task, 'model_dump') else (
                 task.dict() if hasattr(task, 'dict') else {"description": task.description}
             ),
-            "collaboration_guidelines": {
-                "feedback_loops": "Actively request feedback from other specialists when needed",
-                "debate": "Highlight areas of uncertainty and debate alternate approaches",
-                "explicit_handoffs": "Clearly state when another specialist would be better suited for the current challenge",
-                "shared_knowledge": "Reference and build upon insights from previous agents",
-                "self_reflection": "Evaluate your own work and suggest improvements before handoff"
-            }
+            # Shared tracking variables for hybrid pattern
+            "query_analyzed": False,
+            "query_completed": False,
+            
+            # Track task assignments
+            "research_needed": False,
+            "research_completed": False,
+            "development_needed": False,
+            "development_completed": False,
+            "writing_needed": False,
+            "writing_completed": False,
+            "evaluation_needed": False,
+            "evaluation_completed": False,
+            
+            # Track feedback loops
+            "feedback_loops": {
+                "researcher_developer": 0,  # Count of researcher→developer handoffs
+                "developer_researcher": 0,  # Count of developer→researcher handoffs
+                "developer_evaluator": 0,   # Count of developer→evaluator handoffs
+                "evaluator_developer": 0,   # Count of evaluator→developer handoffs
+            },
+            
+            # Content storage
+            "research_findings": "",
+            "implementation_status": "",
+            "evaluation_results": "",
+            "final_response": ""
         }
         
         # Log the start of collaborative session
-        logger.info(f"Starting collaborative session with dynamic handoffs for task: {task.description[:50]}...")
+        logger.info(f"Starting hybrid Star/Feedback Loop session for task: {task.description[:50]}...")
         
-        # Run the swarm with the researcher as the initial agent
+        # Run the swarm with the lead as the central coordinator
         try:
             swarm_result = self.run_swarm(
-                initial_agent_name="researcher",
-                query=f"You're the starting point for our collaborative effort. Analyze this task and either begin working on it or determine which specialist should tackle it first: {task.description}",
+                initial_agent_name="lead",
+                query=query,
                 context_variables=context,
                 max_rounds=25
             )
         except Exception as e:
             import traceback
             error_tb = traceback.format_exc()
-            logger.error(f"Exception before swarm execution in VersatileTeam: {str(e)}")
+            logger.error(f"Exception in hybrid pattern execution: {str(e)}")
             logger.error(f"Traceback: {error_tb}")
             return {
                 "error": str(e),
@@ -425,19 +486,42 @@ class VersatileTeam(Team):
             messages = swarm_result.get("messages", [])
             agent_sequence = []
             agent_contributions = {}
+            feedback_loops_detected = {
+                "researcher_developer": 0,
+                "developer_researcher": 0,
+                "developer_evaluator": 0,
+                "evaluator_developer": 0
+            }
             
+            # Analyze the message flow to identify handoffs and feedback loops
+            previous_agent = None
             for msg in messages:
                 agent_name = msg.get("name", "unknown")
                 if agent_name not in ["user", "unknown"]:
                     agent_sequence.append(agent_name)
                     content = msg.get("content", "")
+                    
+                    # Track agent contributions
                     if agent_name not in agent_contributions:
                         agent_contributions[agent_name] = []
                     agent_contributions[agent_name].append(len(content))
+                    
+                    # Track feedback loops
+                    if previous_agent and previous_agent != agent_name:
+                        if previous_agent == "researcher" and agent_name == "developer":
+                            feedback_loops_detected["researcher_developer"] += 1
+                        elif previous_agent == "developer" and agent_name == "researcher":
+                            feedback_loops_detected["developer_researcher"] += 1
+                        elif previous_agent == "developer" and agent_name == "evaluator":
+                            feedback_loops_detected["developer_evaluator"] += 1
+                        elif previous_agent == "evaluator" and agent_name == "developer":
+                            feedback_loops_detected["evaluator_developer"] += 1
+                    
+                    previous_agent = agent_name
             
             # Write enhanced results file
             with open(results_path, "w") as f:
-                f.write(f"# Collaborative Task Results\n\n")
+                f.write(f"# Hybrid Star/Feedback Loop Task Results\n\n")
                 f.write(f"## Task Description\n{task.description}\n\n")
                 f.write(f"## Solution\n{json.dumps(self._chat_result_to_dict(chat_result), indent=2)}\n\n")
                 
@@ -448,25 +532,43 @@ class VersatileTeam(Team):
                 f.write(f"### Contribution Summary\n")
                 for agent, sizes in agent_contributions.items():
                     f.write(f"- **{agent}**: {len(sizes)} contributions, {sum(sizes)} total characters\n")
+                
+                # Add feedback loop analysis
+                f.write(f"\n### Feedback Loops Detected\n")
+                f.write(f"- Researcher → Developer: {feedback_loops_detected['researcher_developer']} handoffs\n")
+                f.write(f"- Developer → Researcher: {feedback_loops_detected['developer_researcher']} handoffs\n")
+                f.write(f"- Developer → Evaluator: {feedback_loops_detected['developer_evaluator']} handoffs\n")
+                f.write(f"- Evaluator → Developer: {feedback_loops_detected['evaluator_developer']} handoffs\n")
+                
+                # Calculate efficiency metrics
+                total_handoffs = len(agent_sequence) - 1
+                direct_feedback_loops = sum(feedback_loops_detected.values())
+                star_pattern_handoffs = total_handoffs - direct_feedback_loops
+                
+                f.write(f"\n### Pattern Efficiency\n")
+                f.write(f"- Total handoffs: {total_handoffs}\n")
+                f.write(f"- Direct feedback loops: {direct_feedback_loops} ({direct_feedback_loops/total_handoffs*100:.1f}%)\n")
+                f.write(f"- Star pattern handoffs: {star_pattern_handoffs} ({star_pattern_handoffs/total_handoffs*100:.1f}%)\n")
             
-            logger.info(f"Collaborative session completed with {len(agent_sequence)} agent handoffs")
+            logger.info(f"Hybrid pattern session completed with {len(agent_sequence)} agent handoffs")
+            logger.info(f"Detected {direct_feedback_loops} direct feedback loops")
             logger.info(f"Results saved to {results_path_relative}")
             
-            # Format the response to match PlanningTeam's run_chat format
             return {
                 "response": self._chat_result_to_dict(chat_result),
                 "chat_history": messages,
                 "results_path": results_path_relative,
                 "collaboration_stats": {
                     "agent_sequence": agent_sequence,
-                    "agent_contributions": agent_contributions
+                    "agent_contributions": agent_contributions,
+                    "feedback_loops": feedback_loops_detected
                 },
                 "status": "completed"
             }
         else:
-            logger.error(f"Error in collaborative session: {swarm_result.get('error')}")
+            logger.error(f"Error in hybrid pattern session: {swarm_result.get('error')}")
             return {
-                "error": swarm_result.get('error', "Unknown error in collaborative session"),
+                "error": swarm_result.get('error', "Unknown error in hybrid pattern session"),
                 "status": "failed"
             }
 

@@ -28,7 +28,7 @@ class HumanProxy(UserProxyAgent):
         config_path: Optional[str] = None,
         human_input_mode: str = "NEVER",
         code_execution_config: Optional[Dict[str, Any]] = None,
-        llm_provider: str = "llm",
+        model_name: str = "gpt-4o",
         terminate_msg: str = "TERMINATE",
         **kwargs
     ):
@@ -40,14 +40,14 @@ class HumanProxy(UserProxyAgent):
             config_path: Optional path to agent configuration file
             human_input_mode: Mode for human input (ALWAYS, TERMINATE, NEVER)
             code_execution_config: Configuration for code execution
-            llm_provider: The LLM provider to use (e.g., "llm", "openai", "deepseek", "ollama")
+            model_name: The LLM model to use (e.g., "gpt-4o", "claude-3-7-sonnet-20250219", "deepseek-chat")
             **kwargs: Additional arguments passed to UserProxyAgent
         """
         # Use provided configuration or load from config if None
         if 'llm_config' not in kwargs:
             config = load_config(config_path)
-            llm_config = get_llm_config(config, provider=llm_provider)
-            logger.debug(f"Loaded llm_config for {name} using provider {llm_provider}: {llm_config}")
+            llm_config = get_llm_config(config, model=model_name)
+            logger.debug(f"Loaded llm_config for {name} using model {model_name}: {llm_config}")
         
         # Setup code execution config if provided
         if code_execution_config is None:
