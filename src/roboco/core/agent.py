@@ -80,9 +80,6 @@ class Agent(AssistantAgent):
         
         system_message = f"{system_message}\n\nCurrent date and time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
         
-        # Add handoff reason requirement to all agents
-        system_message = f"{system_message}\n\nWhen handing off to another agent, you MUST include 'HANDOFF REASON:' followed by a clear explanation of why you are handing off."
-        
         # Append termination instructions to system message if a termination message is provided
         if terminate_msg:
             system_message = f"{system_message}\n\nWhen you have completed your response, end your message with \"{terminate_msg}\" to signal that you are done."

@@ -50,3 +50,13 @@ roles:
       model: "gpt-4o"
       temperature: 0.6
       max_tokens: 4000
+
+  # Executor
+  executor:
+    description: "Executes tasks and commands"
+    name: Executor
+    type: agent
+    llm:
+      model: "gpt-4o"
+      temperature: 0.3
+      max_tokens: 8000

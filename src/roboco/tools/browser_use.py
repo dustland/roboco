@@ -119,10 +119,14 @@ class BrowserUseTool(Generic[Context], Tool):
             else:
                 self.logger.warning("Chrome/Chromium path not detected automatically. Using default.")
         
+        # Create browser config without browser_path parameter
         self.browser_config = BrowserUseLibConfig(
-            browser_path=browser_path,
             headless=config.headless
         )
+        
+        # Add chrome path to chrome_instance_path if available
+        if browser_path:
+            self.browser_config.chrome_instance_path = browser_path
         
         # Set output directory
         self.output_dir = config.output_dir

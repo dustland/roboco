@@ -19,6 +19,7 @@ from roboco.core.team import Team
 from roboco.core.models import Task
 from roboco.agents.human_proxy import HumanProxy
 from roboco.core.agent_factory import AgentFactory
+from roboco.core.config import get_llm_config
 from autogen import AfterWork, AfterWorkOption, OnCondition, register_hand_off
 
 
@@ -108,11 +109,13 @@ class VersatileTeam(Team):
             terminate_msg="LEADERSHIP_COMPLETE"  # Updated from INTEGRATION_COMPLETE
         )
         
-        # Human Proxy - Interface for human input when needed
+        # Human Proxy - Interface for tool execution and code implementation
         executor = HumanProxy(
             name="executor",
-            human_input_mode="NEVER",
-            model_name="gpt-4o"
+            human_input_mode="NEVER",  # Don't require human input to run code
+            model_name="gpt-4o",
+            code_execution_config={"work_dir": self.fs.base_dir, "use_docker": False},  # Enable code execution
+            llm_config=get_llm_config()  # Get properly configured llm_config from core.config
         )
         
         # Add all agents to the team
@@ -126,17 +129,16 @@ class VersatileTeam(Team):
     def _register_tools(self):
         """Register necessary tools with the agents."""
         try:
-            # Register filesystem tool with all agents
+            # Create file system tool
             from roboco.tools.fs import FileSystemTool
-            # Create the filesystem tool with project context if available
             fs_tool = FileSystemTool(
-                fs=self.fs, 
+                fs=self.fs
             )
             
-            for agent_name, agent in self.agents.items():
-                # Skip registering the executor with itself
-                if agent_name != "executor":
-                    fs_tool.register_with_agents(agent, executor_agent=self.get_agent("executor"))
+            # Register fs_tool with all agents at once
+            agents_to_register = [agent for agent_name, agent in self.agents.items() if agent_name != "executor"]
+            if agents_to_register:
+                fs_tool.register_with_agents(*agents_to_register, executor_agent=self.get_agent("executor"))
             
             # Register web search tool if available
             try:
@@ -158,10 +160,17 @@ class VersatileTeam(Team):
             
             # Register code tool with developer, evaluator, and lead
             try:
-                from roboco.tools.browser_use import BrowserUseTool
+                from roboco.tools.browser_use import BrowserUseTool, BrowserUseConfig
+                
+                # Create with proper config instead of direct parameters
                 browser_tool = BrowserUseTool(
                     name="browser",
-                    description="Use the web browser to search the web or navigate to a specific URL"
+                    description="Use the web browser to search the web or navigate to a specific URL",
+                    config=BrowserUseConfig(
+                        headless=True,
+                        output_dir="./output/browser_sessions",
+                        debug=False
+                    )
                 )
                 
                 # Register with appropriate agents
@@ -208,42 +217,51 @@ class VersatileTeam(Team):
                 "developer_researcher": 0,
                 "max_loops": 3  # Maximum number of loops before forcing a return to Lead
             },
-            "last_handoff_reason": "",
-            "require_handoff_reason": True
+            "current_task_phase": "initial"  # Track the current task phase
         })
         
         # STAR PATTERN: Lead as central coordinator (Hub)
         register_hand_off(lead, [
+            # Lead to Executor for tasks requiring tool execution or code running
+            OnCondition(
+                condition="Message is at least 100 characters long AND indicates a need for executing code, running commands, implementing files, creating HTML/CSS/JS, or performing actual implementation tasks like file creation or project setup.",
+                target=executor
+            ),
             # Lead to Researcher for research tasks
             OnCondition(
-                condition="Message indicates a need for research, information gathering, understanding concepts, or exploring solutions. Must include 'HANDOFF REASON:' explaining why research is needed.",
+                condition="Message is at least 200 characters long AND indicates a need for data collection, research, information gathering, understanding concepts, or exploring solutions.",
                 target=researcher
             ),
             # Lead to Developer for implementation tasks
             OnCondition(
-                condition="Message indicates a need for code implementation, development, programming, or building a solution. Must include 'HANDOFF REASON:' explaining why development is needed.",
+                condition="Message is at least 200 characters long AND indicates a need for code implementation, development, programming, website creation, or building a solution.",
                 target=developer
             ),
             # Lead to Writer for documentation tasks
             OnCondition(
-                condition="Message indicates a need for documentation, content creation, explanation, or written material. Must include 'HANDOFF REASON:' explaining why writing is needed.",
+                condition="Message is at least 200 characters long AND indicates a need for documentation, content creation, explanation, or written material.",
                 target=writer
             ),
             # Lead to Evaluator for testing tasks
             OnCondition(
-                condition="Message indicates a need for testing, evaluation, review, validation, or quality assessment. Must include 'HANDOFF REASON:' explaining why evaluation is needed.",
+                condition="Message is at least 200 characters long AND indicates a need for testing, evaluation, review, validation, or quality assessment.",
                 target=evaluator
             )
         ])
         
         # FEEDBACK LOOP: Researcher-Developer for iterative research and implementation
         register_hand_off(researcher, [
-            # Only go to Developer if handoff reason is provided and loop count is below threshold
+            # Researcher to Executor when research identifies specific implementation needs
             OnCondition(
-                condition="Message indicates research is complete and suggests moving to implementation or coding. Must include 'HANDOFF REASON:'. This handoff will only occur if the researcher-to-developer feedback loop count is below the maximum allowed loops.",
+                condition="Message is at least 300 characters long AND includes specific code snippets, file structures, or implementation details that are ready to be implemented directly.",
+                target=executor
+            ),
+            # Only go to Developer if research work is complete and implementation is needed
+            OnCondition(
+                condition="Message is at least 300 characters long AND includes substantive research findings, collected data, or analysis AND indicates the research is complete or sufficient for implementation.",
                 target=developer
             ),
-            # Default: Return to Lead - especially important if we've reached max_loops
+            # Default: Return to Lead
             AfterWork(
                 agent=lead
             )
@@ -251,17 +269,22 @@ class VersatileTeam(Team):
         
         # FEEDBACK LOOP: Developer-Researcher for implementation questions
         register_hand_off(developer, [
-            # Developer to Researcher only if loop count is below threshold and reason provided
+            # Developer to Executor when there is code to implement
             OnCondition(
-                condition="Message indicates implementation challenges that require additional research or information. Must include 'HANDOFF REASON:'. This handoff will only occur if the developer-to-researcher feedback loop count is below the maximum allowed loops.",
+                condition="Message is at least 300 characters long AND includes detailed instructions for implementing code, creating files, or executing specific programming tasks.",
+                target=executor
+            ),
+            # Developer to Researcher only if there are unresolved research questions
+            OnCondition(
+                condition="Message is at least 300 characters long AND includes substantive development work AND mentions needing additional research, information, or clarification.",
                 target=researcher
             ),
             # Developer to Evaluator when implementation is ready for testing
             OnCondition(
-                condition="Message indicates implementation is complete and ready for testing or evaluation. Must include 'HANDOFF REASON:' explaining why evaluation is needed.",
+                condition="Message is at least 300 characters long AND includes substantive development work AND indicates code or website implementation is complete and ready for testing or evaluation.",
                 target=evaluator
             ),
-            # If we've reached max loops or no specific conditions match, go back to Lead
+            # If no specific conditions match, go back to Lead
             AfterWork(
                 agent=lead
             )
@@ -271,7 +294,7 @@ class VersatileTeam(Team):
         register_hand_off(evaluator, [
             # Evaluator to Developer when implementation needs improvement
             OnCondition(
-                condition="Message indicates evaluation found issues that require code changes or implementation fixes. Must include 'HANDOFF REASON:' explaining what needs to be improved.",
+                condition="Message is at least 300 characters long AND includes substantive evaluation results AND indicates issues, bugs, or improvements needed in the code or implementation.",
                 target=developer
             ),
             # Default: Evaluator back to Lead when evaluation is complete
@@ -287,6 +310,19 @@ class VersatileTeam(Team):
             )
         ])
         
+        # Executor can hand off back to Developer or Lead
+        register_hand_off(executor, [
+            # Executor to Developer after implementing code
+            OnCondition(
+                condition="Message includes code implementation results, file creation, or execution output AND indicates that development work should continue or be refined.",
+                target=developer
+            ),
+            # Default: Return to Lead
+            AfterWork(
+                agent=lead
+            )
+        ])
+        
         # Add logging for handoffs and track context
         for agent_name, agent in self.agents.items():
             if hasattr(agent, "_hand_to") and agent._hand_to:
@@ -296,38 +332,62 @@ class VersatileTeam(Team):
                 async def receive_with_logging(self, message, sender, config=None):
                     content = message.get("content", "")
                     
-                    # Update shared context with handoff information
-                    if "HANDOFF REASON:" in content:
-                        reason = content.split("HANDOFF REASON:")[1].split("\n")[0].strip()
-                        logger.info(f"Handoff from {sender.name if hasattr(sender, 'name') else 'unknown'} to {self.name} with reason: {reason}")
-                        
-                        # Update context variables that were previously handled by handlers
-                        if hasattr(self, "shared_context"):
-                            # Save the last handoff reason
-                            self.shared_context["last_handoff_reason"] = reason
-                            
-                            # Update feedback loop counters
-                            if hasattr(sender, "name") and self.name == "developer" and sender.name == "researcher":
-                                loops = self.shared_context.get("feedback_loops", {})
-                                loops["researcher_developer"] = loops.get("researcher_developer", 0) + 1
-                                self.shared_context["feedback_loops"] = loops
-                                logger.info(f"Incremented researcher_developer loop count to {loops['researcher_developer']}")
-                                
-                            elif hasattr(sender, "name") and self.name == "researcher" and sender.name == "developer":
-                                loops = self.shared_context.get("feedback_loops", {})
-                                loops["developer_researcher"] = loops.get("developer_researcher", 0) + 1
-                                self.shared_context["feedback_loops"] = loops
-                                logger.info(f"Incremented developer_researcher loop count to {loops['developer_researcher']}")
+                    # Check for short messages
+                    short_message_response = self._check_message_length(content, sender)
+                    if short_message_response:
+                        return short_message_response
                     
-                    # Send a reminder to include handoff reason in the first message
-                    elif sender is not None and sender.name != "executor":
-                        logger.warning(f"Agent {sender.name} did not provide a handoff reason to {self.name}")
-                        # We will let the message through, but the handoff condition should prevent it from triggering a transition
-                        
-                        if hasattr(self, "shared_context"):
-                            self.shared_context["last_handoff_reason"] = "No reason provided"
+                    # Log handoff and check for feedback loops
+                    loop_response = self._check_feedback_loops(sender)
+                    if loop_response:
+                        return loop_response
                     
                     return await original_receive(message, sender, config)
+                
+                def _check_message_length(self, content, sender):
+                    """Check if message is too short and return rejection if needed"""
+                    if len(content.strip()) < 100 and sender is not None and sender.name != "executor" and self.name != "lead":
+                        logger.warning(f"Agent {sender.name} sent a very short message to {self.name} ({len(content.strip())} chars)")
+                        if len(content.strip()) < 30:
+                            return {"content": f"Message rejected: Your message was too short. Please provide substantive work or explanation."}
+                    return None
+                
+                def _check_feedback_loops(self, sender):
+                    """Check and update feedback loop counters, break loops if needed"""
+                    if not hasattr(self, "shared_context") or sender is None:
+                        return None
+                        
+                    # Log the handoff
+                    logger.info(f"Handoff from {sender.name if hasattr(sender, 'name') else 'unknown'} to {self.name}")
+                    
+                    # Check researcher→developer loop
+                    if self.name == "developer" and sender.name == "researcher":
+                        return self._update_loop_counter("researcher_developer")
+                    
+                    # Check developer→researcher loop    
+                    elif self.name == "researcher" and sender.name == "developer":
+                        return self._update_loop_counter("developer_researcher")
+                    
+                    return None
+                
+                def _update_loop_counter(self, loop_name):
+                    """Update a specific loop counter and break if threshold exceeded"""
+                    loops = self.shared_context.get("feedback_loops", {})
+                    loops[loop_name] = loops.get(loop_name, 0) + 1
+                    self.shared_context["feedback_loops"] = loops
+                    
+                    max_loops = loops.get("max_loops", 3)
+                    if loops[loop_name] >= max_loops:
+                        loop_agents = loop_name.split("_")
+                        logger.warning(f"Breaking {loop_agents[0]}→{loop_agents[1]} loop after {loops[loop_name]} iterations")
+                        return {"content": f"Loop detected: This task has been passed between {loop_agents[0]} and {loop_agents[1]} {loops[loop_name]} times without sufficient progress. Redirecting to lead for coordination."}
+                    
+                    return None
+                
+                # Add helper methods to the agent
+                agent._check_message_length = _check_message_length.__get__(agent)
+                agent._check_feedback_loops = _check_feedback_loops.__get__(agent)
+                agent._update_loop_counter = _update_loop_counter.__get__(agent)
                 
                 # Replace the receive method with our logging version
                 agent.receive = receive_with_logging.__get__(agent)
