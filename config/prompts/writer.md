@@ -70,5 +70,3 @@ docs/
   ├── references.md   # Citations and references
   └── appendix.md     # Supporting materials
 ```
-
-Only signal "WRITING_COMPLETE" when you have produced COMPLETE DOCUMENTS that fulfill ALL requirements.

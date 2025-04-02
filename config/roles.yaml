@@ -5,7 +5,6 @@ roles:
   researcher:
     description: "Researches the problem domain and designs solutions"
     name: Researcher
-    type: agent
     llm:
       model: "gpt-4o"
       temperature: 0.7
@@ -15,9 +14,8 @@ roles:
   developer:
     description: "Implements solutions based on designs"
     name: Developer
-    type: agent
     llm:
-      model: "gpt-4o"
+      model: "claude-3-5-sonnet-20241022"
       temperature: 0.3
       max_tokens: 8000
 
@@ -25,7 +23,6 @@ roles:
   writer:
     description: "Creates written content, reports, and documentation"
     name: Writer
-    type: agent
     llm:
       model: "gpt-4o"
       temperature: 0.7
@@ -35,7 +32,6 @@ roles:
   evaluator:
     description: "Tests and evaluates implemented solutions"
     name: Evaluator
-    type: agent
     llm:
       model: "gpt-4o"
       temperature: 0.5
@@ -45,7 +41,6 @@ roles:
   lead:
     description: "Leads the team and integrates the complete solution"
     name: Lead
-    type: agent
     llm:
       model: "gpt-4o"
       temperature: 0.6
@@ -55,7 +50,15 @@ roles:
   executor:
     description: "Executes tasks and commands"
     name: Executor
-    type: agent
+    llm:
+      model: "gpt-4o"
+      temperature: 0.3
+      max_tokens: 8000
+
+  # Planner
+  planner:
+    description: "Plans and organizes projects"
+    name: Planner
     llm:
       model: "gpt-4o"
       temperature: 0.3

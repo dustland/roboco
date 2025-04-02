@@ -1,24 +1,22 @@
 """
 Human Proxy Agent Module
 
-This module defines the HumanProxy agent that extends AG2's UserProxyAgent
+This module defines the HumanProxy agent that extends roboco's Agent class
 for human-in-the-loop interactions.
 """
 
 from typing import Dict, Any, Optional, Callable
 from loguru import logger
 
-from autogen import UserProxyAgent, register_function
+from autogen import register_function
+from roboco.core.agent import Agent
 from roboco.core.config import load_config, get_llm_config
 
-class HumanProxy(UserProxyAgent):
+class HumanProxy(Agent):
     """Human proxy agent class that integrates with roboco's configuration system.
     
-    This class extends AG2's UserProxyAgent to provide additional functionality:
-    1. Integration with roboco's configuration system
-    2. Tool management
-    
-    This is specifically designed for human-in-the-loop interactions.
+    This class extends roboco's Agent class to provide human-in-the-loop functionality.
+    It is designed to interact directly with users and execute tools.
     """
     
     def __init__(
@@ -28,7 +26,7 @@ class HumanProxy(UserProxyAgent):
         config_path: Optional[str] = None,
         human_input_mode: str = "NEVER",
         code_execution_config: Optional[Dict[str, Any]] = None,
-        model_name: str = "gpt-4o",
+        llm_model: str = "gpt-4o",
         terminate_msg: str = "TERMINATE",
         **kwargs
     ):
@@ -40,15 +38,10 @@ class HumanProxy(UserProxyAgent):
             config_path: Optional path to agent configuration file
             human_input_mode: Mode for human input (ALWAYS, TERMINATE, NEVER)
             code_execution_config: Configuration for code execution
-            model_name: The LLM model to use (e.g., "gpt-4o", "claude-3-7-sonnet-20250219", "deepseek-chat")
-            **kwargs: Additional arguments passed to UserProxyAgent
+            llm_model: The LLM model to use (e.g., "gpt-4o", "claude-3-7-sonnet-20250219")
+            terminate_msg: Message to check for termination
+            **kwargs: Additional arguments passed to Agent
         """
-        # Use provided configuration or load from config if None
-        if 'llm_config' not in kwargs:
-            config = load_config(config_path)
-            llm_config = get_llm_config(config, model=model_name)
-            logger.debug(f"Loaded llm_config for {name} using model {model_name}: {llm_config}")
-        
         # Setup code execution config if provided
         if code_execution_config is None:
             code_execution_config = {"work_dir": "workspace", "use_docker": False}
@@ -56,12 +49,14 @@ class HumanProxy(UserProxyAgent):
             # Ensure use_docker is set to False
             code_execution_config["use_docker"] = False
         
-        # Initialize base UserProxyAgent class
+        # Initialize base Agent class
         super().__init__(
             name=name,
             system_message=system_message,
+            config_path=config_path,
+            llm_model=llm_model,
             human_input_mode=human_input_mode,
-            is_termination_msg=lambda x: terminate_msg in (x.get("content", "") or ""),
+            check_terminate_msg=terminate_msg,
             code_execution_config=code_execution_config,
             **kwargs
         )

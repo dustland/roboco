@@ -113,8 +113,6 @@ class WebSearchTool(Tool):
             timeout: Request timeout in seconds
             **kwargs: Additional keyword arguments
         """
-        super().__init__(name=name, description=description, **kwargs)
-        
         if include_domains is None:
             include_domains = []
         if exclude_domains is None:
@@ -126,6 +124,7 @@ class WebSearchTool(Tool):
         self.api_key = api_key or os.environ.get("TAVILY_API_KEY", "")
         if not self.api_key:
             self.logger.warning("Tavily API key not provided. Web search will not work.")
+            description += "\n\nWARNING: Tavily API key not provided. Web search functionality will be disabled."
             
         # Initialize the Tavily client
         self.client = TavilyClient(api_key=self.api_key) if self.api_key else None
@@ -145,7 +144,14 @@ class WebSearchTool(Tool):
         self.max_retries = max_retries
         self.timeout = timeout
         
-    @command(primary=True)
+        # Initialize the parent class
+        super().__init__(
+            name=name,
+            description=description,
+            **kwargs
+        )
+        
+    @command()
     def web_search(self, query: str, max_results: Optional[int] = None) -> Dict[str, Any]:
         """
         Search the web for information on a topic.
@@ -158,12 +164,7 @@ class WebSearchTool(Tool):
             Search results as a dictionary with query, results, and if enabled, an answer
         """
         if not self.client:
-            self.logger.error("Tavily client not initialized. Cannot perform search.")
-            return {
-                "error": "Search client not available. Please check your API key.",
-                "query": query,
-                "results": []
-            }
+            raise ValueError("No search client configured")
             
         # Configure the search parameters
         search_params = self.search_config.copy()

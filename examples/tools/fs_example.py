@@ -37,7 +37,6 @@ async def main():
     logger.info("Methods marked with @command are automatically registered as commands.")
     fs_tool = FileSystemTool()
     logger.info(f"Available commands: {', '.join(fs_tool.commands.keys())}")
-    logger.info(f"Primary command: {fs_tool.primary_command}")
     
     # Display the auto-generated tool description
     logger.info("\n=== Auto-generated Tool Description ===")
@@ -46,7 +45,7 @@ async def main():
     # Create test files
     logger.info("\n=== Testing File Operations ===")
     
-    # Test save_file (primary command)
+    # Test save_file
     test_file = test_dir / "test.txt"
     result = fs_tool.execute_command(
         command="save_file",
@@ -77,13 +76,14 @@ async def main():
     )
     logger.info(f"create_directory result: {result}")
     
-    # Test primary command (without specifying command name)
-    test_file2 = test_dir / "primary_command_test.txt"
+    # Test direct command specification
+    test_file2 = test_dir / "explicit_command_test.txt"
     result = fs_tool.execute_command(
-        content="This file was created using the primary command (without specifying command name).",
+        command="save_file",
+        content="This file was created using an explicit command specification.",
         file_path=str(test_file2)
     )
-    logger.info(f"Primary command result: {result}")
+    logger.info(f"Explicit command result: {result}")
     
     # Test ProjectManifest with execute_project_manifest
     logger.info("\n=== Testing ProjectManifest with Pydantic Models ===")

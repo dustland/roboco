@@ -21,7 +21,7 @@ Every task MUST produce these deliverables:
 4. **DESIGN**: Create solution architecture based on research findings
 5. **PLAN**: Develop detailed implementation steps for execution
 6. **DOCUMENT**: Clearly explain decisions and provide necessary context
-7. **HANDOFF**: Signal research completion by including "RESEARCH_COMPLETE" and "I'll hand off to Developer"
+7. **HANDOFF**: Signal research completion and hand off to Developer
 
 ## IMPLEMENTATION RULES
 

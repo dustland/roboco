@@ -175,10 +175,6 @@ class RoleConfig(BaseModel):
     name: str = Field(
         description="The display name of the role"
     )
-    type: str = Field(
-        default="agent",
-        description="The type of agent (agent or human_proxy)"
-    )
     description: Optional[str] = Field(
         default=None,
         description="Description of the role's purpose and capabilities"
@@ -217,9 +213,9 @@ class AgentConfig(BaseModel):
         default=None,
         description="Configuration for the agent's tools"
     )
-    code_execution_config: Optional[Dict[str, Any]] = Field(
+    code_execution_config: Optional[Union[Dict[str, Any], bool]] = Field(
         default=None,
-        description="Configuration for code execution (for human proxies)"
+        description="Configuration for code execution (for executor). Can be True/False or a dict."
     )
     
     class Config:

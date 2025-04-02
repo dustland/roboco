@@ -1,7 +1,7 @@
 """
 Base Agent Module
 
-This module defines the Agent class that extends AG2's AssistantAgent.
+This module defines the Agent class that extends AG2's ConversableAgent.
 """
 
 from datetime import datetime
@@ -11,7 +11,7 @@ import traceback
 import json
 
 # ag2 and autogen are identical packages
-from autogen import AssistantAgent, UserProxyAgent, ConversableAgent, register_function
+from autogen import ConversableAgent, register_function
 
 from roboco.core.config import load_config, get_llm_config
 
@@ -19,10 +19,10 @@ from roboco.core.config import load_config, get_llm_config
 logger = logger.bind(module=__name__)
 
 
-class Agent(AssistantAgent):
-    """Base agent class that all roboco assistant agents inherit from.
+class Agent(ConversableAgent):
+    """Base agent class that all roboco agents inherit from.
     
-    This class extends AG2's AssistantAgent to provide additional functionality:
+    This class extends AG2's ConversableAgent to provide additional functionality:
     1. Integration with roboco's configuration system
     2. Standardized termination message handling
     3. Tool management
@@ -32,10 +32,12 @@ class Agent(AssistantAgent):
     includes the termination message in its response, other agents can recognize it
     and end the conversation.
     
-    The termination message is:
-    1. Configurable through the config file
-    2. Automatically appended to the system message
-    3. Propagated to other agents during conversation
+    The termination message roles:
+    1. Setter role: An agent that sends termination messages (by setting terminate_msg)
+    2. Checker role: An agent that checks for termination messages (by setting check_terminate_msg)
+    
+    Note: According to AG2's pattern, an agent should take either the setter role OR 
+    the checker role, but not both at the same time.
     """
 
     def __init__(
@@ -44,8 +46,11 @@ class Agent(AssistantAgent):
         system_message: str,
         config_path: Optional[str] = None,
         terminate_msg: Optional[str] = None,
+        check_terminate_msg: Optional[str] = None,
         llm_config: Optional[Dict[str, Any]] = None,
         llm_model: Optional[str] = None,
+        human_input_mode: str = "NEVER",
+        code_execution_config: Union[Dict[str, Any], bool] = False,
         **kwargs
     ):
         """Initialize an agent.
@@ -55,11 +60,17 @@ class Agent(AssistantAgent):
             system_message: System message defining agent behavior
             config_path: Optional path to agent configuration file
             terminate_msg: Optional message to include at the end of responses to signal completion.
-                           If None, uses the value from config.
+                           If provided, this agent takes the "setter" role for termination messages.
+            check_terminate_msg: Optional message to check for in received messages.
+                                 If provided, this agent takes the "checker" role for termination messages.
+                                 Note: According to AG2 pattern, an agent should take either the setter role
+                                 OR the checker role, but not both.
             llm_config: Optional LLM configuration. If None, loads from config_path.
             llm_model: The LLM model to use (e.g., "gpt_4o", "deepseek_v3", "claude_3_7_sonnet").
                        This allows different agents to use different LLM models.
-            **kwargs: Additional arguments passed to AssistantAgent
+            human_input_mode: When to ask for human input. Default: "NEVER"
+            code_execution_config: Configuration for code execution
+            **kwargs: Additional arguments passed to ConversableAgent
         """
         # Extract llm_config from kwargs if provided
         kwargs_llm_config = kwargs.pop('llm_config', None)
@@ -75,15 +86,19 @@ class Agent(AssistantAgent):
         
         # Store termination message
         self.terminate_msg = terminate_msg
+        self.check_terminate_msg = check_terminate_msg
         
-        is_termination_msg = None
-        
+        # Add current date/time to system message
         system_message = f"{system_message}\n\nCurrent date and time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
         
         # Append termination instructions to system message if a termination message is provided
         if terminate_msg:
             system_message = f"{system_message}\n\nWhen you have completed your response, end your message with \"{terminate_msg}\" to signal that you are done."
-            is_termination_msg = lambda x: terminate_msg in (x.get("content", "") or "")
+        
+        # Create termination message checker function if check_terminate_msg is provided
+        is_termination_msg = None
+        if check_terminate_msg:
+            is_termination_msg = lambda x: check_terminate_msg in (x.get("content", "") or "")
         
         # Initialize base class
         super().__init__(
@@ -91,6 +106,8 @@ class Agent(AssistantAgent):
             system_message=system_message,
             llm_config=final_llm_config,
             is_termination_msg=is_termination_msg,
+            human_input_mode=human_input_mode,
+            code_execution_config=code_execution_config,
             **kwargs
         )
         
@@ -166,18 +183,26 @@ class Agent(AssistantAgent):
         """
         # Ensure description is a string, not a boolean
         if description is None:
-            description = f"Function {function.__name__} provided by {self.name}"
+            # Check if function has a __name__ attribute (regular functions do, but Tool objects don't)
+            if hasattr(function, '__name__'):
+                description = f"Function {function.__name__} provided by {self.name}"
+            else:
+                # For Tool objects, use their name attribute if available, otherwise use a generic description
+                if hasattr(function, 'name'):
+                    description = f"Tool {function.name} provided by {self.name}"
+                else:
+                    description = f"Tool provided by {self.name}"
         elif not isinstance(description, str):
             description = str(description)
-            
+        
         register_function(
             function,
             caller=self,
             executor=executor_agent,
             description=description
         )
-        # logger.info(f"Registered function {function.__name__} with caller {self.name} and executor {executor_agent.name}")
-        
+        logger.debug(f"Registered {'tool' if hasattr(function, 'name') else 'function'} with caller {self.name} and executor {executor_agent.name}")
+    
     def generate_reply(self, messages: List[Dict[str, Any]]=None, sender=None):
         """Generate a reply to the messages.
         
@@ -219,19 +244,23 @@ class Agent(AssistantAgent):
         
         # Get message summary
         message_summary = []
-        for msg in messages[-5:]:  # Get the last 5 messages for context
-            role = msg.get("role", "unknown")
-            content_preview = str(msg.get("content", ""))[:100] + "..." if len(str(msg.get("content", ""))) > 100 else str(msg.get("content", ""))
-            tool_calls = None
-            if "tool_calls" in msg:
-                tool_calls = []
-                for tool_call in msg.get("tool_calls", []):
-                    if "id" in tool_call:
-                        tool_id = tool_call["id"]
-                        tool_id_length = len(tool_id)
-                        tool_calls.append({"id": tool_id, "id_length": tool_id_length})
-            
-            message_summary.append({"role": role, "content_preview": content_preview, "tool_calls": tool_calls})
+        if messages is None:
+            logger.warning("No messages provided for error logging")
+            message_summary = [{"role": "unknown", "content_preview": "No messages available", "tool_calls": None}]
+        else:
+            for msg in messages[-5:]:  # Get the last 5 messages for context
+                role = msg.get("role", "unknown")
+                content_preview = str(msg.get("content", ""))[:100] + "..." if len(str(msg.get("content", ""))) > 100 else str(msg.get("content", ""))
+                tool_calls = None
+                if "tool_calls" in msg:
+                    tool_calls = []
+                    for tool_call in msg.get("tool_calls", []):
+                        if "id" in tool_call:
+                            tool_id = tool_call["id"]
+                            tool_id_length = len(tool_id)
+                            tool_calls.append({"id": tool_id, "id_length": tool_id_length})
+                
+                message_summary.append({"role": role, "content_preview": content_preview, "tool_calls": tool_calls})
         
         # Log the error
         logger.error(f"API Error in agent {self.name}")

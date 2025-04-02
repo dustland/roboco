@@ -40,11 +40,10 @@ class FileSystemTool(Tool):
         """
         self.fs = fs
 
+        # Initialize with auto_discover=True to automatically discover commands
         super().__init__(
             name="filesystem",
             description="Tool for file system operations including reading and writing files.",
-            # Enable auto-discovery of class methods
-            auto_discover=True
         )
         
         logger.info(f"Initialized FileSystemTool with commands: {', '.join(self.commands.keys())}")
@@ -83,7 +82,7 @@ class FileSystemTool(Tool):
             logger.error(f"Operation '{coroutine_name}'{args_info} timed out after 5 seconds")
             raise TimeoutError(f"Operation '{coroutine_name}' timed out after 5 seconds")
     
-    @command(primary=True)
+    @command()
     def save_file(self, content: str, file_path: str, mode: str = "w") -> Dict[str, Any]:
         """
         Save content to a file at the specified path.

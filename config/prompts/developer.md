@@ -124,6 +124,35 @@ Before signaling task completion:
 
 Your code will be verified and run using code tools, so make sure it is fully functional and runnable.
 
+## CODE EXECUTION
+
+For implementations that produce outputs, generate data, or perform actions:
+
+1. **Place executable scripts in a scripts/ directory** to distinguish them from library code or static files
+2. **Execute these scripts** after implementation using the bash tool
+3. Verify the execution produces the expected results
+4. Confirm any output files are created and contain valid data
+5. Debug and fix any runtime issues that weren't caught during implementation
+6. Include execution results in your handoff message
+
+Examples of code that should be executed:
+- Data collection scripts
+- API integration code
+- File generation utilities
+- Data processing pipelines
+- Web scraping implementations
+- Database operations
+- Any script where the output is part of the deliverable
+
+Code that typically doesn't need execution during development:
+- HTML/CSS files (unless they generate data)
+- Library/utility functions without side effects
+- Component definitions
+- Configuration files
+- Class/type definitions
+
+Do not just implement code that needs to be run - organize it appropriately in scripts/ and actually run it to verify the results.
+
 ## FORBIDDEN BEHAVIORS
 
 - ❌ Creating wireframes/sketches instead of code
@@ -171,5 +200,3 @@ src/
 docs/
   └── usage.md      # Usage documentation
 ```
-
-Only signal "DEVELOPMENT_COMPLETE" when you have produced WORKING CODE FILES that fulfill ALL requirements.

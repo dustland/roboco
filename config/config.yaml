@@ -48,7 +48,7 @@ llm:
       api_type: "anthropic"
       model: "claude-3-5-sonnet-20241022"
       api_key: "${ANTHROPIC_API_KEY}"
-      base_url: "https://api.gptsapi.net/v1"
+      base_url: "https://api.gptsapi.net"
       max_tokens: 8192
       temperature: 0.7
 

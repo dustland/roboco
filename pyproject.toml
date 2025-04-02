@@ -28,7 +28,7 @@ dependencies = [
     "tavily-python",
     "PyGithub", # GitHub API client
     "arxiv", # ArXiv API client
-    "pyautogen[openai,browser-use,anthropic]>=0.8.2", # Autonomous agent framework with OpenAI and browser support
+    "pyautogen @ file:///Users/hugh/dustland/ag2", # Local version of pyautogen
     "mcp>=1.4.1",
     "markdown>=3.4.0", # For markdown processing
 ]

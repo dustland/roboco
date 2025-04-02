@@ -11,6 +11,7 @@ from roboco.tools.github import GitHubTool, GitHubConfig
 from roboco.tools.time import TimeTool, TimeConfig
 from roboco.tools.terminal import TerminalTool
 from roboco.tools.fs import FileSystemTool
+from roboco.tools.bash import BashTool
 
 __all__ = [
     "WebSearchTool",
@@ -25,4 +26,5 @@ __all__ = [
     "TimeConfig",
     "TerminalTool",
     "FileSystemTool",
+    "BashTool",
 ] 

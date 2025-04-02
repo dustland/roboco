@@ -11,7 +11,6 @@ from loguru import logger
 from pathlib import Path
 
 from roboco.core.agent import Agent
-from roboco.agents.human_proxy import HumanProxy
 from roboco.core.models.config import RobocoConfig
 from roboco.core.tool import Tool
 from roboco.core.models import AgentConfig, RoleConfig
@@ -185,7 +184,7 @@ class AgentFactory:
         """Create an agent for a specific role.
         
         If a specialized agent class is registered for the role, that class is used.
-        Otherwise, a basic Agent or HumanProxy instance is created based on the role configuration.
+        Otherwise, a basic Agent instance is created based on the role configuration.
         
         Args:
             role_key: The key of the role in the configuration
@@ -196,7 +195,7 @@ class AgentFactory:
             **kwargs: Additional arguments passed to the agent constructor
             
         Returns:
-            An initialized agent instance (either Agent or HumanProxy)
+            An initialized agent instance
         """
         # Get the validated role configuration
         role_config = get_role_config(self.roles_config, role_key)
@@ -226,11 +225,6 @@ class AgentFactory:
         if 'llm_config' in kwargs and llm_config is None:
             llm_config = kwargs.pop('llm_config')
         
-        # Determine if this is a human proxy or agent role
-        role_type = "agent"  # Default to agent
-        if role_config:
-            role_type = role_config.type.lower()
-        
         # Create validated agent configuration
         agent_config = create_agent_config(
             role_key=role_key,
@@ -257,21 +251,12 @@ class AgentFactory:
             # If explicit config provided, use it directly
             agent_params["llm_config"] = llm_config
         
-        # Create agent based on role type and registry
+        # Create agent based on registry
         if role_key in self.agent_registry:
             # Create specialized agent using the registered class
             agent_class = self.agent_registry[role_key]
             logger.info(f"Creating {agent_class.__name__} for role '{role_key}'")
             return agent_class(**agent_params)
-        elif role_type == "human_proxy":
-            # Create a HumanProxy
-            logger.info(f"Creating HumanProxy for role '{role_key}'")
-            # Set code_execution_config with use_docker=False
-            if "code_execution_config" not in agent_params:
-                agent_params["code_execution_config"] = {"work_dir": "workspace", "use_docker": False}
-            elif agent_params["code_execution_config"] is not None:
-                agent_params["code_execution_config"]["use_docker"] = False
-            return HumanProxy(**agent_params)
         else:
             # Create a basic Agent
             logger.info(f"Creating Agent for role '{role_key}'")

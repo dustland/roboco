@@ -8,10 +8,11 @@ designed to be compatible with autogen's function calling mechanism.
 import os
 import asyncio
 import subprocess
-from typing import Dict, Any, Optional, Tuple
+from typing import Dict, Any, Optional, List
 from loguru import logger
 
-from roboco.core.tool import Tool
+from roboco.core.tool import Tool, command
+from roboco.core.project_fs import ProjectFS
 
 # Initialize logger
 logger = logger.bind(module=__name__)
@@ -19,84 +20,84 @@ logger = logger.bind(module=__name__)
 class BashTool(Tool):
     """Tool for executing bash commands in the terminal."""
     
-    def __init__(self):
-        """Initialize the bash tool."""
+    def __init__(self, fs: Optional[ProjectFS] = None):
+        """
+        Initialize the bash tool.
+        
+        Args:
+            fs: Project filesystem instance to determine the project root directory
+        """
+        super().__init__(
+            name="bash",
+            description="Execute bash commands in the terminal"
+        )
+        
         # Initialize instance variables
         self._process = None
         self._running = False
+        self._fs = fs
+        self._project_root = fs.base_dir if fs else os.getcwd()
         
-        # Define the execute_command function
-        def execute_command(command: str, working_dir: str = None, timeout: int = 30) -> Dict[str, Any]:
-            """
-            Execute a bash command in the terminal.
-            
-            Args:
-                command: The bash command to execute
-                working_dir: The working directory for the command (optional)
-                timeout: Maximum execution time in seconds (default: 30)
-                
-            Returns:
-                Dictionary with command output and execution info
-            """
-            try:
-                # For long-running commands that should run in background
-                if command.strip().endswith("&"):
-                    return self._execute_background_command(command, working_dir)
-                
-                # For normal commands with timeout
-                env = os.environ.copy()
-                process = subprocess.run(
-                    command,
-                    shell=True,
-                    capture_output=True,
-                    text=True,
-                    cwd=working_dir,
-                    timeout=timeout,
-                    env=env
-                )
-                
-                logger.info(f"Executed command: {command}")
-                return {
-                    "success": True,
-                    "command": command,
-                    "exit_code": process.returncode,
-                    "stdout": process.stdout,
-                    "stderr": process.stderr,
-                    "working_dir": working_dir or os.getcwd()
-                }
-            except subprocess.TimeoutExpired:
-                logger.warning(f"Command timed out after {timeout}s: {command}")
-                return {
-                    "success": False,
-                    "command": command,
-                    "error": f"Command timed out after {timeout} seconds",
-                    "working_dir": working_dir or os.getcwd()
-                }
-            except Exception as e:
-                logger.error(f"Error executing command '{command}': {e}")
-                return {
-                    "success": False,
-                    "command": command,
-                    "error": str(e),
-                    "working_dir": working_dir or os.getcwd()
-                }
-        
-        # Initialize the Tool parent class with the execute_command function
-        super().__init__(
-            name="execute_command",
-            description="Execute bash commands in the terminal",
-            func_or_tool=execute_command
-        )
-        
-        logger.info("Initialized BashTool")
+        logger.info(f"Initialized BashTool with project root: {self._project_root}")
     
-    def _execute_background_command(self, command: str, working_dir: str = None) -> Dict[str, Any]:
+    @command()
+    def execute_command(self, command: str, timeout: int = 30) -> Dict[str, Any]:
+        """
+        Execute a bash command in the terminal.
+        
+        Args:
+            command: The bash command to execute
+            timeout: Maximum execution time in seconds (default: 30)
+            
+        Returns:
+            Dictionary with command output and execution info
+        """
+        try:
+            # For long-running commands that should run in background
+            if command.strip().endswith("&"):
+                return self._execute_background_command(command)
+            
+            # For normal commands with timeout
+            env = os.environ.copy()
+            process = subprocess.run(
+                command,
+                shell=True,
+                capture_output=True,
+                text=True,
+                cwd=self._project_root,
+                timeout=timeout,
+                env=env
+            )
+            
+            logger.info(f"Executed command: {command}")
+            return {
+                "success": True,
+                "command": command,
+                "exit_code": process.returncode,
+                "stdout": process.stdout,
+                "stderr": process.stderr
+            }
+        except subprocess.TimeoutExpired:
+            logger.warning(f"Command timed out after {timeout}s: {command}")
+            return {
+                "success": False,
+                "command": command,
+                "error": f"Command timed out after {timeout} seconds"
+            }
+        except Exception as e:
+            logger.error(f"Error executing command '{command}': {e}")
+            return {
+                "success": False,
+                "command": command,
+                "error": str(e)
+            }
+    
+    def _execute_background_command(self, command: str) -> Dict[str, Any]:
         """
         Execute a command in the background.
         
         Args:
             command: The command to execute
-            working_dir: The working directory for the command
             
         Returns:
             Dictionary with execution info
@@ -114,7 +115,7 @@ class BashTool(Tool):
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
-                cwd=working_dir,
+                cwd=self._project_root,
                 env=env
             )
             
@@ -128,7 +129,6 @@ class BashTool(Tool):
                 "command": command,
                 "pid": process.pid,
                 "running": True,
-                "working_dir": working_dir or os.getcwd(),
                 "message": f"Command started in background with PID {process.pid}"
             }
         except Exception as e:
@@ -136,18 +136,17 @@ class BashTool(Tool):
             return {
                 "success": False,
                 "command": command,
-                "error": str(e),
-                "working_dir": working_dir or os.getcwd()
+                "error": str(e)
             }
     
-    async def execute_interactive(self, command: str, working_dir: str = None, timeout: int = 120) -> Dict[str, Any]:
+    @command()
+    async def execute_interactive(self, command: str, timeout: int = 120) -> Dict[str, Any]:
         """
         Execute an interactive bash command with streaming output.
         This is an async version that can handle interactive commands.
         
         Args:
             command: The bash command to execute
-            working_dir: The working directory for the command (optional)
             timeout: Maximum execution time in seconds (default: 120)
             
         Returns:
@@ -169,7 +168,7 @@ class BashTool(Tool):
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
                 stdin=asyncio.subprocess.PIPE,
-                cwd=working_dir,
+                cwd=self._project_root,
                 env=env
             )
             
@@ -214,6 +213,7 @@ class BashTool(Tool):
             self._running = False
             self._process = None
     
+    @command()
     def send_interrupt(self) -> Dict[str, Any]:
         """
         Send an interrupt signal (CTRL+C) to the currently running process.
@@ -242,6 +242,7 @@ class BashTool(Tool):
                 "error": str(e)
             }
     
+    @command()
     def check_command_exists(self, command: str) -> Dict[str, Any]:
         """
         Check if a command exists in the system.
@@ -250,37 +251,32 @@ class BashTool(Tool):
             command: The command to check
             
         Returns:
-            Dictionary with check result
+            Dictionary indicating if command exists
         """
         try:
-            # Use 'which' to check if the command exists
-            process = subprocess.run(
-                f"which {command.split()[0]}",
+            # Use 'which' to check if command exists
+            # Always execute this at the project root
+            result = subprocess.run(
+                f"which {command}",
                 shell=True,
                 capture_output=True,
-                text=True
+                text=True,
+                cwd=self._project_root
             )
             
-            exists = process.returncode == 0
+            exists = result.returncode == 0
+            path = result.stdout.strip() if exists else None
             
-            if exists:
-                path = process.stdout.strip()
-                logger.info(f"Command '{command}' exists at: {path}")
-                return {
-                    "exists": True,
-                    "command": command,
-                    "path": path
-                }
-            else:
-                logger.warning(f"Command '{command}' not found")
-                return {
-                    "exists": False,
-                    "command": command
-                }
+            return {
+                "success": True,
+                "command": command,
+                "exists": exists,
+                "path": path
+            }
         except Exception as e:
             logger.error(f"Error checking command existence: {str(e)}")
             return {
-                "exists": False,
+                "success": False,
                 "command": command,
                 "error": str(e)
             }

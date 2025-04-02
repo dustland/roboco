@@ -8,7 +8,7 @@ and management through a team of agents.
 from typing import Dict, Any, List, Optional
 
 from roboco.core.agent import Agent
-from roboco.agents.planner import Planner
+from roboco.core.agent_factory import AgentFactory
 from roboco.core.config import get_workspace
 from roboco.core.project_fs import ProjectFS
 
@@ -24,21 +24,28 @@ class PlanningTeam:
         # Store project_id for later use
         self.project_id = project_id
         
-        # Initialize the agents
-        executer = Agent(
-            name="executer",
-            system_message="""You are an execution agent that helps prepare projects.
-            When creating files, always put source code in the src directory and documentation in the docs directory.
-            """,
-            human_input_mode="NEVER",
-            terminate_msg="TERMINATE",
-            llm_config=False,
+        # Use a consistent termination message
+        TERMINATE_MSG = "TERMINATE"
+        
+        # Get the agent factory instance
+        agent_factory = AgentFactory.get_instance()
+        
+        # Create executor agent from the factory
+        executer = agent_factory.create_agent(
+            role_key="executor",
+            name="Executer",
+            terminate_msg=TERMINATE_MSG,
             code_execution_config={"work_dir": get_workspace() / "code", "use_docker": False}
         )
-        planner = Planner(
-            name="planner",
-            terminate_msg="TERMINATE",
+        
+        # Create planner agent from the factory
+        planner = agent_factory.create_agent(
+            role_key="planner",
+            name="Planner",
+            terminate_msg=TERMINATE_MSG,
+            code_execution_config=False
         )
+        
         self.agents = {
             "executer": executer,
             "planner": planner

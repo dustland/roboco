@@ -13,7 +13,7 @@ from browser_use import Agent, BrowserContextConfig
 from browser_use.browser.browser import Browser, BrowserConfig as BrowserUseLibConfig
 from langchain_openai import ChatOpenAI
 
-from roboco.core.tool import Tool
+from roboco.core.tool import Tool, command
 from loguru import logger
 from roboco.core.models import ToolConfig
 from roboco.utils.browser_utils import get_chrome_path, get_platform, is_chrome_installed
@@ -147,14 +147,14 @@ class BrowserUseTool(Generic[Context], Tool):
             logger.warning("Browser automation may not work properly.")
         
         # Get Chrome path based on platform if not provided
-        if "chrome_instance_path" not in self.browser_config and is_chrome_installed():
+        if not hasattr(self.browser_config, 'chrome_instance_path') and is_chrome_installed():
             chrome_path = get_chrome_path()
             if chrome_path:
-                self.browser_config["chrome_instance_path"] = chrome_path
+                self.browser_config.chrome_instance_path = chrome_path
                 logger.info(f"Detected platform: {get_platform()}")
                 logger.info(f"Using Chrome at: {chrome_path}")
                 
-        if "new_context_config" not in self.browser_config:
+        if not hasattr(self.browser_config, 'new_context_config'):
             new_context_config = BrowserContextConfig(
                 wait_between_actions=1,
                 browser_window_size={
@@ -163,13 +163,17 @@ class BrowserUseTool(Generic[Context], Tool):
                 },
                 highlight_elements=True,
             )
-            self.browser_config["new_context_config"] = new_context_config
+            self.browser_config.new_context_config = new_context_config
         
-        # Now initialize the Tool parent class with the browser_use function
+        # Create a synchronous wrapper for the async browser_use function
+        def sync_browser_use(*args, **kwargs):
+            import asyncio
+            return asyncio.run(self.browser_use(*args, **kwargs))
+        
+        # Now initialize the Tool parent class
         super().__init__(
             name=name,
             description=description,
-            func_or_tool=self.browser_use,
             **kwargs
         )
     
@@ -197,36 +201,45 @@ class BrowserUseTool(Generic[Context], Tool):
             
         return self.browser
     
-    async def browser_use(self, task: str) -> BrowserUseResult:
+    @command()
+    def browser_use(self, task: str) -> Dict[str, Any]:
         """Use the browser to perform a task.
         
         Args:
             task: The task to perform with the browser.
             
         Returns:
-            The result of the browser task.
+            A dictionary containing the extracted content and final result.
         """
-        await self._initialize_browser()
+        import asyncio
         
         # Track original content and final result
-        result = BrowserUseResult()
+        result = {
+            "extracted_content": [],
+            "final_result": None
+        }
         
         self.logger.info(f"Running browser task: {task}")
         
         try:
-            # Run the browser task
-            agent_result = await self.agent.run(
-                task=task
-            )
+            # Get the current event loop or create a new one
+            try:
+                loop = asyncio.get_event_loop()
+            except RuntimeError:
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+            
+            # Run the browser task in the event loop
+            agent_result = loop.run_until_complete(self._run_browser_task(task))
             
             # Extract observations from agent steps
             if agent_result.steps:
                 for step in agent_result.steps:
                     if step.observation:
-                        result.extracted_content.append(step.observation)
+                        result["extracted_content"].append(step.observation)
             
             # Store final result
-            result.final_result = agent_result.output
+            result["final_result"] = agent_result.output
             
             if self.debug and self.output_dir:
                 # Save debug information
@@ -236,8 +249,13 @@ class BrowserUseTool(Generic[Context], Tool):
             
         except Exception as e:
             self.logger.error(f"Error executing browser task: {e}")
-            result.final_result = f"Error: {str(e)}"
+            result["final_result"] = f"Error: {str(e)}"
             return result
+    
+    async def _run_browser_task(self, task: str):
+        """Run the browser task asynchronously."""
+        await self._initialize_browser()
+        return await self.agent.run(task=task)
     
     async def cleanup(self):
         """Clean up browser resources when done."""

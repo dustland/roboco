@@ -11,11 +11,7 @@ for specialized needs that can't be expressed through configuration alone.
 """
 # Import the remaining specialized agent
 from roboco.agents.genesis_agent import GenesisAgent
-from roboco.agents.planner import Planner
-from roboco.agents.human_proxy import HumanProxy
 
 __all__ = [
     'GenesisAgent',      # Genesis agent
-    'Planner',           # Project planner agent
-    'HumanProxy',        # Human proxy agent
 ]

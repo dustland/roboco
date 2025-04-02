@@ -334,18 +334,17 @@ def create_agent_config(
     llm_config: Optional[Dict[str, Any]] = None,
     **kwargs
 ) -> AgentConfig:
-    """
-    Create an AgentConfig object for a specific role.
+    """Create a validated AgentConfig object.
     
     Args:
-        role_key: The key of the role this agent fulfills
+        role_key: The key of the role in the configuration
         name: Optional custom name for the agent
         system_message: Optional custom system message
-        llm_config: Optional LLM configuration
-        **kwargs: Additional agent configuration parameters
+        llm_config: Optional explicit LLM configuration
+        **kwargs: Additional arguments for the agent config
         
     Returns:
-        An AgentConfig object
+        A validated AgentConfig object
     """
     # If name is not provided, use role_key as name
     if name is None:

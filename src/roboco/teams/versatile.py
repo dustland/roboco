@@ -20,6 +20,7 @@ from roboco.core.models import Task
 from roboco.agents.human_proxy import HumanProxy
 from roboco.core.agent_factory import AgentFactory
 from roboco.core.config import get_llm_config
+from roboco.tools.bash import BashTool
 from autogen import AfterWork, AfterWorkOption, OnCondition, register_hand_off
 
 
@@ -72,121 +73,121 @@ class VersatileTeam(Team):
         """Initialize agents with specialized roles for the team."""
         agent_factory = AgentFactory.get_instance()
         
-        # Initialize each agent using the role configurations from roles.yaml
-        # Consolidated roles from 6 to 4:
-        # 1. Researcher (combines Architect and Explorer) - Research and planning
-        # 2. Creator (unchanged) - Implementation 
-        # 3. Evaluator (unchanged) - Testing and validation
-        # 4. Integrator (replaces Synthesizer) - Integration and finalization
-        
-        # Researcher combines research and architectural design
-        researcher = agent_factory.create_agent(
-            role_key="researcher",  # Updated from architect to researcher
-            terminate_msg="RESEARCH_COMPLETE"
+        # Create the lead agent with the system message from the roles config
+        self.lead = agent_factory.create_agent(
+            role_key="lead",
         )
-        
-        # Developer implements the solution
-        developer = agent_factory.create_agent(
-            role_key="developer",  # Updated from creator to developer
-            terminate_msg="DEVELOPMENT_COMPLETE"  # Updated from CREATION_COMPLETE
+
+        # Create the researcher agent
+        self.researcher = agent_factory.create_agent(
+            role_key="researcher",
         )
-        
-        # Writer creates written content and documentation
-        writer = agent_factory.create_agent(
+
+        # Create the developer agent
+        self.developer = agent_factory.create_agent(
+            role_key="developer",
+        )
+
+        # Create the writer agent
+        self.writer = agent_factory.create_agent(
             role_key="writer",
-            terminate_msg="WRITING_COMPLETE"
         )
-        
-        # Evaluator tests and validates the implementation
-        evaluator = agent_factory.create_agent(
+
+        # Create the evaluator agent
+        self.evaluator = agent_factory.create_agent(
             role_key="evaluator",
-            terminate_msg="EVALUATION_COMPLETE"
         )
         
-        # Lead finalizes and delivers the complete solution
-        lead = agent_factory.create_agent(
-            role_key="lead",  # Updated from integrator to lead
-            terminate_msg="LEADERSHIP_COMPLETE"  # Updated from INTEGRATION_COMPLETE
-        )
-        
-        # Human Proxy - Interface for tool execution and code implementation
-        executor = HumanProxy(
-            name="executor",
-            human_input_mode="NEVER",  # Don't require human input to run code
-            model_name="gpt-4o",
-            code_execution_config={"work_dir": self.fs.base_dir, "use_docker": False},  # Enable code execution
-            llm_config=get_llm_config()  # Get properly configured llm_config from core.config
+        # Create the executor agent - use agent_factory for consistency
+        self.executor = agent_factory.create_agent(
+            role_key="executor",
+            code_execution_config={"work_dir": "workspace", "use_docker": False}
         )
         
         # Add all agents to the team
-        self.add_agent("executor", executor)
-        self.add_agent("lead", lead)  # Updated from integrator to lead
-        self.add_agent("researcher", researcher)
-        self.add_agent("developer", developer)
-        self.add_agent("writer", writer)
-        self.add_agent("evaluator", evaluator)
+        self.agents = {
+            "lead": self.lead,
+            "researcher": self.researcher, 
+            "developer": self.developer,
+            "writer": self.writer,
+            "evaluator": self.evaluator,
+            "executor": self.executor
+        }
     
     def _register_tools(self):
         """Register necessary tools with the agents."""
+        agents_to_register = [agent for agent_name, agent in self.agents.items() if agent_name != "executor"]
         try:
             # Create file system tool
             from roboco.tools.fs import FileSystemTool
+            
             fs_tool = FileSystemTool(
                 fs=self.fs
             )
-            
             # Register fs_tool with all agents at once
-            agents_to_register = [agent for agent_name, agent in self.agents.items() if agent_name != "executor"]
             if agents_to_register:
-                fs_tool.register_with_agents(*agents_to_register, executor_agent=self.get_agent("executor"))
-            
-            # Register web search tool if available
-            try:
-                from roboco.tools.web_search import WebSearchTool
-                web_search_tool = WebSearchTool(
-                    name="web_search",
-                    description="Search the web for information"
-                )
-                
-                # Register with researcher for research capabilities
-                web_search_tool.register_with_agents(
-                    self.get_agent("researcher"),
-                    executor_agent=self.get_agent("executor")
-                )
-            except ImportError:
-                logger.warning("WebSearchTool not available")
-            except Exception as e:
-                logger.warning(f"Could not initialize WebSearchTool: {str(e)}")
-            
-            # Register code tool with developer, evaluator, and lead
-            try:
-                from roboco.tools.browser_use import BrowserUseTool, BrowserUseConfig
-                
-                # Create with proper config instead of direct parameters
-                browser_tool = BrowserUseTool(
-                    name="browser",
-                    description="Use the web browser to search the web or navigate to a specific URL",
-                    config=BrowserUseConfig(
-                        headless=True,
-                        output_dir="./output/browser_sessions",
-                        debug=False
-                    )
-                )
-                
-                # Register with appropriate agents
-                browser_tool.register_with_agents(
-                    self.get_agent("researcher"),
-                    executor_agent=self.get_agent("executor")
-                )
-                
-            except ImportError:
-                logger.warning("BrowserUseTool not available")
-            except Exception as e:
-                logger.warning(f"Could not initialize BrowserUseTool: {str(e)}")
-                
+                fs_tool.register_with_agents(*agents_to_register, executor_agent=self.executor)
+        except ImportError:
+            logger.warning("FileSystemTool not available")
         except Exception as e:
-            logger.error(f"Error registering tools: {str(e)}")
-    
+            logger.warning(f"Could not initialize FileSystemTool: {str(e)}")
+            
+        try:
+            # Register bash tool with executor for code execution
+            bash_tool = BashTool(fs=self.fs)  # Pass the filesystem to ensure commands run at project root
+            # Register bash tool with all agents at once
+            if agents_to_register:
+                bash_tool.register_with_agents(*agents_to_register, executor_agent=self.executor)
+        except Exception as e:
+            logger.warning(f"Could not initialize BashTool: {str(e)}")
+        
+        # Register web search tool if available
+        try:
+            from roboco.tools.web_search import WebSearchTool
+            web_search_tool = WebSearchTool(
+                name="web_search",
+                description="Search the web for information"
+            )
+            
+            # Register with researcher for research capabilities
+            web_search_tool.register_with_agents(
+                self.researcher,
+                executor_agent=self.executor
+            )
+        except ImportError:
+            logger.warning("WebSearchTool not available")
+        except Exception as e:
+            logger.warning(f"Could not initialize WebSearchTool: {str(e)}")
+        
+        # Register browser tool with researcher
+        try:
+            from roboco.tools.browser_use import BrowserUseTool, BrowserUseConfig
+            
+            # Create config object first
+            browser_config = BrowserUseConfig(
+                headless=True,
+                output_dir="./output/browser_sessions",
+                debug=False
+            )
+            
+            # Create tool with config object
+            browser_tool = BrowserUseTool(
+                name="browser",
+                description="Use the web browser to search the web or navigate to a specific URL",
+                config=browser_config
+            )
+            
+            # Register with appropriate agents
+            browser_tool.register_with_agents(
+                self.researcher,
+                executor_agent=self.executor
+            )
+            
+        except ImportError:
+            logger.warning("BrowserUseTool not available")
+        except Exception as e:
+            logger.warning(f"Could not initialize BrowserUseTool: {str(e)}")
+            
     def _register_handoffs(self):
         """Register handoffs for a hybrid Star/Feedback Loop pattern.
         
@@ -198,12 +199,6 @@ class VersatileTeam(Team):
         5. Prevents endless back-and-forth loops with loop counting and circuit breakers
         6. Requires explicit handoff reasoning to improve transparency and debuggability
         """
-        researcher = self.get_agent("researcher")
-        developer = self.get_agent("developer")
-        writer = self.get_agent("writer")
-        evaluator = self.get_agent("evaluator")
-        lead = self.get_agent("lead")
-        executor = self.get_agent("executor")
         
         # Clear any existing handoffs first
         for agent in self.agents.values():
@@ -221,105 +216,82 @@ class VersatileTeam(Team):
         })
         
         # STAR PATTERN: Lead as central coordinator (Hub)
-        register_hand_off(lead, [
-            # Lead to Executor for tasks requiring tool execution or code running
-            OnCondition(
-                condition="Message is at least 100 characters long AND indicates a need for executing code, running commands, implementing files, creating HTML/CSS/JS, or performing actual implementation tasks like file creation or project setup.",
-                target=executor
-            ),
+        register_hand_off(self.lead, [
             # Lead to Researcher for research tasks
             OnCondition(
-                condition="Message is at least 200 characters long AND indicates a need for data collection, research, information gathering, understanding concepts, or exploring solutions.",
-                target=researcher
+                condition="Indicates a need for data collection, research, information gathering, understanding concepts, or exploring solutions.",
+                target=self.researcher
             ),
             # Lead to Developer for implementation tasks
             OnCondition(
-                condition="Message is at least 200 characters long AND indicates a need for code implementation, development, programming, website creation, or building a solution.",
-                target=developer
+                condition="Indicates a need for code implementation, development, programming, website creation, or building a solution.",
+                target=self.developer
             ),
             # Lead to Writer for documentation tasks
             OnCondition(
-                condition="Message is at least 200 characters long AND indicates a need for documentation, content creation, explanation, or written material.",
-                target=writer
+                condition="Indicates a need for documentation, content creation, explanation, or written material.",
+                target=self.writer
             ),
             # Lead to Evaluator for testing tasks
             OnCondition(
-                condition="Message is at least 200 characters long AND indicates a need for testing, evaluation, review, validation, or quality assessment.",
-                target=evaluator
+                condition="Indicates a need for testing, evaluation, review, validation, or quality assessment.",
+                target=self.evaluator
             )
         ])
         
         # FEEDBACK LOOP: Researcher-Developer for iterative research and implementation
-        register_hand_off(researcher, [
-            # Researcher to Executor when research identifies specific implementation needs
-            OnCondition(
-                condition="Message is at least 300 characters long AND includes specific code snippets, file structures, or implementation details that are ready to be implemented directly.",
-                target=executor
-            ),
+        register_hand_off(self.researcher, [
             # Only go to Developer if research work is complete and implementation is needed
             OnCondition(
-                condition="Message is at least 300 characters long AND includes substantive research findings, collected data, or analysis AND indicates the research is complete or sufficient for implementation.",
-                target=developer
+                condition="Includes substantive research findings, collected data, or analysis AND indicates the research is complete or sufficient for implementation.",
+                target=self.developer
             ),
             # Default: Return to Lead
             AfterWork(
-                agent=lead
+                agent=self.lead
             )
         ])
         
         # FEEDBACK LOOP: Developer-Researcher for implementation questions
-        register_hand_off(developer, [
-            # Developer to Executor when there is code to implement
+        register_hand_off(self.developer, [
+            # Developer to Evaluator when implementation is ready for testing
             OnCondition(
-                condition="Message is at least 300 characters long AND includes detailed instructions for implementing code, creating files, or executing specific programming tasks.",
-                target=executor
+                condition="Includes substantive development work AND (indicates code or website implementation is complete AND ready for testing OR mentions data retrieval/API functionality that needs validation).",
+                target=self.evaluator
             ),
             # Developer to Researcher only if there are unresolved research questions
             OnCondition(
-                condition="Message is at least 300 characters long AND includes substantive development work AND mentions needing additional research, information, or clarification.",
-                target=researcher
-            ),
-            # Developer to Evaluator when implementation is ready for testing
-            OnCondition(
-                condition="Message is at least 300 characters long AND includes substantive development work AND indicates code or website implementation is complete and ready for testing or evaluation.",
-                target=evaluator
+                condition="Includes substantive development work AND mentions needing additional research, information, or clarification.",
+                target=self.researcher
             ),
             # If no specific conditions match, go back to Lead
             AfterWork(
-                agent=lead
+                agent=self.lead
             )
         ])
         
         # FEEDBACK LOOP: Evaluator-Developer for iterative improvement
-        register_hand_off(evaluator, [
+        register_hand_off(self.evaluator, [
             # Evaluator to Developer when implementation needs improvement
             OnCondition(
-                condition="Message is at least 300 characters long AND includes substantive evaluation results AND indicates issues, bugs, or improvements needed in the code or implementation.",
-                target=developer
+                condition="Includes substantive evaluation results AND (indicates issues with data retrieval, API functionality, or data processing OR mentions bugs/improvements needed in the code).",
+                target=self.developer
             ),
-            # Default: Evaluator back to Lead when evaluation is complete
+            # Default: Evaluator back to Lead when evaluation is complete and all tests pass
+            OnCondition(
+                condition="Indicates all tests have passed, including data retrieval validation AND no critical issues were found.",
+                target=self.lead
+            ),
+            # Fallback to Lead if no conditions match
             AfterWork(
-                agent=lead
+                agent=self.lead
             )
         ])
         
         # Writer always returns to Lead (following Star pattern)
-        register_hand_off(writer, [
+        register_hand_off(self.writer, [
             AfterWork(
-                agent=lead
-            )
-        ])
-        
-        # Executor can hand off back to Developer or Lead
-        register_hand_off(executor, [
-            # Executor to Developer after implementing code
-            OnCondition(
-                condition="Message includes code implementation results, file creation, or execution output AND indicates that development work should continue or be refined.",
-                target=developer
-            ),
-            # Default: Return to Lead
-            AfterWork(
-                agent=lead
+                agent=self.lead
             )
         ])
         
@@ -506,7 +478,7 @@ class VersatileTeam(Team):
                 initial_agent_name="lead",
                 query=query,
                 context_variables=context,
-                max_rounds=25
+                max_rounds=100
             )
         except Exception as e:
             import traceback
