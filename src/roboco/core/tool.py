@@ -141,7 +141,7 @@ class Tool(AutogenTool):
             A function that executes commands
         """
         # Store the original tool name to avoid it being overwritten
-        logger.debug(f"Creating command executor for tool: {self._name}")
+        logger.debug(f"⚙️ Creating command executor for tool: {self._name}")
         
         # Create a unique function name for this tool
         def execute_command(command: str, args: Any) -> Any:
@@ -156,14 +156,14 @@ class Tool(AutogenTool):
                 The result of the command execution
             """
             # Log the raw input for debugging
-            logger.info(f"Tool {self._name} command: {command} and args: {args}")
+            logger.info(f"🚀 Tool {self._name} command: {command} and args: {args}")
             
             # Get the actual command function
             if command not in self.commands:
                 available_commands = list(self.commands.keys())
                 return {
                     "success": False,
-                    "error": f"Command '{command}' not found in {self.name}. Available commands: {', '.join(available_commands)}"
+                    "error": f"❌ Command '{command}' not found in {self.name}. Available commands: {', '.join(available_commands)}"
                 }
             
             command_func = self.commands[command]
@@ -178,15 +178,23 @@ class Tool(AutogenTool):
                     return command_func(args)
             except TypeError as e:
                 # Provide more helpful error message
-                logger.error(f"Error executing command {command}: {e}")
+                logger.error(f"❌ Error executing command {command}: {e}")
                 return {
                     "success": False,
-                    "error": f"Error executing command {command}: {e}",
+                    "error": f"❌ Error executing command {command}: {e}",
                     "command": command
                 }
         
-        # Set the function name to be unique for this tool
-        execute_command.__name__ = f"{self._name}_execute_command"
+        # Set a shorter function name to comply with OpenAI's 40-character limit for tool IDs
+        # Convert the tool name to a shorter representation if needed
+        tool_id = self._name
+        if len(tool_id) > 30:
+            # Truncate and add a hash suffix to ensure uniqueness while keeping it under 30 chars
+            import hashlib
+            hash_suffix = hashlib.md5(tool_id.encode()).hexdigest()[:8]
+            tool_id = f"{tool_id[:20]}_{hash_suffix}"
+            
+        execute_command.__name__ = f"{tool_id}_exec"
         return execute_command
     
     def _generate_description(self) -> str:
@@ -205,12 +213,9 @@ class Tool(AutogenTool):
         # Start with the base description
         description = self._base_description
         
-        # Add command information
-        description += f"\n\nUSAGE: Call this tool with a dictionary containing:\n"
-        description += f"1. \"command\": The name of the command to execute\n"
-        description += f"2. \"args\": Arguments for the command\n\n"
-        description += f"TOOL NAME: {self._name}\n"
-        description += f"AVAILABLE COMMANDS: {', '.join(available_commands)}\n\n"
+        # Add command information with emojis
+        description += f"🛠️ TOOL NAME: {self._name}\n"
+        description += f"⚡ AVAILABLE COMMANDS: {', '.join(available_commands)}\n\n"
         
         # Process each command with minimal documentation
         for cmd_name, cmd_func in self.commands.items():
@@ -220,8 +225,8 @@ class Tool(AutogenTool):
             # Get the docstring
             docstring = inspect.getdoc(cmd_func)
             
-            # Add command header and description
-            description += f"\n## {cmd_name}\n\n"
+            # Add command header and description with emoji
+            description += f"\n## 🎯 {cmd_name}\n\n"
             if docstring:
                 description += f"{docstring}\n"
             
@@ -237,18 +242,18 @@ class Tool(AutogenTool):
         """
         for agent in agents:
             if agent in self.registered_with_agents:
-                logger.warning(f"Tool {self.name} already registered with agent {agent.name}")
+                logger.warning(f"🔄 Tool {self.name} already registered with agent {agent.name}")
                 continue
             
             try:
                 # Use the stored command executor
                 # Print the actual description for debugging
-                logger.info(f"Tool description for {self.name} being registered with {agent.name}:\n{self.description}")
+                logger.info(f"🔧 Tool {self.name} being registered with {agent.name}\n")
                 agent.register_tool(self._command_executor, executor_agent, description=self.description)
                 self.registered_with_agents.add(agent)
-                logger.debug(f"Registered tool {self.name} with agent {agent.name}")
+                logger.debug(f"✅ Tool {self.name} registered with agent {agent.name}")
             except Exception as e:
-                logger.warning(f"Error registering tool {self.name} with agent {agent.name}: {e}")
+                logger.warning(f"❌ Error registering tool {self.name} with agent {agent.name}: {e}")
     
     @property
     def name(self) -> str:

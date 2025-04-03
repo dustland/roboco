@@ -95,6 +95,9 @@ class Agent(ConversableAgent):
         if terminate_msg:
             system_message = f"{system_message}\n\nWhen you have completed your response, end your message with \"{terminate_msg}\" to signal that you are done."
         
+        # Add anti-loop protection instructions with stronger language
+        system_message = f"{system_message}\n\nCRITICAL INSTRUCTION: Do not transfer control back to an agent that just transferred to you without doing meaningful work first. This creates an infinite loop. Empty or single-word responses with just 'None' are not permitted. You MUST provide substantive content when responding to handoffs."
+        
         # Create termination message checker function if check_terminate_msg is provided
         is_termination_msg = None
         if check_terminate_msg:
@@ -110,6 +113,10 @@ class Agent(ConversableAgent):
             code_execution_config=code_execution_config,
             **kwargs
         )
+        
+        # Initialize handoff tracking
+        self.last_handoff_from = None
+        self.handoff_count = {}
         
         logger.info(f"Initialized Agent: {name} with model: {final_llm_config.get('model', 'unknown')}")
     
@@ -208,11 +215,67 @@ class Agent(ConversableAgent):
         
         This method is called by the AutoGen framework.
         """
+        # Track handoffs and detect potential loops
+        if sender is not None:
+            sender_name = getattr(sender, "name", str(sender))
+            
+            # Track who we received a message from
+            self.last_handoff_from = sender_name
+            
+            # Increase handoff count for this sender
+            if sender_name not in self.handoff_count:
+                self.handoff_count[sender_name] = 1
+            else:
+                self.handoff_count[sender_name] += 1
+                
+            # Check if this is a potential loop (many handoffs from same sender)
+            if self.handoff_count[sender_name] > 3:
+                logger.warning(f"⚠️ Potential handoff loop detected: {sender_name} → {self.name} occurred {self.handoff_count[sender_name]} times")
+                
+                # Log the previous messages to help with debugging
+                if messages and len(messages) >= 3:
+                    logger.warning("Recent message history:")
+                    for i, msg in enumerate(messages[-3:]):
+                        content = msg.get("content", "")
+                        name = msg.get("name", "unknown")
+                        logger.warning(f"  [{i}] {name}: {content[:50]}{'...' if len(content) > 50 else ''}")
+                
+                # Add a warning message to help break the loop
+                if messages and len(messages) > 0:
+                    # Check if the last message is from the sender
+                    if messages[-1].get("name", "") == sender_name:
+                        # Add a hint to break the loop with stronger language
+                        messages.append({
+                            "role": "system", 
+                            "content": f"CRITICAL INSTRUCTION: You've received multiple consecutive handoffs from {sender_name}. This indicates an infinite conversation loop. DO NOT hand control back to {sender_name} immediately. You MUST perform a substantive task or provide meaningful information before any handoff. Empty responses with just 'None' are not permitted and will be rejected."
+                        })
+        
         try:
-            # Call the original method
-            return super().generate_reply(messages, sender)
+            # Call the original method to generate a response
+            response = super().generate_reply(messages, sender)
+            
+            # Check if the response is empty or just "None"
+            is_empty_response = False
+            if response and isinstance(response, dict) and "content" in response:
+                content = response.get("content", "")
+                if not content or content == "None" or len(content.strip()) <= 5:
+                    is_empty_response = True
+                    logger.warning(f"⚠️ Empty response detected from {self.name}: '{content}'")
+                    logger.warning(f"This may contribute to handoff loops. Responses should be substantive.")
+                    
+                    # Log additional information to help debug
+                    logger.debug(f"Agent model: {getattr(self, 'llm_config', {}).get('model', 'unknown')}")
+                    logger.debug(f"Last handoff from: {self.last_handoff_from}")
+                    logger.debug(f"Handoff counts: {self.handoff_count}")
+                    
+                    # Consider modifying the response to break the loop
+                    # We're not automatically changing it per your request, but adding robust logging
+            
+            return response
+            
         except Exception as e:
-            self.log_api_error(e, messages)
+            logger.error(f"Error generating reply in {self.name}: {str(e)}")
+            logger.debug(traceback.format_exc())
             
             # Create a suitable default response when the API fails
             error_response = {
@@ -221,55 +284,67 @@ class Agent(ConversableAgent):
             }
             return error_response
     
-    def log_api_error(self, error: Exception, messages: List[Dict[str, Any]]) -> None:
-        """Log detailed information about API errors.
+    def log_api_error(self, exception, messages=None):
+        """Log API errors with helpful context."""
+        logger.error(f"API Error in {self.name}: {str(exception)}")
+        if messages:
+            logger.debug(f"Last message: {messages[-1] if messages else 'No messages'}")
+        logger.debug(traceback.format_exc())
+        
+    def add_to_context(self, key: str, value: Any) -> None:
+        """
+        Add or update an item in the shared context.
         
         Args:
-            error: The exception that occurred
-            messages: The messages that were being processed
+            key: The key to add or update
+            value: The value to store
         """
-        # Prepare debug information
-        error_type = type(error).__name__
-        error_message = str(error)
-        tb = traceback.format_exc()
+        self.shared_context[key] = value
         
-        # Extract model information
-        model_info = {}
-        if hasattr(self, "llm_config"):
-            model_info = {
-                "model": self.llm_config.get("model", "unknown"),
-                "api_type": self.llm_config.get("api_type", "unknown"),
-                "base_url": self.llm_config.get("base_url", "unknown")
-            }
+    def update_task_status(self, status: str) -> None:
+        """
+        Update the status of the current task.
         
-        # Get message summary
-        message_summary = []
-        if messages is None:
-            logger.warning("No messages provided for error logging")
-            message_summary = [{"role": "unknown", "content_preview": "No messages available", "tool_calls": None}]
-        else:
-            for msg in messages[-5:]:  # Get the last 5 messages for context
-                role = msg.get("role", "unknown")
-                content_preview = str(msg.get("content", ""))[:100] + "..." if len(str(msg.get("content", ""))) > 100 else str(msg.get("content", ""))
-                tool_calls = None
-                if "tool_calls" in msg:
-                    tool_calls = []
-                    for tool_call in msg.get("tool_calls", []):
-                        if "id" in tool_call:
-                            tool_id = tool_call["id"]
-                            tool_id_length = len(tool_id)
-                            tool_calls.append({"id": tool_id, "id_length": tool_id_length})
-                
-                message_summary.append({"role": role, "content_preview": content_preview, "tool_calls": tool_calls})
+        Args:
+            status: The new status of the task
+        """
+        self.shared_context["task_status"] = status
         
-        # Log the error
-        logger.error(f"API Error in agent {self.name}")
-        logger.error(f"Error: {error_type} - {error_message}")
-        logger.error(f"Model info: {json.dumps(model_info, indent=2)}")
-        logger.error(f"Message summary: {json.dumps(message_summary, indent=2)}")
-        logger.error(f"Traceback: {tb}")
+    def add_pending_action(self, action: str) -> None:
+        """
+        Add a pending action to the shared context.
         
-        # Check for specific error types and add targeted advice
-        if "tool_call" in error_message and "id" in error_message:
-            logger.error("TOOL ID ERROR DETECTED: This may be caused by a tool call ID that exceeds the maximum length allowed by the API.")
-            logger.error("For Claude models, tool call IDs must be 40 characters or less.")
+        Args:
+            action: Description of the action to be performed
+        """
+        if action not in self.shared_context["pending_actions"]:
+            self.shared_context["pending_actions"].append(action)
+        
+    def mark_action_complete(self, action: str) -> None:
+        """
+        Mark an action as complete in the shared context.
+        
+        Args:
+            action: Description of the action that was completed
+        """
+        if action in self.shared_context["pending_actions"]:
+            self.shared_context["pending_actions"].remove(action)
+        
+        if action not in self.shared_context["completed_actions"]:
+            self.shared_context["completed_actions"].append(action)
+            
+    def add_artifact(self, name: str, description: str, value: Any = None) -> None:
+        """
+        Add an artifact to the shared context.
+        
+        Args:
+            name: Name of the artifact
+            description: Description of the artifact
+            value: Optional value of the artifact
+        """
+        self.shared_context["artifacts"][name] = {
+            "description": description,
+            "created_by": self.name,
+            "created_at": datetime.now().isoformat(),
+            "value": value
+        }

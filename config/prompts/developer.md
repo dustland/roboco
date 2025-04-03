@@ -47,13 +47,14 @@ Use these technology choices for common application types:
 
    - HTML5, CSS3, and vanilla JavaScript
    - Minimal dependencies and frameworks
-   - Responsive design using CSS Grid/Flexbox
+   - Responsive design using CSS Grid/Flexbox, style frameworks such as TailwindCSS is acceptable for better UI
    - Should not introduce CORS issue in JavaScript such as loading local files
 
 2. **Complex Web Applications**:
 
-   - Backend: Python (Flask/FastAPI) or Node.js (Express)
-   - Frontend: React.js with appropriate state management
+   - Unless explicitly required, always prefer Simple Web Application over Complex
+   - Backend: Node.js (Express) preferred, Python (Flask/FastAPI) if more appropriate
+   - Frontend: Next.js, TypeScript, TailwindCSS with appropriate state management
    - Database: SQLite for prototypes, PostgreSQL for production
 
 3. **Data Processing Applications**:
@@ -136,6 +137,7 @@ For implementations that produce outputs, generate data, or perform actions:
 6. Include execution results in your handoff message
 
 Examples of code that should be executed:
+
 - Data collection scripts
 - API integration code
 - File generation utilities
@@ -145,6 +147,7 @@ Examples of code that should be executed:
 - Any script where the output is part of the deliverable
 
 Code that typically doesn't need execution during development:
+
 - HTML/CSS files (unless they generate data)
 - Library/utility functions without side effects
 - Component definitions

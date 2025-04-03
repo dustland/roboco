@@ -478,7 +478,7 @@ class VersatileTeam(Team):
                 initial_agent_name="lead",
                 query=query,
                 context_variables=context,
-                max_rounds=100
+                max_rounds=240
             )
         except Exception as e:
             import traceback
@@ -603,95 +603,3 @@ class VersatileTeam(Team):
                 "error": swarm_result.get('error', "Unknown error in hybrid pattern session"),
                 "status": "failed"
             }
-
-    def update_project_phase(self, phase: str) -> None:
-        """
-        Update the project phase in the shared context and toggle available handoffs.
-        
-        Args:
-            phase: The new project phase ('initial', 'development', 'testing', 'integration')
-        """
-        # Update the project phase
-        self.shared_context["project_phase"] = phase
-        
-        # Update available handoffs based on project phase
-        if phase == "initial":
-            self.shared_context.update({
-                "allow_research": True,
-                "allow_development": True,
-                "allow_writing": True,
-                "allow_evaluation": False,
-                "allow_leadership": False
-            })
-        elif phase == "development":
-            self.shared_context.update({
-                "allow_research": True,
-                "allow_development": True,
-                "allow_writing": True,
-                "allow_evaluation": True,
-                "allow_leadership": False
-            })
-        elif phase == "testing":
-            self.shared_context.update({
-                "allow_research": True,
-                "allow_development": True,
-                "allow_writing": True,
-                "allow_evaluation": True,
-                "allow_leadership": True
-            })
-        elif phase == "integration":
-            self.shared_context.update({
-                "allow_research": False,
-                "allow_development": False,
-                "allow_writing": False,
-                "allow_evaluation": True,
-                "allow_leadership": True
-            })
-        
-        logger.info(f"Updated project phase to {phase} with context: {self.shared_context}")
-
-    async def update_task_state(self, task: Task, phase: str, role: str) -> None:
-        """Update the task state and trigger appropriate transitions.
-        
-        Args:
-            task: The current task being worked on
-            phase: The new phase to transition to
-            role: The role that completed their work
-        """
-        self.update_project_phase(phase)
-        
-        # Update task tracking
-        timestamp = datetime.now().isoformat()
-        task_log = {
-            "timestamp": timestamp,
-            "phase": phase,
-            "role": role,
-            "status": "completed"
-        }
-        
-        # Save task state
-        task_state_path = os.path.join(self.fs.base_dir, "task_state.json")
-        try:
-            with open(task_state_path, "w") as f:
-                json.dump(task_log, f, indent=2)
-        except Exception as e:
-            logger.error(f"Failed to save task state: {str(e)}")
-        
-        # Trigger appropriate transitions based on phase
-        if phase == "research" and role == "researcher":
-            # Enable development phase
-            self.context.update({"allow_development": True})
-            logger.info("Research complete, enabling development phase")
-        elif phase == "development" and role == "developer":
-            # Enable evaluation phase
-            self.context.update({"allow_evaluation": True})
-            logger.info("Development complete, enabling evaluation phase")
-        elif phase == "writing" and role == "writer":
-            # Enable evaluation phase for documentation review
-            self.context.update({"allow_evaluation": True})
-            logger.info("Writing complete, enabling evaluation phase")
-            
-        # Update task status
-        task.status = f"{phase}_complete"
-        
-        logger.info(f"Updated task state: {phase} completed by {role}")
