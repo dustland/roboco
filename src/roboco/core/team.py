@@ -21,7 +21,7 @@ from autogen import (
 
 from roboco.core.config import load_config, get_llm_config
 from roboco.core.models import Task
-from roboco.core.project_fs import ProjectFS
+from roboco.core.fs import ProjectFS
 
 # Get a logger instance for this module
 logger = logger.bind(module=__name__)

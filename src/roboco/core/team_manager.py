@@ -16,7 +16,7 @@ from roboco.core.agent import Agent
 from roboco.core.agent_factory import AgentFactory
 from roboco.core.tool import Tool
 from roboco.core.models.task import Task
-from roboco.core.project_fs import ProjectFS
+from roboco.core.fs import ProjectFS
 
 from roboco.tools.fs import FileSystemTool
 from roboco.tools.browser_use import BrowserUseTool

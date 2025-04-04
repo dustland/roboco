@@ -10,8 +10,8 @@ import traceback
 from datetime import datetime
 from typing import List, Optional, Dict, Any
 
-from roboco.core.project_fs import ProjectFS
-from roboco.core.value_objects.task_status import TaskStatus
+from roboco.core.fs import ProjectFS
+from roboco.core.models.task import TaskStatus
 from roboco.core.models import Task
 from roboco.core.team_manager import TeamManager
 from loguru import logger
@@ -327,8 +327,6 @@ class TaskManager:
         """
         Convert a potentially non-serializable object to a dictionary.
         
-        This handles special cases like Autogen's ChatResult class.
-        
         Args:
             obj: Object to convert
             
@@ -338,86 +336,30 @@ class TaskManager:
         if obj is None:
             return None
             
-        # If it's already a dict, just return it
+        # If it's already a dict, just process each value recursively
         if isinstance(obj, dict):
-            # Process each value in the dict recursively
             return {k: self._convert_to_dict(v) for k, v in obj.items()}
             
         # If it's a list, convert each item
         if isinstance(obj, list):
             return [self._convert_to_dict(item) for item in obj]
             
-        # Handle ChatResult from Autogen
-        if hasattr(obj, '__class__') and obj.__class__.__name__ == 'ChatResult':
-            result = {
-                'summary': getattr(obj, 'summary', ''),
-                'cost': getattr(obj, 'cost', 0),
-            }
+        # For objects with a to_dict method, use that
+        if hasattr(obj, 'to_dict') and callable(getattr(obj, 'to_dict')):
+            return self._convert_to_dict(obj.to_dict())
             
-            # Handle chat_history
-            if hasattr(obj, 'chat_history'):
-                if isinstance(obj.chat_history, list):
-                    result['chat_history'] = self._convert_to_dict(obj.chat_history)
-                else:
-                    result['chat_history'] = str(obj.chat_history)
-                    
-            return result
-            
-        # For any other object with attributes, convert to dict if possible
+        # For objects with __dict__, convert to dictionary
         if hasattr(obj, '__dict__'):
             return {k: self._convert_to_dict(v) for k, v in obj.__dict__.items() 
-                    if not k.startswith('_')}
+                   if not k.startswith('_')}
             
-        # For basic types (str, int, float, bool, etc.)
-        # Just return as is, as they're already serializable
+        # Try to serialize, otherwise convert to string
         try:
-            # Test if it's JSON serializable
             import json
             json.dumps(obj)
             return obj
         except (TypeError, OverflowError):
-            # If not serializable, convert to string
             return str(obj)
-            
-    def _create_task_header(self, task: Task) -> str:
-        """
-        Create a visually distinct header for task execution.
-        
-        Args:
-            task: The task being executed
-            
-        Returns:
-            A formatted header string
-        """
-        separator = "=" * 80
-        task_title = f" EXECUTING TASK: {task.description} "
-        
-        # Center the task title within the separator
-        centered_title = task_title.center(80, "=")
-        
-        header = f"\n{separator}\n{centered_title}\n{separator}\n"
-        return header
-            
-    def _create_task_completion_header(self, task: Task, status: str) -> str:
-        """
-        Create a visually distinct header for task completion.
-        
-        Args:
-            task: The task that was executed
-            status: The completion status
-            
-        Returns:
-            A formatted completion header string
-        """
-        separator = "-" * 80
-        status_symbol = "✅" if status == "completed" else "❌" if status == "failed" else "⏩"
-        task_title = f" {status_symbol} TASK COMPLETE: {task.description} [{status.upper()}] "
-        
-        # Center the task title within the separator
-        centered_title = task_title.center(80, "-")
-        
-        header = f"\n{separator}\n{centered_title}\n{separator}\n"
-        return header
             
     async def execute_task(self, task: Task, tasks: List[Task] = None) -> Dict[str, Any]:
         """Execute a single task.
@@ -438,7 +380,7 @@ class TaskManager:
             }
         
         # Create and log an outstanding header for this task
-        task_header = self._create_task_header(task)
+        task_header = self.create_task_header(task)
         logger.info(task_header)
         logger.info(f"Executing task: {task.description}")
         
@@ -484,8 +426,36 @@ Instructions:
 - When modifying files, use the filesystem tool's commands instead of trying to edit files directly
 """
             
+            # Set up message recording
+            original_send_fn = team.send_message
+            messages = []
+            
+            # Wrap the send_message function to record messages
+            async def record_message_wrapper(agent_id, content, role="assistant", **kwargs):
+                # Record the message
+                message = {
+                    "agent_id": agent_id,
+                    "content": content,
+                    "role": role,
+                    "timestamp": datetime.now().isoformat(),
+                    **kwargs
+                }
+                messages.append(message)
+                
+                # Call the original function
+                return await original_send_fn(agent_id, content, role, **kwargs)
+                
+            # Replace the send_message function with our wrapper
+            team.send_message = record_message_wrapper
+            
             # Execute task using the team
             task_result = await team.run_chat(query=task_prompt)
+            
+            # Store recorded messages
+            results["messages"] = messages
+            
+            # Restore original send_message function
+            team.send_message = original_send_fn
             
             # Convert any non-serializable objects to dictionaries
             task_result = self._convert_to_dict(task_result)
@@ -506,6 +476,9 @@ Instructions:
                 })
                 logger.error(f"Task '{task.description}' failed: {task_result.get('error', 'Unknown error')}")
             
+            # Save the recorded messages to the database
+            await self._save_task_messages(task.id, messages)
+            
         except Exception as e:
             import traceback
             error_details = traceback.format_exc()
@@ -518,11 +491,44 @@ Instructions:
             logger.error(f"Traceback: {error_details}")
         
         # Add completion header
-        completion_header = self._create_task_completion_header(task, results["status"])
+        completion_header = self.create_task_completion_header(task, results["status"])
         logger.info(completion_header)
         
         logger.info(f"Task '{task.description}' execution completed with status: {results['status']}")
         return results
+    
+    async def _save_task_messages(self, task_id: str, messages: List[Dict[str, Any]]) -> None:
+        """
+        Save messages generated during task execution to the database.
+        
+        Args:
+            task_id: ID of the task
+            messages: List of message dictionaries with agent_id, content, role, etc.
+        """
+        try:
+            from roboco.db.service import create_message
+            from roboco.core.models.message import MessageCreate, MessageRole, MessageType
+            
+            # Import these for db session
+            from roboco.db import get_session
+            
+            for msg in messages:
+                # Convert the message to a MessageCreate object
+                message_data = MessageCreate(
+                    content=msg.get("content", ""),
+                    role=msg.get("role", "assistant"),
+                    type=msg.get("type", MessageType.TEXT),
+                    agent_id=msg.get("agent_id"),
+                    meta=msg.get("meta", {})
+                )
+                
+                # Create the message in the database with explicit task_id
+                create_message(task_id, message_data)
+                    
+            logger.info(f"Saved {len(messages)} messages for task {task_id}")
+        except Exception as e:
+            logger.error(f"Error saving messages for task {task_id}: {str(e)}")
+            logger.error(traceback.format_exc())
     
     def _create_batch_task_header(self, num_tasks: int) -> str:
         """
@@ -565,6 +571,47 @@ Instructions:
         header = f"\n{separator}\n{centered_title}\n{separator}\n"
         return header
     
+    def create_batch_task_header(self, num_tasks: int) -> str:
+        """
+        Create a visually distinct header for a batch of tasks.
+        
+        Args:
+            num_tasks: Number of tasks to be executed
+            
+        Returns:
+            A formatted header string
+        """
+        separator = "*" * 80
+        title = f" BEGINNING EXECUTION OF {num_tasks} TASKS "
+        
+        # Center the title within the separator
+        centered_title = title.center(80, "*")
+        
+        header = f"\n{separator}\n{centered_title}\n{separator}\n"
+        return header
+        
+    def create_batch_completion_header(self, status: str, completed: int, total: int) -> str:
+        """
+        Create a visually distinct header for batch task completion.
+        
+        Args:
+            status: Overall status of the batch
+            completed: Number of successfully completed tasks
+            total: Total number of tasks
+            
+        Returns:
+            A formatted completion header string
+        """
+        separator = "*" * 80
+        status_symbol = "✅" if status == "success" else "⚠️" if status == "partial_failure" else "❌"
+        title = f" {status_symbol} TASK BATCH COMPLETE: {completed}/{total} tasks completed successfully [{status.upper()}] "
+        
+        # Center the title within the separator
+        centered_title = title.center(80, "*")
+        
+        header = f"\n{separator}\n{centered_title}\n{separator}\n"
+        return header
+    
     async def execute_tasks(self, tasks: List[Task]) -> Dict[str, Any]:
         """Execute a list of tasks.
         
@@ -575,7 +622,7 @@ Instructions:
             Results of task execution
         """
         # Create and log batch header
-        batch_header = self._create_batch_task_header(len(tasks))
+        batch_header = self.create_batch_task_header(len(tasks))
         logger.info(batch_header)
         logger.info(f"Executing {len(tasks)} tasks")
         
@@ -606,7 +653,7 @@ Instructions:
                 results["status"] = "partial_failure"
         
         # Create and log batch completion header
-        batch_completion_header = self._create_batch_completion_header(
+        batch_completion_header = self.create_batch_completion_header(
             results["status"], 
             completed_count, 
             len(tasks)

@@ -6,11 +6,14 @@ and management through a team of agents.
 """
 
 from typing import Dict, Any, List, Optional
+from loguru import logger
 
 from roboco.core.agent import Agent
 from roboco.core.agent_factory import AgentFactory
 from roboco.core.config import get_workspace
-from roboco.core.project_fs import ProjectFS
+from roboco.core.fs import ProjectFS
+
+logger = logger.bind(module=__name__)
 
 class PlanningTeam:
     """Team for creating and managing projects."""
@@ -112,6 +115,42 @@ class PlanningTeam:
         # Use the pre-specified project_id from context if provided and not found in response
         if not project_id and context and "project_id" in context:
             project_id = context["project_id"]
+        
+        # If we have a project_id, ensure it's registered in the database
+        # (the planning process might have created files but not database records)
+        if project_id:
+            try:
+                # Import modules here to avoid circular imports
+                from roboco.db.service import get_project
+                from roboco.core.project_manager import ProjectManager
+                
+                # Check if project exists in database
+                project = get_project(project_id)
+                
+                # If project doesn't exist in DB but was created on disk, initialize the DB record
+                if not project:
+                    logger.info(f"Project {project_id} created on disk but not in database, initializing DB record")
+                    # Try to load project data from project.json
+                    try:
+                        from roboco.core.fs import ProjectFS
+                        fs = ProjectFS(project_id=project_id)
+                        if fs.exists_sync("project.json"):
+                            try:
+                                project_data = fs.read_json_sync("project.json")
+                                # Initialize the project in DB
+                                ProjectManager.initialize(
+                                    name=project_data.get("name", "Untitled Project"),
+                                    description=project_data.get("description", ""),
+                                    project_id=project_id,
+                                    use_files=False  # Skip file creation since they already exist
+                                )
+                                logger.info(f"Initialized project {project_id} in database from existing files")
+                            except Exception as e:
+                                logger.error(f"Error reading project.json for {project_id}: {str(e)}")
+                    except Exception as e:
+                        logger.error(f"Error syncing project {project_id} to database: {str(e)}")
+            except Exception as e:
+                logger.error(f"Error checking project {project_id} database status: {str(e)}")
         
         # Return the chat results with project directory
         return {

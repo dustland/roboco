@@ -16,7 +16,7 @@ from typing import Dict, Any
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 
 from roboco.tools.fs import FileSystemTool
-from roboco.core.project_fs import ProjectFS
+from roboco.core.fs import ProjectFS
 
 # Configure logging
 logging.basicConfig(

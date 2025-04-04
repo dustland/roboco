@@ -16,7 +16,7 @@ from loguru import logger
 # Initialize logger
 logger = logger.bind(module=__name__)
 
-from roboco.core.project_fs import ProjectFS
+from roboco.core.fs import ProjectFS
 from roboco.core.tool import Tool, command
 
 

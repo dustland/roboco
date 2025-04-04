@@ -43,14 +43,20 @@ cp .env.example .env
 ./start.sh  # Uses default host (127.0.0.1) and port (8000)
 # Or with custom options
 ./start.sh --host=0.0.0.0 --port=8080 --reload
+
+# If installed as a package
+pip install -e .
+roboco-api  # Starts the API server using installed package
+roboco-api-dev  # Starts the API server in development mode with auto-reload
+roboco-db-api  # Starts a minimal database API server
 ```
 
 ## Documentation
 
-- [Domain-Driven Design](docs/domain_driven_design.md) - Architecture overview
 - [Config-Based Design](docs/config_based_design.md) - Team configuration
 - [Object Model](docs/object_model.md) - Core domain models
-- [MCP](docs/mcp.md) - Multi-agent collaboration protocol
+- [Tool System](docs/tool.md) - Tool system
+- [MCP](docs/mcp.md) - Model-Context-Protocol support
 
 ## Configuration
 
@@ -77,15 +83,27 @@ The `start.sh` script provides a convenient way to launch the API server with va
 ./start.sh --help             # Show all available options
 ```
 
+When using the `roboco-api` script, you can configure the server with environment variables:
+
+```bash
+# Set host and port via environment variables
+HOST=0.0.0.0 PORT=8080 roboco-api
+
+# Or export them for the session
+export HOST=0.0.0.0
+export PORT=8080
+roboco-api
+```
+
 ## Contributing
 
 We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) for details and our [Code of Conduct](CODE_OF_CONDUCT.md).
 
 ## Contact
 
-- 📧 Email: hi@dustland.ai
+- 🌐 X: [@dustland_ai](https://twitter.com/dustland_ai)
+- 🌐 Github: [dustland](https//github.com/dustland)
 - 🌐 Website: [dustland.ai](https://dustland.ai)
-- 🐦 Twitter: [@dustland_ai](https://twitter.com/dustland_ai)
 
 ## Acknowledgments
 

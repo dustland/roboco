@@ -27,7 +27,7 @@ def command():
     def decorator(func):
         # Mark the function as a command using setattr
         setattr(func, '_is_command', True)
-        logger.debug(f"Marking function {func.__name__} as a command")
+        # logger.debug(f"Marking function {func.__name__} as a command")
         return func
     
     return decorator

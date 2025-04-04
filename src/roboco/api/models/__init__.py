@@ -1,30 +1,48 @@
 """
-API models for validation and serialization.
+API Models Package
 
-This module re-exports all API models for easier imports.
+This package contains all API-specific models for request/response validation and serialization.
 """
 
-from roboco.api.models.job import JobRequest, JobStatus, TeamInfo, ArtifactInfo, ToolRegistration, AgentStatusUpdate
-from roboco.api.models.project import Project, ProjectBase, ProjectCreate, ProjectUpdate
-from roboco.api.models.task import Task, TaskCreate, TaskUpdate
+# Project models
+from roboco.api.models.project import (
+    ProjectCreate, ProjectUpdate, ProjectResponse
+)
+
+# Task models
+from roboco.api.models.task import (
+    TaskCreate, TaskUpdate, TaskResponse
+)
+
+# Message models
+from roboco.api.models.message import (
+    MessageCreate, MessageResponse
+)
+
+# Chat models
+from roboco.api.models.chat import (
+    ChatRequest, ChatResponse, 
+    ConversationItem, ConversationStatus
+)
 
 __all__ = [
-    # Job models
-    "JobRequest", 
-    "JobStatus", 
-    "TeamInfo", 
-    "ArtifactInfo", 
-    "ToolRegistration", 
-    "AgentStatusUpdate",
-    
     # Project models
-    "Project", 
-    "ProjectBase", 
-    "ProjectCreate", 
+    "ProjectCreate",
     "ProjectUpdate",
+    "ProjectResponse",
     
     # Task models
-    "Task", 
-    "TaskCreate", 
-    "TaskUpdate"
-]
+    "TaskCreate",
+    "TaskUpdate",
+    "TaskResponse",
+    
+    # Message models
+    "MessageCreate",
+    "MessageResponse",
+
+    # Chat API models
+    "ChatRequest",
+    "ChatResponse",
+    "ConversationItem", 
+    "ConversationStatus"
+] 

@@ -2,7 +2,7 @@ from pathlib import Path
 import json
 from loguru import logger
 from roboco.core.task_manager import TaskManager
-from roboco.core.project_fs import ProjectFS
+from roboco.core.fs import ProjectFS
 from roboco.utils.id_generator import generate_short_id
 
 # Get a logger instance with the module name

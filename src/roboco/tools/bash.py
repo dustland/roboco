@@ -12,7 +12,7 @@ from typing import Dict, Any, Optional, List
 from loguru import logger
 
 from roboco.core.tool import Tool, command
-from roboco.core.project_fs import ProjectFS
+from roboco.core.fs import ProjectFS
 
 # Initialize logger
 logger = logger.bind(module=__name__)

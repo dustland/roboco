@@ -14,7 +14,7 @@ import concurrent.futures
 import json
 import traceback
 
-from roboco.core.project_fs import ProjectFS
+from roboco.core.fs import ProjectFS
 from roboco.core.tool import Tool, command
 from loguru import logger
 from roboco.core.models.project_manifest import ProjectManifest, dict_to_project_manifest
@@ -296,7 +296,7 @@ class FileSystemTool(Tool):
         
         try:
             # Use ProjectFS.initialize directly, avoiding circular imports
-            from roboco.core.project import Project
+            from roboco.core.project_manager import Project
             from roboco.core.models.project_manifest import dict_to_project_manifest
             
             # Check if we have name and description in the manifest

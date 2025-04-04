@@ -1,36 +1,99 @@
 """
-Chat API Schema
+Chat Models
 
-This module defines the Pydantic models for chat-related API requests and responses.
-These models are used for validation and serialization at the API boundary.
+This module defines the core data models for chat functionality.
 """
 
-from typing import Dict, Any, List, Optional
-from pydantic import BaseModel, Field
+from typing import Dict, Any, Optional, List
+from enum import Enum
+from datetime import datetime
 
 
-class ChatRequest(BaseModel):
-    """Request to initiate a chat with the project agent for project creation."""
-    query: str = Field(..., description="The query to process")
-    teams: Optional[List[str]] = Field(None, description="Optional specific teams to assign")
-    conversation_id: Optional[str] = Field(None, description="Optional ID to continue existing conversation")
-    project_id: Optional[str] = Field(None, description="Optional project ID to use for project creation")
+class ChatStatus(str, Enum):
+    """Status of a chat conversation."""
+    PENDING = "pending"
+    PLANNING = "planning"
+    EXECUTING = "executing"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    CANCELED = "canceled"
 
-class ChatResponse(BaseModel):
-    """Response from project chat API."""
-    conversation_id: str = Field(..., description="Unique identifier for the conversation")
-    project_id: Optional[str] = Field(None, description="Project ID if a project was created")
-    message: str = Field(..., description="Response message")
-    project_details: Optional[Dict[str, Any]] = Field(None, description="Details about the created project")
-    status: str = Field(..., description="Status of the conversation")
+
+class ChatRequest:
+    """Request to initiate a chat with the project agent."""
+    def __init__(self, query: str, task_id: Optional[str] = None):
+        self.query = query
+        self.task_id = task_id
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary."""
+        return {
+            "query": self.query,
+            "task_id": self.task_id
+        }
+    
+    def dict(self) -> Dict[str, Any]:
+        """Convert to dictionary (compatible with Pydantic models)."""
+        return self.to_dict()
     
     @classmethod
-    def from_chat_result(cls, result: Dict[str, Any], conversation_id: str):
-        """Convert chat result dictionary to API response model."""
+    def from_dict(cls, data: Dict[str, Any]) -> 'ChatRequest':
+        """Create from dictionary."""
         return cls(
-            conversation_id=conversation_id,
-            project_id=result.get("project_id"),
-            message=result.get("message", ""),
-            project_details=result.get("project_details"),
-            status=result.get("status", "completed")
+            query=data.get("query", ""),
+            task_id=data.get("task_id")
         )
+
+
+class ChatResponse:
+    """Response from chat service."""
+    def __init__(
+        self,
+        conversation_id: str,
+        message: str,
+        project_id: Optional[str] = None,
+        task_id: Optional[str] = None,
+        status: str = "completed",
+        project_details: Optional[Dict[str, Any]] = None
+    ):
+        self.conversation_id = conversation_id
+        self.message = message
+        self.project_id = project_id
+        self.task_id = task_id
+        self.status = status
+        self.project_details = project_details
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary."""
+        result = {
+            "conversation_id": self.conversation_id,
+            "message": self.message,
+            "status": self.status.value if hasattr(self.status, 'value') else self.status
+        }
+        
+        if self.project_id:
+            result["project_id"] = self.project_id
+        
+        if self.task_id:
+            result["task_id"] = self.task_id
+            
+        if self.project_details:
+            result["project_details"] = self.project_details
+            
+        return result
+    
+    def dict(self) -> Dict[str, Any]:
+        """Convert to dictionary (compatible with Pydantic models)."""
+        return self.to_dict()
+    
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'ChatResponse':
+        """Create from dictionary."""
+        return cls(
+            conversation_id=data.get("conversation_id", ""),
+            message=data.get("message", ""),
+            project_id=data.get("project_id"),
+            task_id=data.get("task_id"),
+            status=data.get("status", "completed"),
+            project_details=data.get("project_details")
+        ) 

@@ -11,8 +11,8 @@ from roboco.core.team import Team
 from roboco.core.agent_factory import AgentFactory
 from roboco.core.tool import Tool, command
 from roboco.core.config import load_config, save_config, create_default_config, get_llm_config, load_roles_config, get_role_config, get_validated_role_config, create_agent_config
-from roboco.core.project_fs import ProjectFS, ProjectNotFoundError, get_project_fs
-from roboco.core.project import Project
+from roboco.core.fs import ProjectFS, ProjectNotFoundError, get_project_fs
+from roboco.core.project_manager import ProjectManager
 
 # Models
 from roboco.core.models import Task, RobocoConfig, LLMConfig, ToolConfig, TeamConfig
@@ -34,7 +34,7 @@ __all__ = [
     "Tool",
     "command",
     "Task",
-    "Project",
+    "ProjectManager",
     "RobocoConfig",
     "LLMConfig",
     "ToolConfig",

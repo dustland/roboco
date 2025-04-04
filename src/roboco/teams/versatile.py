@@ -14,7 +14,7 @@ from loguru import logger
 # Initialize logger
 logger = logger.bind(module=__name__)
 
-from roboco.core.project_fs import ProjectFS
+from roboco.core.fs import ProjectFS
 from roboco.core.team import Team
 from roboco.core.models import Task
 from roboco.agents.human_proxy import HumanProxy

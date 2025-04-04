@@ -1,11 +1,11 @@
 [build-system]
-requires = ["setuptools>=61.0.0", "wheel"]
+requires = ["setuptools>=42", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "roboco"
-version = "0.2.0"
-description = "RoboCo - Multi-agents Platform for Embodied AI"
+version = "0.3.0"
+description = "RoboCo - A Multi-agents Platform"
 authors = [
     {name = "Dustland Team", email = "hi@dustland.ai"}
 ]
@@ -50,6 +50,8 @@ all = []
 
 [project.scripts]
 roboco = "roboco.cli:cli"
+roboco-api = "roboco.api.server:run_api_server"
+roboco-api-dev = "roboco.api.server:run_dev_server"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
@@ -60,7 +62,7 @@ where = ["src"]
 
 [tool.black]
 line-length = 88
-target-version = ["py39"]
+target-version = ["py38"]
 
 [tool.isort]
 profile = "black"
@@ -112,3 +114,8 @@ include = [
     "README.md",
     "LICENSE",
 ]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = "test_*.py"
+python_functions = "test_*"

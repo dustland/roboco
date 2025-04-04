@@ -7,19 +7,15 @@ It organizes endpoints into routers and uses the domain services through the API
 
 import os
 from datetime import datetime
+import time
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, FileResponse
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from loguru import logger
 
-from roboco.api.routers import chat, job, project
-from roboco.services.chat_service import ChatService
-from roboco.services.project_service import ProjectService
-from roboco.services.agent_service import AgentService
-from roboco.core.models.chat import ChatRequest, ChatResponse
-
+from roboco.api.routers import project, task, chat
 from roboco.core.config import get_workspace, load_config
 
 
@@ -49,39 +45,8 @@ app.mount("/workspace", StaticFiles(directory=workspace_dir), name="workspace")
 
 # Include routers
 app.include_router(project.router, prefix="/projects", tags=["projects"])
-app.include_router(job.router, prefix="/jobs", tags=["jobs"])
+app.include_router(task.router, prefix="/tasks", tags=["tasks"])
 app.include_router(chat.router, prefix="/chat", tags=["chat"])
-
-
-# Dependency for getting the API service
-def get_api_service():
-    """
-    Get the API service instance.
-    
-    This function follows the Dependency Injection pattern for FastAPI.
-    It creates the necessary services and injects them into the ApiService.
-    
-    Returns:
-        ApiService: The API service instance.
-    """
-    # Import here to avoid circular dependency
-    from roboco.services.api_service import ApiService
-    
-    # Create the project service
-    project_service = ProjectService()
-    
-    # Create the agent service
-    agent_service = AgentService()
-    
-    # Create the chat service
-    chat_service = ChatService()
-    
-    # Create the API service with all the required services
-    return ApiService(
-        project_service=project_service,
-        agent_service=agent_service,
-        chat_service=chat_service
-    )
 
 
 @app.get("/")
@@ -91,6 +56,7 @@ async def root():
         "name": "Roboco API",
         "version": "0.1.0",
         "description": "API for the Roboco project management and agent orchestration system",
+        "status": "running with auto-reload"
     }
 
 
@@ -98,35 +64,6 @@ async def root():
 async def health_check():
     """Health check endpoint."""
     return {"status": "ok", "timestamp": datetime.now().isoformat()}
-
-
-@app.get("/artifacts/{path:path}")
-async def get_artifact(path: str):
-    """
-    Get an artifact file.
-    
-    Parameters:
-    - path: Path to the artifact file
-    
-    Returns the file content.
-    """
-    try:
-        # Construct the absolute path to the artifact
-        config = load_config()
-        base_dir = os.environ.get("ROBOCO_DATA_DIR", os.path.join(config.workspace_root, ".roboco"))
-        artifact_path = os.path.join(base_dir, "artifacts", path)
-        
-        # Check if the file exists
-        if not os.path.exists(artifact_path):
-            raise HTTPException(status_code=404, detail=f"Artifact not found: {path}")
-        
-        # Return the file
-        return FileResponse(artifact_path)
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error retrieving artifact {path}: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Error retrieving artifact: {str(e)}")
 
 
 @app.exception_handler(Exception)
@@ -139,14 +76,15 @@ async def global_exception_handler(request: Request, exc: Exception):
     )
 
 
-@app.post("/chat", response_model=ChatResponse)
-async def chat(request: ChatRequest):
-    """Handle chat requests."""
-    # Lazy import to avoid circular dependency
-    from roboco.services.chat_service import ChatService
-    
-    chat_service = ChatService()
-    return await chat_service.start_chat(request)
+# Add middlewares for request/response logging and processing
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    """Log request details."""
+    start_time = time.time()
+    response = await call_next(request)
+    process_time = time.time() - start_time
+    logger.debug(f"Request: {request.method} {request.url.path} ({process_time:.4f}s)")
+    return response
 
 
 if __name__ == "__main__":
@@ -158,3 +96,42 @@ if __name__ == "__main__":
     
     # Run the server
     uvicorn.run("roboco.api.server:app", host=host, port=port, reload=True)
+
+
+def run_api_server():
+    """
+    Entry point for the API server script.
+    Run with 'roboco-api' after installing the package.
+    """
+    import uvicorn
+    
+    # Get configuration from environment or use defaults
+    host = os.getenv("HOST", "127.0.0.1")
+    port = int(os.getenv("PORT", "8000"))
+    
+    # Run the server - use direct app instance for production
+    uvicorn.run(app, host=host, port=port)
+
+
+def run_dev_server():
+    """
+    Entry point for the API server in development mode with auto-reload.
+    Run with 'roboco-api-dev' after installing the package.
+    """
+    import uvicorn
+    
+    # Get configuration from environment or use defaults
+    host = os.getenv("HOST", "127.0.0.1")
+    port = int(os.getenv("PORT", "8000"))
+    
+    logger.info(f"Starting Roboco API server in development mode on {host}:{port}")
+    logger.info("Auto-reload is enabled - server will restart when code changes")
+    
+    # Run with reload=True for development mode
+    uvicorn.run(
+        "roboco.api.server:app", 
+        host=host, 
+        port=port, 
+        reload=True,
+        reload_dirs=["src/roboco"]
+    )
