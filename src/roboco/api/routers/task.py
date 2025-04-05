@@ -12,7 +12,7 @@ from roboco.core.models import (
     Task, Message
 )
 from roboco.api.models import (
-    TaskUpdate, MessageCreate
+    MessageCreate
 )
 from roboco.api.models.chat import (
     ChatRequest, ChatResponse
@@ -35,31 +35,7 @@ def get_task(task_id: str):
         raise HTTPException(status_code=404, detail="Task not found")
     return task
 
-@router.put("/{task_id}", response_model=Task)
-def update_task(task_id: str, task_data: TaskUpdate):
-    """Update a task."""
-    task = service.update_task(task_id, task_data)
-    if not task:
-        raise HTTPException(status_code=404, detail="Task not found")
-    return task
-
-@router.delete("/{task_id}")
-def delete_task(task_id: str):
-    """Delete a task."""
-    success = service.delete_task(task_id)
-    if not success:
-        raise HTTPException(status_code=404, detail="Task not found")
-    return {"message": "Task deleted successfully"}
-
 # Message routes scoped to a task
-@router.post("/{task_id}/messages", response_model=Message)
-def create_message(task_id: str, message_data: MessageCreate):
-    """Create a new message in a task."""
-    message = service.create_message(task_id, message_data)
-    if not message:
-        raise HTTPException(status_code=404, detail="Task not found")
-    return message
-
 @router.get("/{task_id}/messages", response_model=List[Dict[str, Any]])
 async def get_task_messages(
     task_id: str,
@@ -85,18 +61,6 @@ def get_task_message(task_id: str, message_id: str):
     if message.task_id != task_id:
         raise HTTPException(status_code=404, detail="Message not found in this task")
     return message
-
-@router.delete("/{task_id}/messages/{message_id}")
-def delete_task_message(task_id: str, message_id: str):
-    """Delete a message from a task."""
-    message = service.get_message(message_id)
-    if not message:
-        raise HTTPException(status_code=404, detail="Message not found")
-    if message.task_id != task_id:
-        raise HTTPException(status_code=404, detail="Message not found in this task")
-        
-    success = service.delete_message(message_id)
-    return {"message": "Message deleted successfully"}
 
 # Chat endpoint
 @router.post("/{task_id}/chat", response_model=ChatResponse)

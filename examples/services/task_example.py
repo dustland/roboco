@@ -4,6 +4,7 @@ from loguru import logger
 from roboco.core.task_manager import TaskManager
 from roboco.core.fs import ProjectFS
 from roboco.utils.id_generator import generate_short_id
+from roboco.db.service import get_tasks_by_project, get_task
 
 # Get a logger instance with the module name
 logger = logger.bind(module=__name__)
@@ -18,40 +19,27 @@ async def main():
     task_manager = TaskManager(fs=fs)
     logger.info("Initialized TaskManager")
     
-    # First, check if tasks.md exists in the project directory
-    tasks_file = "tasks.md"
-    
-    # If tasks.md doesn't exist, we need to create the project repository first
-    if not fs.exists_sync(tasks_file):
-        logger.info("tasks.md doesn't exist.")
-        return
-    
-    # Now load the tasks.md file from the project directory
-    logger.info("Loading tasks from tasks.md")
-    tasks = task_manager.load(tasks_file)
+    # Load tasks from the database for this project
+    logger.info(f"Loading tasks from database for project: {project_id}")
+    tasks = get_tasks_by_project(project_id)
     
     if not tasks:
-        logger.error("No tasks found in tasks.md")
+        logger.error(f"No tasks found in database for project {project_id}")
         return
     
-    logger.info(f"Found {len(tasks)} tasks in tasks.md")
-    
-    # Get the first task
-    if not tasks:
-        logger.error("No tasks found")
-        return
+    logger.info(f"Found {len(tasks)} tasks in database")
     
     # Get the first task
     first_task = tasks[0]
-    logger.info(f"First task: {first_task['description']}")
+    logger.info(f"First task: {first_task.title}")
     
     # Execute the first task using the TaskManager
-    logger.info(f"Executing task: {first_task['description']}")
+    logger.info(f"Executing task: {first_task.title}")
     result = await task_manager.execute_task(first_task, tasks)
     
     # Print the execution result
     formatted_result = {
-        "task": first_task['description'],
+        "task": first_task.title,
         "status": result.get("status", "completed"),
     }
     

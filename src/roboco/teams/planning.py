@@ -7,6 +7,7 @@ and management through a team of agents.
 
 from typing import Dict, Any, List, Optional
 from loguru import logger
+from datetime import datetime
 
 from roboco.core.agent import Agent
 from roboco.core.agent_factory import AgentFactory
@@ -38,6 +39,7 @@ class PlanningTeam:
             role_key="executor",
             name="Executer",
             terminate_msg=TERMINATE_MSG,
+            check_terminate_msg=TERMINATE_MSG,  # Ensure it checks for termination
             code_execution_config={"work_dir": get_workspace() / "code", "use_docker": False}
         )
         
@@ -46,6 +48,7 @@ class PlanningTeam:
             role_key="planner",
             name="Planner",
             terminate_msg=TERMINATE_MSG,
+            check_terminate_msg=TERMINATE_MSG,  # Ensure it checks for termination
             code_execution_config=False
         )
         
@@ -88,14 +91,17 @@ class PlanningTeam:
             context: Optional context with additional parameters like project_id
             
         Returns:
-            Dict containing the chat results and project directory
+            Dict containing the chat results, project directory, and project instance
         """
         # Get the agents
         executer = self.get_agent("executer")
         planner = self.get_agent("planner")
         
         # Create base message for project planning
-        message = f"""Creating a project for this idea: {query}"""
+        message = f"""Creating a project for this idea: {query}
+        
+IMPORTANT: Keep your response focused on planning only - do not write extensive code implementations.
+"""
         
         # Add context information if provided
         if context and isinstance(context, dict):
@@ -106,7 +112,8 @@ class PlanningTeam:
         chat_result = executer.initiate_chat(
             recipient=planner,
             message=message,
-            max_turns=20,
+            max_turns=10,  # Reduced from 20 to prevent excessive turns
+            max_consecutive_auto_reply=5  # Add explicit limit on consecutive auto-replies
         )
         
         # Extract project directory from the response
@@ -116,8 +123,10 @@ class PlanningTeam:
         if not project_id and context and "project_id" in context:
             project_id = context["project_id"]
         
-        # If we have a project_id, ensure it's registered in the database
-        # (the planning process might have created files but not database records)
+        # Variable to hold the project instance
+        project_instance = None
+        
+        # If we have a project_id, ensure it's registered in the database and get the instance
         if project_id:
             try:
                 # Import modules here to avoid circular imports
@@ -125,39 +134,73 @@ class PlanningTeam:
                 from roboco.core.project_manager import ProjectManager
                 
                 # Check if project exists in database
-                project = get_project(project_id)
+                db_project = get_project(project_id)
                 
                 # If project doesn't exist in DB but was created on disk, initialize the DB record
-                if not project:
+                if not db_project:
                     logger.info(f"Project {project_id} created on disk but not in database, initializing DB record")
                     # Try to load project data from project.json
                     try:
                         from roboco.core.fs import ProjectFS
+                        from sqlalchemy.exc import IntegrityError
+                        
                         fs = ProjectFS(project_id=project_id)
                         if fs.exists_sync("project.json"):
                             try:
                                 project_data = fs.read_json_sync("project.json")
-                                # Initialize the project in DB
-                                ProjectManager.initialize(
-                                    name=project_data.get("name", "Untitled Project"),
-                                    description=project_data.get("description", ""),
-                                    project_id=project_id,
-                                    use_files=False  # Skip file creation since they already exist
-                                )
-                                logger.info(f"Initialized project {project_id} in database from existing files")
+                                try:
+                                    # Initialize the project in DB and get the instance
+                                    project_instance = ProjectManager.initialize(
+                                        name=project_data.get("name", "Untitled Project"),
+                                        description=project_data.get("description", ""),
+                                        project_id=project_id,
+                                        use_files=False  # Skip file creation since they already exist
+                                    )
+                                    logger.info(f"Initialized project {project_id} in database from existing files")
+                                except IntegrityError as e:
+                                    # Handle the case where project was created concurrently
+                                    logger.warning(f"Project {project_id} already exists in database (race condition): {str(e)}")
+                                    # Load the existing project instead
+                                    project_instance = ProjectManager.load(project_id)
+                                    logger.info(f"Loaded existing project {project_id} from database")
                             except Exception as e:
                                 logger.error(f"Error reading project.json for {project_id}: {str(e)}")
                     except Exception as e:
                         logger.error(f"Error syncing project {project_id} to database: {str(e)}")
+                else:
+                    # Load the project instance
+                    project_instance = ProjectManager.load(project_id)
+                    logger.info(f"Loaded project {project_id} from database")
+                
+                # Apply any metadata from the context
+                if project_instance and context and "metadata" in context:
+                    metadata = context["metadata"]
+                    if isinstance(metadata, dict):
+                        changes_made = False
+                        for key, value in metadata.items():
+                            project_instance.update_metadata(key, value)
+                            changes_made = True
+                        
+                        # Save if we made any changes
+                        if changes_made:
+                            project_instance.save()
+                            logger.info(f"Applied metadata to project {project_id}")
+                
+                # Always add some standard metadata
+                project_instance.update_metadata("created_from_query", query)
+                project_instance.update_metadata("created_at", datetime.now().isoformat())
+                project_instance.save()
+                
             except Exception as e:
                 logger.error(f"Error checking project {project_id} database status: {str(e)}")
         
-        # Return the chat results with project directory
+        # Return the chat results with project directory and project instance
         return {
             "response": chat_result.summary,
             "chat_history": chat_result.chat_history,
             "summary": chat_result.summary,
-            "project_id": project_id
+            "project_id": project_id,
+            "project": project_instance  # Include the project instance
         }
 
 def extract_project_id(chat_history) -> Optional[str]:

@@ -6,17 +6,15 @@ It incorporates project data, loading/saving, and task execution.
 """
 
 import json
-import re
 from typing import List, Optional, Dict, Any
 from datetime import datetime
 from loguru import logger
 import traceback
-from sqlmodel import Session, create_engine
 
 from roboco.core.models.task import Task, TaskStatus
 from roboco.core.models.project import Project
 from roboco.core.models.project_manifest import ProjectManifest, dict_to_project_manifest
-from roboco.core.fs import ProjectFS, ProjectNotFoundError
+from roboco.core.fs import ProjectFS
 from roboco.core.team_manager import TeamManager
 from roboco.core.task_manager import TaskManager
 from roboco.utils.id_generator import generate_short_id
@@ -94,18 +92,18 @@ class ProjectManager:
     
     @property
     def project_id(self) -> str:
-        """Get the project ID (same as directory name)."""
+        """Get the project ID (alias for id)."""
         return self.project.id
     
     @property
-    def created_at(self) -> str:
-        """Get the project creation time."""
-        return self.project.created_at.isoformat() if self.project.created_at else None
+    def created_at(self) -> datetime:
+        """Get the project creation timestamp."""
+        return self.project.created_at
     
     @property
-    def updated_at(self) -> str:
-        """Get the project update time."""
-        return self.project.updated_at.isoformat() if self.project.updated_at else None
+    def updated_at(self) -> datetime:
+        """Get the project update timestamp."""
+        return self.project.updated_at
     
     @property
     def source_code_dir(self) -> str:
@@ -261,21 +259,14 @@ class ProjectManager:
         """
         # Import DB operations here to avoid circular imports
         from roboco.db.service import update_project
-        from roboco.api.models.project import ProjectUpdate
         
         # Always update the timestamp before saving
         self.project.update_timestamp()
         
-        # Create update data
-        project_data = ProjectUpdate(
-            name=self.project.name,
-            description=self.project.description,
-            meta=self.project.meta
-        )
-        
-        # Update the project in the database
+        # Update the project in the database using direct domain model
+        # No API model dependencies - use domain model directly
         try:
-            updated_project = update_project(self.project.id, project_data)
+            updated_project = update_project(self.project.id, self.project)
             if not updated_project:
                 logger.error(f"Failed to update project {self.project.id} in database")
         except Exception as e:
@@ -300,13 +291,10 @@ class ProjectManager:
         Load a project from the database.
         
         Args:
-            project_id: ID of the project
+            project_id: ID of the project to load
             
         Returns:
             ProjectManager instance
-            
-        Raises:
-            ProjectNotFoundError: If the project does not exist in the database
         """
         # Import DB operations here to avoid circular imports
         from roboco.db.service import get_project
@@ -314,17 +302,13 @@ class ProjectManager:
         # Get project from database
         project = get_project(project_id)
         
-        if not project:
-            raise ProjectNotFoundError(f"Project with ID {project_id} not found in database")
-        
-        # Create file system for operations (even if we don't load from it)
+        # Create filesystem for the project
         fs = ProjectFS(project_id=project_id)
         
-        # Create and return the project manager
+        # Create and return project manager
         return cls(
             project=project,
-            fs=fs,
-            directory=project_id
+            fs=fs
         )
     
     def load_tasks(self) -> List[Task]:
@@ -339,109 +323,55 @@ class ProjectManager:
         
         # Get tasks from database
         self.tasks = get_tasks_by_project(self.project.id)
-        
-        # If no tasks found, check if there's a tasks.md file to load as a fallback
-        if not self.tasks and self.fs.exists_sync("tasks.md"):
-            logger.info(f"No tasks found in database for project {self.project.id}, loading from tasks.md as fallback")
-            tasks_from_file = self._task_manager.load_tasks()
-            
-            # Save tasks to database for future reference
-            if tasks_from_file:
-                logger.info(f"Saving {len(tasks_from_file)} tasks from tasks.md to database")
-                from roboco.api.models.task import TaskCreate
-                from roboco.db.service import create_task
-                
-                for task in tasks_from_file:
-                    # Create task data
-                    task_data = TaskCreate(
-                        title=task.description if hasattr(task, 'description') else "Untitled Task",
-                        description=task.details[0] if hasattr(task, 'details') and task.details else None,
-                        status=task.status,
-                        meta={"details": task.details if hasattr(task, 'details') else []}
-                    )
-                    
-                    # Create task in database
-                    create_task(self.project.id, task_data)
-                
-                # Reload tasks from database to get properly linked tasks
-                self.tasks = get_tasks_by_project(self.project.id)
-        
         return self.tasks
         
     def mark_task_completed(self, task: Task) -> bool:
         """
-        Mark a specific task as completed in the database and optionally in tasks.md.
+        Mark a specific task as completed in the database.
         
         Args:
             task: The task to mark as completed
             
         Returns:
-            True if the task was successfully marked, False otherwise
+            True if the task was marked as completed
         """
         # Import DB operations here to avoid circular imports
         from roboco.db.service import update_task
-        from roboco.api.models.task import TaskUpdate
         from roboco.core.models.task import TaskStatus
         
-        # Update task status in database
-        try:
-            # Create update data
-            task_data = TaskUpdate(
-                status=TaskStatus.COMPLETED
-            )
-            
-            # Update the task in the database
-            updated_task = update_task(task.id, task_data)
-            
-            if not updated_task:
-                logger.error(f"Failed to update task {task.id} in database")
-                return False
-                
-            # Also update tasks.md for reference (but never for loading back)
-            self._task_manager.mark_task_completed(task)
-            
-            return True
-        except Exception as e:
-            logger.error(f"Error marking task {task.id} as completed: {str(e)}")
-            return False
+        # Update task status
+        task.status = TaskStatus.COMPLETED
+        task.completed_at = datetime.utcnow()
+        
+        # Update the task in the database
+        updated_task = update_task(task.id, task)
+        
+        return True
     
     def _convert_to_dict(self, obj):
         """
         Convert a potentially non-serializable object to a dictionary.
         
         Args:
-            obj: Object to convert
+            obj: The object to convert
             
         Returns:
-            Dictionary representation that's JSON serializable
+            A dictionary representing the object
         """
-        if obj is None:
-            return None
+        # If object has a to_dict method, use it
+        if hasattr(obj, 'to_dict'):
+            return obj.to_dict()
+        
+        # If object has a dict method (like Pydantic models), use it
+        if hasattr(obj, 'dict'):
+            return obj.dict()
             
-        # If it's already a dict, just process each value recursively
+        # If object is already a dict, return it
         if isinstance(obj, dict):
-            return {k: self._convert_to_dict(v) for k, v in obj.items()}
-            
-        # If it's a list, convert each item
-        if isinstance(obj, list):
-            return [self._convert_to_dict(item) for item in obj]
-            
-        # For objects with a to_dict method, use that
-        if hasattr(obj, 'to_dict') and callable(getattr(obj, 'to_dict')):
-            return self._convert_to_dict(obj.to_dict())
-            
-        # For objects with __dict__, convert to dictionary
-        if hasattr(obj, '__dict__'):
-            return {k: self._convert_to_dict(v) for k, v in obj.__dict__.items() 
-                   if not k.startswith('_')}
-            
-        # Try to serialize, otherwise convert to string
-        try:
-            import json
-            json.dumps(obj)
             return obj
-        except (TypeError, OverflowError):
-            return str(obj)
+            
+        # Otherwise convert to a dictionary using vars()
+        return vars(obj)
     
     def _create_batch_task_header(self, num_tasks: int) -> str:
         """
@@ -514,9 +444,7 @@ class ProjectManager:
         project_info = {
             "name": self.name,
             "description": self.description,
-            "id": self.project_id,
-            "source_code_dir": self.source_code_dir,
-            "docs_dir": self.docs_dir
+            "id": self.project_id
         }
         execution_context = self._task_manager.generate_task_context(task, self.tasks, project_info)
         
@@ -529,7 +457,7 @@ class ProjectManager:
 Task: {task.description}
 
 Details:
-{chr(10).join([f"* {detail}" for detail in task.details]) if hasattr(task, 'details') and task.details else "No additional details provided."}
+No additional details provided.
 
 CONTEXT:
 {execution_context}
@@ -538,8 +466,6 @@ Instructions:
 - You have access to the filesystem tool for all file operations
 - Use the filesystem tool to read and write files, create directories, etc.
 - All file paths must be relative to the project root
-- Place source code in the src directory
-- Place documentation in the docs directory
 - Maintain a clean, organized directory structure
 """
             
@@ -631,10 +557,7 @@ Instructions:
                 break
         
         # Add file summary
-        results["files"] = {
-            self.source_code_dir: self.fs.list_sync(self.source_code_dir),
-            self.docs_dir: self.fs.list_sync(self.docs_dir)
-        }
+        results["files"] = self.fs.list_sync(".")
         
         # Update project timestamp and save
         self.project.update_timestamp()
@@ -650,120 +573,18 @@ Instructions:
         description: str,
         project_id: str,
         directory: Optional[str] = None,
-        manifest: Optional[ProjectManifest] = None,
-    ) -> 'ProjectManager':
-        """
-        Initialize a new project on disk.
-        
-        This method creates a project structure with appropriate
-        directories and files. It processes the project manifest,
-        creates the necessary file structure, and returns a ProjectManager instance.
-        
-        Args:
-            name: Project name
-            description: Project description
-            project_id: Optional project ID
-            directory: Optional directory path (defaults to project_id)
-            manifest: Optional project manifest
-            
-        Returns:
-            ProjectManager instance for the newly created project
-        """
-        # Use project_id as directory if not specified
-        if not directory:
-            directory = project_id
-        
-        # If manifest is provided and is a dictionary, convert it to a ProjectManifest
-        if manifest:
-            if isinstance(manifest, dict):
-                manifest = dict_to_project_manifest(manifest)
-        else:
-            # Create a default manifest if none provided
-            manifest = ProjectManifest(id=project_id)
-        
-        # Use manifest's ID if available, otherwise use the provided project_id
-        project_id = manifest.id if manifest.id else project_id
-        logger.debug(f"Using project_id: {project_id}")
-        
-        # Create ProjectFS for the new project
-        fs = ProjectFS(project_id=project_id)
-        
-        # Create the Project model instance
-        project = Project(
-            id=project_id,
-            name=name,
-            description=description,
-            meta=manifest.meta or {}
-        )
-        
-        # Store folder structure in metadata
-        project.meta["folder_structure"] = manifest.folder_structure or ["src", "docs"]
-        
-        # Create custom structure if provided
-        if manifest.folder_structure:
-            # Create any additional directories
-            for folder in manifest.folder_structure:
-                # Ensure folder path is relative to project root
-                folder_path = folder
-                if folder_path.startswith(f"{project_id}/") or folder_path.startswith(f"{project_id}\\"):
-                    folder_path = folder_path[len(project_id)+1:]  # +1 for the slash
-                
-                fs.mkdir_sync(folder_path)
-                logger.debug(f"Created directory: {folder_path}")
-                
-            # Create any specified files
-            if manifest.files:
-                for file_info in manifest.files:
-                    # Make path relative to project directory by removing project directory prefix if present
-                    file_path = file_info.path
-                    
-                    # If the path starts with the project directory name, remove it
-                    if file_path.startswith(f"{project_id}/") or file_path.startswith(f"{project_id}\\"):
-                        relative_path = file_path[len(project_id)+1:]  # +1 for the slash
-                    elif file_path == project_id:
-                        relative_path = ""
-                    else:
-                        relative_path = file_path
-                    
-                    # Write file with the adjusted path
-                    fs.write_sync(relative_path, file_info.content)
-                    logger.debug(f"Created file: {relative_path}")
-        
-        # Create the project manager
-        project_manager = cls(
-            project=project,
-            fs=fs,
-            directory=directory
-        )
-        
-        # Save the project to ensure it's persisted
-        project_manager.save()
-        
-        logger.info(f"Created project '{name}' in directory: {project_id}")
-        return project_manager
-
-    @classmethod
-    def initialize(
-        cls,
-        name: str,
-        description: str,
-        project_id: str,
-        directory: Optional[str] = None,
-        manifest: Optional[ProjectManifest] = None,
+        manifest: ProjectManifest = None,
         use_files: bool = True
     ) -> 'ProjectManager':
         """
         Initialize a new project both in database and optionally on disk.
-        
-        This method creates a project in the database and optionally
-        creates the file structure based on the manifest.
         
         Args:
             name: Project name
             description: Project description
             project_id: Project ID
             directory: Optional directory path (defaults to project_id)
-            manifest: Optional project manifest
+            manifest: ProjectManifest object
             use_files: Whether to create files on disk (defaults to True)
             
         Returns:
@@ -772,82 +593,96 @@ Instructions:
         # Use project_id as directory if not specified
         if not directory:
             directory = project_id
+            
+        # Validate manifest is provided
+        if manifest is None:
+            raise ValueError("ProjectManifest is required for project initialization")
+            
+        # Validate manifest is the right type
+        if not isinstance(manifest, ProjectManifest):
+            raise TypeError("manifest must be a ProjectManifest object")
+            
+        # Use manifest's ID
+        project_id = manifest.id
+            
+        # Validate file paths: Reject any paths with project ID prefixes
+        invalid_paths = []
+        for file_info in manifest.files:
+            if file_info.path.startswith(f"{project_id}/") or file_info.path.startswith(f"{project_id}\\"):
+                invalid_paths.append(file_info.path)
         
-        # If manifest is provided and is a dictionary, convert it to a ProjectManifest
-        if manifest:
-            if isinstance(manifest, dict):
-                manifest = dict_to_project_manifest(manifest)
-        else:
-            # Create a default manifest if none provided
-            manifest = ProjectManifest(id=project_id)
+        # Also check folder paths
+        for folder in manifest.folder_structure:
+            if folder.startswith(f"{project_id}/") or folder.startswith(f"{project_id}\\"):
+                invalid_paths.append(folder)
         
-        # Use manifest's ID if available, otherwise use the provided project_id
-        project_id = manifest.id if manifest.id and manifest.id != "None" else project_id
-        logger.debug(f"Using project_id: {project_id}")
-        
+        # Fail fast if any invalid paths are found
+        if invalid_paths:
+            error_msg = f"Invalid file paths with project ID prefixes found: {', '.join(invalid_paths)}"
+            logger.error(error_msg)
+            raise ValueError(error_msg)
+            
         # Create ProjectFS for the new project
         fs = ProjectFS(project_id=project_id)
         
-        # Create meta dictionary from manifest
-        meta = manifest.meta or {}
-        meta["folder_structure"] = manifest.folder_structure or ["src", "docs"]
+        # Create metadata dictionary
+        meta = {}
+        if manifest.folder_structure:
+            meta["folder_structure"] = manifest.folder_structure
         
-        # Import db operations here to avoid circular imports
-        from roboco.api.models.project import ProjectCreate
-        from roboco.db.service import create_project
-        
-        # Create project in database
-        project_data = ProjectCreate(
+        # Create the Project model instance
+        project = Project(
+            id=project_id,
             name=name,
             description=description,
             meta=meta
         )
         
-        # Create the Project model instance in database with specific ID
-        project = project_data.to_db_model()
-        project.id = project_id  # Ensure ID is set correctly
-        
-        # Use database service to persist
+        # Save to database
         from roboco.db import get_session_context
-        with get_session_context() as session:
-            session.add(project)
-            session.commit()
-            session.refresh(project)
+        
+        try:
+            with get_session_context() as session:
+                session.add(project)
+                session.commit()
+                session.refresh(project)
+        except Exception as e:
+            # If a project with this ID already exists, this is likely a race condition
+            # Let the error propagate as we should fail fast
+            logger.error(f"Error creating project in database: {str(e)}")
+            raise  # Re-raise the exception to be handled by the caller
         
         # Create file structure if requested
         if use_files:
-            # Create directory structure
-            for folder in meta.get("folder_structure", ["src", "docs"]):
-                # Ensure folder path is relative to project root
-                folder_path = folder
-                if folder_path.startswith(f"{project_id}/") or folder_path.startswith(f"{project_id}\\"):
-                    folder_path = folder_path[len(project_id)+1:]  # +1 for the slash
-                
-                fs.mkdir_sync(folder_path)
-                logger.debug(f"Created directory: {folder_path}")
+            # Create directories
+            for folder in manifest.folder_structure:
+                fs.mkdir_sync(folder)
             
-            # Create specified files
-            if manifest.files:
-                for file_info in manifest.files:
-                    # Make path relative to project directory
-                    file_path = file_info.path
+            # Create files
+            for file_info in manifest.files:
+                # Handle tasks.md file specially
+                if file_info.path == "tasks.md":
+                    # Save tasks.md file as provided
+                    markdown_content = file_info.content
+                    fs.write_sync(file_info.path, markdown_content)
                     
-                    # If the path starts with the project directory name, remove it
-                    if file_path.startswith(f"{project_id}/") or file_path.startswith(f"{project_id}\\"):
-                        relative_path = file_path[len(project_id)+1:]  # +1 for the slash
-                    elif file_path == project_id:
-                        relative_path = ""
-                    else:
-                        relative_path = file_path
+                    # Create task manager for task operations
+                    task_manager = TaskManager(fs=fs)
                     
-                    # Write file with the adjusted path
-                    fs.write_sync(relative_path, file_info.content)
-                    logger.debug(f"Created file: {relative_path}")
+                    # Parse the markdown content into Task objects
+                    task_objects = task_manager.parse_tasks_from_markdown(markdown_content, project_id)
+                    
+                    # Store tasks in database
+                    from roboco.db.service import create_task
+                    for task in task_objects:
+                        create_task(project_id, task)
+                else:
+                    # Write file as is
+                    fs.write_sync(file_info.path, file_info.content)
             
-            # Write project.json for reference (but never for loading back)
+            # Write project.json
             project_json = project.to_dict()
             fs.write_sync("project.json", json.dumps(project_json, indent=2))
-            logger.debug(f"Created project.json for reference")
         
         # Create the project manager
         project_manager = cls(
@@ -856,7 +691,6 @@ Instructions:
             directory=directory
         )
         
-        logger.info(f"Created project '{name}' with ID: {project_id}")
         return project_manager
         
     def get_database_model(self) -> Project:

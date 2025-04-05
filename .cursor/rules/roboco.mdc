@@ -25,13 +25,13 @@ alwaysApply: false
 - Provide default values for optional parameters when sensible.
 
 ## Error Handling
+- IMPORTANT: DO NOT write any fallback code try to hide issuses, let it fail at the first place.
 - Utilize FastAPI's `HTTPException` for expected errors, specifying appropriate status codes and detail messages.
 - Implement middleware to handle unexpected errors, ensuring they are logged and monitored effectively.
-- Use specific exception types rather than generic exceptions.
 - Log detailed error information for debugging purposes.
 
 ## Dependencies
-- Manage project dependencies with [uv](mdc:roboco_workspace/https:/github.com/astral-sh/uv) for consistent environments.
+- Manage project dependencies with [uv](mdc:roboco/roboco_workspace/https:/github.com/astral-sh/uv) for consistent environments.
 - Use asynchronous database libraries like `asyncpg` or `aiomysql` for non-blocking database operations.
 - If employing ORM features, adopt SQLAlchemy 2.0 with its async support.
 - Specify version constraints for dependencies to ensure compatibility.
@@ -48,8 +48,8 @@ alwaysApply: false
 - Design agents to be modular and extensible.
 
 ## References
-- [FastAPI Documentation](mdc:roboco_workspace/https:/fastapi.tiangolo.com)
-- [Pydantic Documentation](mdc:roboco_workspace/https:/docs.pydantic.dev)
-- [SQLAlchemy 2.0 Documentation](mdc:roboco_workspace/https:/docs.sqlalchemy.org/en/20)
-- [AG2 GitHub Repository](mdc:roboco_workspace/https:/github.com/ag2ai/ag2)
-- [AG2 Documentation](mdc:roboco_workspace/https:/docs.ag2.ai)
+- [FastAPI Documentation](mdc:roboco/roboco_workspace/https:/fastapi.tiangolo.com)
+- [Pydantic Documentation](mdc:roboco/roboco_workspace/https:/docs.pydantic.dev)
+- [SQLAlchemy 2.0 Documentation](mdc:roboco/roboco_workspace/https:/docs.sqlalchemy.org/en/20)
+- [AG2 GitHub Repository](mdc:roboco/roboco_workspace/https:/github.com/ag2ai/ag2)
+- [AG2 Documentation](mdc:roboco/roboco_workspace/https:/docs.ag2.ai)

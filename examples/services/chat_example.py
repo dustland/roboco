@@ -128,9 +128,7 @@ async def run_example(query: str):
     print("\n" + "=" * 80)
     print("  Response")
     print("=" * 80)
-    print(f"Conversation ID: {response.conversation_id}")
-    if response.project_id:
-        print(f"Project ID: {response.project_id}")
+    print(f"Project ID: {response.project_id}")
     print(f"Status: {response.status}")
     print("\nMessage:")
     print("-" * 40)
@@ -143,15 +141,15 @@ async def run_example(query: str):
         for key, value in response.project_details.items():
             print(f"  {key}: {value}")
     
-    print("\nYou can continue this conversation by providing the conversation ID:")
-    print(f"python roboco/examples/services/chat_example.py --id {response.conversation_id} --query \"Tell me more about the project\"")
+    print("\nYou can continue this conversation by providing the project ID:")
+    print(f"python roboco/examples/services/chat_example.py --id {response.project_id} --query \"Tell me more about the project\"")
     print(f"Or check the status of this conversation with:")
-    print(f"python roboco/examples/services/chat_example.py --id {response.conversation_id} --check-status")
+    print(f"python roboco/examples/services/chat_example.py --id {response.project_id} --check-status")
     print(f"Or monitor the conversation status until completion:")
-    print(f"python roboco/examples/services/chat_example.py --id {response.conversation_id} --monitor")
+    print(f"python roboco/examples/services/chat_example.py --id {response.project_id} --monitor")
     
-    # Return the conversation ID for potential continued conversation
-    return response.conversation_id
+    # Return the project ID for potential continued conversation
+    return response.project_id
 
 
 async def continue_conversation(conversation_id: str, query: str):
@@ -176,23 +174,23 @@ async def continue_conversation(conversation_id: str, query: str):
     print(response.message)
     print("-" * 40)
     
-    # Return the conversation ID for potential continued conversation
-    return response.conversation_id
+    # Return the project ID for potential continued conversation
+    return response.project_id
 
 
-async def display_status(conversation_id: str):
-    """Display the status of a conversation."""
+async def display_status(project_id: str):
+    """Display the status of a project conversation."""
     print("=" * 80)
-    print("  Conversation Status")
+    print("  Project Status")
     print("=" * 80)
-    print(f"Conversation ID: {conversation_id}")
+    print(f"Project ID: {project_id}")
     print("=" * 80)
     
     # Get the status
-    response = await check_chat_status(conversation_id)
+    response = await check_chat_status(project_id)
     
     if response.get("status") == "not_found":
-        print(f"Conversation {conversation_id} not found")
+        print(f"Project {project_id} not found")
         return
     
     # Display the status
@@ -224,19 +222,19 @@ async def display_status(conversation_id: str):
             print(f"  {key}: {value}")
 
 
-async def monitor_conversation(conversation_id: str, interval: int = 2, max_time: int = 300):
+async def monitor_conversation(project_id: str, interval: int = 2, max_time: int = 300):
     """
-    Monitor a conversation until it completes or times out.
+    Monitor a project until it completes or times out.
     
     Args:
-        conversation_id: The ID of the conversation to monitor
+        project_id: The ID of the project to monitor
         interval: How often to check status (in seconds)
         max_time: Maximum time to monitor (in seconds)
     """
     print("=" * 80)
-    print("  Monitoring Conversation")
+    print("  Monitoring Project")
     print("=" * 80)
-    print(f"Conversation ID: {conversation_id}")
+    print(f"Project ID: {project_id}")
     print(f"Checking every {interval} seconds (max {max_time} seconds)")
     print("=" * 80)
     
@@ -247,7 +245,7 @@ async def monitor_conversation(conversation_id: str, interval: int = 2, max_time
     try:
         while time.time() - start_time < max_time:
             # Get status
-            status_data = await check_chat_status(conversation_id)
+            status_data = await check_chat_status(project_id)
             
             # If status changed or message changed, display update
             current_status = status_data.get("status", "unknown")
@@ -269,19 +267,19 @@ async def monitor_conversation(conversation_id: str, interval: int = 2, max_time
             
             # If completed or error, break
             if current_status in ["completed", "failed", "not_found"]:
-                print("\nConversation has finished.")
-                await display_status(conversation_id)
+                print("\nProject has finished.")
+                await display_status(project_id)
                 break
             
             # Wait for next check
             await asyncio.sleep(interval)
         else:
             print("\nMonitoring timed out. Final status:")
-            await display_status(conversation_id)
+            await display_status(project_id)
     
     except KeyboardInterrupt:
         print("\nMonitoring cancelled by user. Final status:")
-        await display_status(conversation_id)
+        await display_status(project_id)
 
 
 def main():

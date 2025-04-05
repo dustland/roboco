@@ -4,7 +4,6 @@ Task Manager Module
 This module provides functionality for managing tasks, including parsing, 
 updating, executing, and tracking task completion.
 """
-import logging
 import re
 import traceback
 from datetime import datetime
@@ -15,6 +14,8 @@ from roboco.core.models.task import TaskStatus
 from roboco.core.models import Task
 from roboco.core.team_manager import TeamManager
 from loguru import logger
+
+from roboco.utils.id_generator import generate_short_id
 
 logger = logger.bind(module=__name__)
 
@@ -29,8 +30,6 @@ class TaskManager:
             fs: ProjectFS instance for file operations
         """
         self.fs = fs
-        self.src_dir = "src"
-        self.docs_dir = "docs"
         
         # Initialize team manager for task execution
         self.team_manager = TeamManager(fs=fs)
@@ -42,163 +41,101 @@ class TaskManager:
         # Log initialization without accessing potentially missing attributes
         logger.debug(f"Initialized TaskManager")
     
-    def load_tasks(self, tasks_path: str = "tasks.md") -> List[Task]:
+    def parse_tasks_from_markdown(self, markdown_content: str, project_id: str) -> List[Task]:
         """
-        Load tasks from tasks.md into Task objects.
+        Parse tasks from markdown format into Task objects.
         
         Args:
-            tasks_path: Path to the tasks file, defaults to "tasks.md"
+            markdown_content: Markdown content containing task definitions
+            project_id: ID of the project the tasks belong to
             
         Returns:
             List of Task objects
         """
         tasks = []
-        current_task = None
-        task_details = []
+        # Update regex to handle status indicators [x] or [ ]
+        task_pattern = r'## (?:\[([ x])\] )?Task: ([^\n]+)(?:\n+([^#][^\n]*))?\n+((?:- [^\n]+\n+)+)'
+        task_matches = re.finditer(task_pattern, markdown_content)
         
-        try:
-            content = self.fs.read_sync(tasks_path)
-            lines = content.split('\n')
-        except FileNotFoundError:
-            logger.error(f"Tasks file not found: {tasks_path}")
-            return tasks
+        for match in task_matches:
+            # Group 1 is the status (if present), Group 2 is the title
+            status_indicator = match.group(1)
+            title = match.group(2).strip()
+            description = match.group(3).strip() if match.group(3) else title
+            details_text = match.group(4).strip()
+            
+            # Determine task status based on the status indicator
+            status = TaskStatus.COMPLETED if status_indicator == 'x' else TaskStatus.TODO
+            
+            # Extract details from bullet points
+            details = []
+            for line in details_text.split('\n'):
+                if line.strip().startswith('- '):
+                    details.append(line.strip()[2:].strip())
+            
+            # Create task metadata
+            meta = {"details": details} if details else {}
+            
+            # Create the Task object
+            task = Task(
+                id=generate_short_id(),
+                title=title,
+                description=description,
+                status=status,
+                project_id=project_id,
+                created_at=datetime.utcnow(),
+                updated_at=datetime.utcnow(),
+                meta=meta
+            )
+            
+            tasks.append(task)
         
-        for line in lines:
-            line = line.strip()
-            
-            # Skip empty lines
-            if not line:
-                continue
-            
-            # Skip the project title (first line)
-            if line.startswith('# ') and not tasks:
-                continue
-            
-            # Parse task items (high-level tasks)
-            if line.startswith('- [ ]') or line.startswith('- [x]'):
-                # If we were processing a task, save it with its details
-                if current_task is not None:
-                    current_task.details = task_details
-                    tasks.append(current_task)
-                    task_details = []
-                
-                is_completed = line.startswith('- [x]')
-                task_description = line[5:].strip()
-                
-                # Create Task
-                current_task = Task(
-                    description=task_description,
-                    status=TaskStatus.DONE if is_completed else TaskStatus.TODO,
-                    completed_at=datetime.now() if is_completed else None,
-                    details=[]
-                )
-            
-            # Parse task details (bullet points)
-            elif line.startswith('  * ') and current_task is not None:
-                detail = line[4:].strip()  # Extract the detail text
-                task_details.append(detail)
-        
-        # Add the last task if there is one
-        if current_task is not None:
-            current_task.details = task_details
-            tasks.append(current_task)
-        
-        logger.debug(f"Loaded {len(tasks)} tasks from {tasks_path}")
+        logger.info(f"Parsed {len(tasks)} tasks from markdown")
         return tasks
     
-    def mark_task_completed(self, task: Task, tasks_path: str = "tasks.md") -> bool:
+    def tasks_to_markdown(self, tasks: List[Task], project_name: str) -> str:
         """
-        Mark a specific task as completed in the tasks file.
-        This method updates only the checkbox status in the tasks.md file without
-        overwriting the entire file content.
+        Convert Task objects to markdown format.
         
         Args:
-            task: The task to mark as completed
-            tasks_path: Path to the tasks file, defaults to "tasks.md"
+            tasks: List of Task objects
+            project_name: Name of the project for the markdown header
             
         Returns:
-            True if the task was successfully marked, False otherwise
+            Markdown string representation of the tasks
         """
-        try:
-            # Try to read the existing file
-            content = self.fs.read_sync(tasks_path)
+        lines = [f"# Tasks for {project_name}", ""]
+        
+        for task in tasks:
+            # Add status indicator based on task status
+            status_indicator = "[x]" if task.status == TaskStatus.COMPLETED else "[ ]"
             
-            # Use regex to update task status while preserving all other content
-            updated_lines = []
-            task_found = False
+            # Add the task title with status indicator
+            lines.append(f"## {status_indicator} Task: {task.title}")
+            lines.append(f"{task.description}")
+            lines.append("")
             
-            for line in content.split('\n'):
-                # Check if this line has a task marker
-                task_match = re.match(r'^- \[([ x])\] (.+)$', line)
-                if task_match:
-                    status_char = task_match.group(1)
-                    task_desc = task_match.group(2)
-                    
-                    # If this task matches our target, update its status
-                    if task_desc == task.description:
-                        task_found = True
-                        if status_char != 'x':  # Only update if not already completed
-                            logger.info(f"Updating task status: '{task_desc}' -> DONE")
-                            line = f"- [x] {task_desc}"
-                
-                updated_lines.append(line)
+            details = task.meta.get("details", []) if task.meta else []
+            for detail in details:
+                lines.append(f"- {detail}")
             
-            # If task wasn't found, no updates needed
-            if not task_found:
-                logger.warning(f"Task '{task.description}' not found in {tasks_path}")
-                return False
-            
-            # Write the updated content back to the file
-            updated_content = '\n'.join(updated_lines)
-            self.fs.write_sync(tasks_path, updated_content)
-            logger.info(f"Updated task status for '{task.description}' in {tasks_path}")
-            return True
-            
-        except FileNotFoundError:
-            logger.error(f"Tasks file not found: {tasks_path}")
-            return False
-        except Exception as e:
-            logger.error(f"Error updating task status: {str(e)}")
-            logger.error(f"Traceback: {traceback.format_exc()}")
-            return False
-            
-    def create_initial_tasks_file(self, tasks: List[Task], tasks_path: str = "tasks.md") -> bool:
+            lines.append("")
+        
+        return "\n".join(lines)
+    
+    def load_tasks(self, project_id: str) -> List[Task]:
         """
-        Create initial tasks.md file with proper formatting.
-        Only use this if the file doesn't exist yet.
+        Load tasks from the database for a project.
         
         Args:
-            tasks: List of tasks to include
-            tasks_path: Path to the tasks file, defaults to "tasks.md"
+            project_id: ID of the project to load tasks for
             
         Returns:
-            True if successful, False otherwise
+            List of Task objects
         """
-        try:
-            # Start with the project title
-            content = f"# Project Tasks\n\n"
-            
-            # Write each task with its proper format
-            for task in tasks:
-                status_char = 'x' if task.status == TaskStatus.DONE else ' '
-                content += f"- [{status_char}] {task.description}\n"
-                
-                # Add task details as bullet points
-                if task.details:
-                    for detail in task.details:
-                        content += f"  * {detail}\n"
-                content += "\n"
-                
-            # Write to file
-            self.fs.write_sync(tasks_path, content)
-            logger.info(f"Created new tasks file at {tasks_path}")
-            return True
-            
-        except Exception as e:
-            logger.error(f"Error creating tasks file: {str(e)}")
-            logger.error(f"Traceback: {traceback.format_exc()}")
-            return False
-            
+        from roboco.db.service import get_tasks_by_project
+        return get_tasks_by_project(project_id)
+    
     def generate_task_context(self, current_task: Task, tasks: List[Task], project_info: Dict[str, Any]) -> str:
         """
         Generate context information about a task and its project.
@@ -211,7 +148,6 @@ class TaskManager:
         Returns:
             String containing formatted context information
         """
-        # Create list of context information
         context_parts = []
         
         # Project information
@@ -224,7 +160,7 @@ class TaskManager:
         task_summaries = []
         for task in tasks:
             if task.description != current_task.description:
-                status = "DONE" if task.status == TaskStatus.DONE else "TODO"
+                status = "COMPLETED" if task.status == TaskStatus.COMPLETED else "TODO"
                 task_summaries.append(f"- {task.description} [{status}]")
         
         if task_summaries:
@@ -249,79 +185,58 @@ class TaskManager:
                     for item in root_items:
                         if item not in [src_dir, docs_dir]:
                             context_parts.append(f"- {item}")
-            
         except Exception as e:
             logger.warning(f"Could not get project structure: {e}")
         
         return "\n".join(context_parts)
     
-    def create_task_header(self, task: Task) -> str:
+    def create_header(self, text: str, style: str = "task", status: Optional[str] = None) -> str:
         """
-        Create a visually distinct header for task execution.
+        Create a visually distinct header with consistent styling.
         
         Args:
-            task: The task being executed
+            text: The text to display in the header
+            style: The header style ("task", "complete", or "batch")
+            status: Optional status indicator for completion headers
             
         Returns:
             A formatted header string
         """
-        separator = "=" * 80
-        task_title = f" EXECUTING TASK: {task.description} "
-        
-        # Center the task title within the separator
-        centered_title = task_title.center(80, "=")
-        
-        header = f"\n{separator}\n{centered_title}\n{separator}\n"
-        return header
+        if style == "task":
+            separator = "=" * 80
+            heading = f" EXECUTING TASK: {text} "
+            symbol = ""
+        elif style == "complete":
+            separator = "-" * 80
+            status_symbol = "✅" if status == "completed" else "❌" if status == "failed" else "⏩"
+            heading = f" {status_symbol} TASK COMPLETE: {text} [{status.upper()}] "
+            symbol = status_symbol
+        elif style == "batch":
+            separator = "*" * 80
+            heading = f" BEGINNING EXECUTION OF {text} TASKS "
+            symbol = ""
+        elif style == "batch_complete":
+            separator = "*" * 80
+            status_info = text.split("/")
+            completed, total = int(status_info[0]), int(status_info[1])
+            status_symbol = "✅" if status == "success" else "⚠️" if status == "partial_failure" else "❌"
+            heading = f" {status_symbol} TASK BATCH COMPLETE: {completed}/{total} tasks completed successfully [{status.upper()}] "
+            symbol = status_symbol
+        else:
+            separator = "-" * 80
+            heading = f" {text} "
+            symbol = ""
             
-    def create_task_completion_header(self, task: Task, status: str) -> str:
-        """
-        Create a visually distinct header for task completion.
+        # Center the heading within the separator
+        centered_heading = heading.center(80, separator[0])
         
-        Args:
-            task: The task that was executed
-            status: The completion status
-            
-        Returns:
-            A formatted completion header string
-        """
-        separator = "-" * 80
-        status_symbol = "✅" if status == "completed" else "❌" if status == "failed" else "⏩"
-        task_title = f" {status_symbol} TASK COMPLETE: {task.description} [{status.upper()}] "
-        
-        # Center the task title within the separator
-        centered_title = task_title.center(80, "-")
-        
-        header = f"\n{separator}\n{centered_title}\n{separator}\n"
-        return header
+        return f"\n{separator}\n{centered_heading}\n{separator}\n"
     
-    def load(self, tasks_path: str) -> List[Dict[str, Any]]:
-        """
-        Legacy method. Use load_tasks() instead.
-        
-        Args:
-            tasks_path: Path to the tasks.md file
-            
-        Returns:
-            List of Task objects
-        """
-        logger.warning("Using deprecated load() method, consider switching to load_tasks()")
-        return self.load_tasks(tasks_path)
-    
-    def get_task_by_description(self, tasks: List[Task], task_description: str) -> Optional[Task]:
-        """Get a task by description.
-        
-        Args:
-            tasks: List of tasks to search
-            task_description: Description of the task to find
-            
-        Returns:
-            Task if found, None otherwise
-        """
-        for task in tasks:
-            if task.description.lower() == task_description.lower():
-                return task
-        return None
+    # Use the unified create_header method instead of these specialized methods
+    create_task_header = lambda self, task: self.create_header(task.description, "task")
+    create_task_completion_header = lambda self, task, status: self.create_header(task.description, "complete", status)
+    create_batch_task_header = lambda self, num_tasks: self.create_header(str(num_tasks), "batch")
+    create_batch_completion_header = lambda self, status, completed, total: self.create_header(f"{completed}/{total}", "batch_complete", status)
     
     def _convert_to_dict(self, obj):
         """
@@ -372,7 +287,7 @@ class TaskManager:
             Results of task execution
         """
         # Skip already completed tasks
-        if task.status == TaskStatus.DONE:
+        if task.status == TaskStatus.COMPLETED:
             logger.info(f"Task '{task.description}' is already marked as completed, skipping execution")
             return {
                 "task": task.description,
@@ -403,9 +318,6 @@ Execute the following task:
 
 {task.description}
 
-Details:
-{chr(10).join([f"* {detail}" for detail in task.details]) if task.details else "No additional details provided."}
-
 CONTEXT:
 {execution_context}
 
@@ -419,11 +331,8 @@ Instructions:
     * `create_directory` to create new directories
     * `delete_file` to remove files
     * `read_json` to read and parse JSON files
-- Always place source code files (js, py, etc.) in the src directory
-- Always place documentation files (md, txt, etc.) in the docs directory
 - Maintain a clean, organized directory structure
-- Do not create files directly in the project root
-- When modifying files, use the filesystem tool's commands instead of trying to edit files directly
+- Use the filesystem tool's commands instead of trying to edit files directly
 """
             
             # Set up message recording
@@ -462,7 +371,7 @@ Instructions:
             
             # Update task status based on result
             if "error" not in task_result:
-                task.status = TaskStatus.DONE
+                task.status = TaskStatus.COMPLETED
                 task.completed_at = datetime.now().isoformat()
                 results.update({
                     "status": "completed",
@@ -507,110 +416,29 @@ Instructions:
         """
         try:
             from roboco.db.service import create_message
-            from roboco.core.models.message import MessageCreate, MessageRole, MessageType
+            from roboco.core.models.message import Message, MessageRole, MessageType
             
             # Import these for db session
             from roboco.db import get_session
             
             for msg in messages:
-                # Convert the message to a MessageCreate object
-                message_data = MessageCreate(
+                # Create a Message object directly
+                message = Message(
                     content=msg.get("content", ""),
                     role=msg.get("role", "assistant"),
                     type=msg.get("type", MessageType.TEXT),
+                    task_id=task_id,  # Set the task ID directly
                     agent_id=msg.get("agent_id"),
                     meta=msg.get("meta", {})
                 )
                 
-                # Create the message in the database with explicit task_id
-                create_message(task_id, message_data)
+                # Create the message in the database
+                create_message(task_id, message)
                     
             logger.info(f"Saved {len(messages)} messages for task {task_id}")
         except Exception as e:
             logger.error(f"Error saving messages for task {task_id}: {str(e)}")
             logger.error(traceback.format_exc())
-    
-    def _create_batch_task_header(self, num_tasks: int) -> str:
-        """
-        Create a visually distinct header for a batch of tasks.
-        
-        Args:
-            num_tasks: Number of tasks to be executed
-            
-        Returns:
-            A formatted header string
-        """
-        separator = "*" * 80
-        title = f" BEGINNING EXECUTION OF {num_tasks} TASKS "
-        
-        # Center the title within the separator
-        centered_title = title.center(80, "*")
-        
-        header = f"\n{separator}\n{centered_title}\n{separator}\n"
-        return header
-        
-    def _create_batch_completion_header(self, status: str, completed: int, total: int) -> str:
-        """
-        Create a visually distinct header for batch task completion.
-        
-        Args:
-            status: Overall status of the batch
-            completed: Number of successfully completed tasks
-            total: Total number of tasks
-            
-        Returns:
-            A formatted completion header string
-        """
-        separator = "*" * 80
-        status_symbol = "✅" if status == "success" else "⚠️" if status == "partial_failure" else "❌"
-        title = f" {status_symbol} TASK BATCH COMPLETE: {completed}/{total} tasks completed successfully [{status.upper()}] "
-        
-        # Center the title within the separator
-        centered_title = title.center(80, "*")
-        
-        header = f"\n{separator}\n{centered_title}\n{separator}\n"
-        return header
-    
-    def create_batch_task_header(self, num_tasks: int) -> str:
-        """
-        Create a visually distinct header for a batch of tasks.
-        
-        Args:
-            num_tasks: Number of tasks to be executed
-            
-        Returns:
-            A formatted header string
-        """
-        separator = "*" * 80
-        title = f" BEGINNING EXECUTION OF {num_tasks} TASKS "
-        
-        # Center the title within the separator
-        centered_title = title.center(80, "*")
-        
-        header = f"\n{separator}\n{centered_title}\n{separator}\n"
-        return header
-        
-    def create_batch_completion_header(self, status: str, completed: int, total: int) -> str:
-        """
-        Create a visually distinct header for batch task completion.
-        
-        Args:
-            status: Overall status of the batch
-            completed: Number of successfully completed tasks
-            total: Total number of tasks
-            
-        Returns:
-            A formatted completion header string
-        """
-        separator = "*" * 80
-        status_symbol = "✅" if status == "success" else "⚠️" if status == "partial_failure" else "❌"
-        title = f" {status_symbol} TASK BATCH COMPLETE: {completed}/{total} tasks completed successfully [{status.upper()}] "
-        
-        # Center the title within the separator
-        centered_title = title.center(80, "*")
-        
-        header = f"\n{separator}\n{centered_title}\n{separator}\n"
-        return header
     
     async def execute_tasks(self, tasks: List[Task]) -> Dict[str, Any]:
         """Execute a list of tasks.
@@ -683,26 +511,22 @@ Instructions:
             task_summaries = []
             for task in tasks:
                 if task != current_task:
-                    status = "DONE" if task.status == TaskStatus.DONE else "TODO"
+                    status = "COMPLETED" if task.status == TaskStatus.COMPLETED else "TODO"
                     task_summaries.append(f"- {task.description} [{status}]")
             
             if task_summaries:
                 context_parts.append("\nOther tasks in project:")
                 context_parts.extend(task_summaries)
         
-        # Add project structure
+        # Add project structure - simply list all directories without assumptions
         try:
-            context_parts.append("\nProject Structure:")
-            context_parts.append("- Source code directory: src")
-            context_parts.append("- Documentation directory: docs")
-            
             # List top-level directories and files
             root_items = self.fs.list_sync(".")
             if root_items:
+                context_parts.append("\nProject Structure:")
                 context_parts.append("\nRoot Directory Contents:")
                 for item in root_items:
-                    if item not in [self.src_dir, self.docs_dir]:
-                        context_parts.append(f"- {item}")
+                    context_parts.append(f"- {item}")
         
         except Exception as e:
             logger.warning(f"Could not get project structure: {e}")

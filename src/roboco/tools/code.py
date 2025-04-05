@@ -18,6 +18,7 @@ logger = logger.bind(module=__name__)
 
 from roboco.core.fs import ProjectFS
 from roboco.core.tool import Tool, command
+from roboco.utils.id_generator import generate_short_id
 
 
 class CodeTool(Tool):
@@ -169,8 +170,7 @@ class CodeTool(Tool):
         
         # Generate filename if not provided
         if not filename:
-            import uuid
-            filename = f"generated_{uuid.uuid4().hex[:8]}{extension}"
+            filename = generate_short_id() + extension
         elif not filename.endswith(extension):
             filename = f"{filename}{extension}"
         

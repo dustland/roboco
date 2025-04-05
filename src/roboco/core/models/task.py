@@ -7,8 +7,9 @@ SQLModel is used to combine Pydantic validation with SQLAlchemy persistence.
 from enum import Enum
 from typing import List, Optional, Dict, Any, TYPE_CHECKING
 from datetime import datetime
-from uuid import uuid4
 from sqlmodel import SQLModel, Field, Column, JSON, DateTime, Relationship
+
+from roboco.utils.id_generator import generate_short_id
 
 if TYPE_CHECKING:
     from roboco.core.models.message import Message
@@ -32,7 +33,7 @@ class Task(SQLModel, table=True):
     __tablename__ = "tasks"
     
     # Core fields
-    id: str = Field(default_factory=lambda: str(uuid4())[:8], primary_key=True)
+    id: str = Field(default_factory=generate_short_id, primary_key=True)
     title: str = Field(..., description="Title of the task")
     description: Optional[str] = Field(default=None, description="Detailed description of the task")
     status: TaskStatus = Field(default=TaskStatus.TODO, description="Current status of the task")
@@ -50,7 +51,7 @@ class Task(SQLModel, table=True):
     
     # Relationships (SQLModel)
     project: Optional["Project"] = Relationship(back_populates="tasks")
-    messages: List["Message"] = Relationship(back_populates="task")
+    messages: List["Message"] = Relationship(sa_relationship_kwargs={"primaryjoin": "Task.id==Message.task_id"})
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for API responses."""

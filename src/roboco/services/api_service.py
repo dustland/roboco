@@ -8,6 +8,7 @@ the API endpoints and the domain services.
 from typing import List, Optional, Dict, Any
 import os
 from loguru import logger
+import json
 
 logger = logger.bind(module=__name__)
 
@@ -17,6 +18,7 @@ from roboco.services.chat_service import ChatService
 from roboco.core.models.task import Task
 from roboco.core.models.project import Project
 from roboco.core.models.chat import ChatRequest, ChatResponse
+from roboco.core.task_manager import TaskManager
 from roboco.core.config import load_config
 
 # Local utility function
@@ -26,9 +28,6 @@ def project_to_pydantic(project):
         "id": project.id,
         "name": project.name,
         "description": project.description,
-        "directory": project.id,  # Always use project ID as directory
-        "teams": project.teams,
-        "tags": project.tags,
         "created_at": project.created_at,
         "updated_at": project.updated_at
     }
@@ -103,25 +102,21 @@ class ApiService:
         config = load_config()
         os.makedirs(os.path.join(config.workspace_root, self.workspace_dir), exist_ok=True)
 
-    async def list_projects(self) -> List[Project]:
-        """List all projects.
+    async def list_projects(self, project_id: Optional[str] = None, limit: int = 20) -> List[Dict[str, Any]]:
+        """List projects, optionally filtered by project ID.
         
-        Returns:
-            List of all projects in API format
-        """
-        domain_projects = await self.project_service.list_projects()
-        
-        # Convert domain projects to API projects
-        api_projects = []
-        for project in domain_projects:
-            # Convert to Pydantic model
-            pydantic_project = project_to_pydantic(project)
+        Args:
+            project_id: Optional project ID to filter by
+            limit: Maximum number of projects to return
             
-            # Create Project instance
-            api_project = Project.from_dict(pydantic_project)
-            api_projects.append(api_project)
-        
-        return api_projects
+        Returns:
+            List of project summary data
+        """
+        try:
+            return await self.chat_service.list_projects(project_id, limit)
+        except Exception as e:
+            logger.error(f"Error listing projects: {str(e)}")
+            return []
     
     async def get_project(self, project_id: str) -> Optional[Project]:
         """Get a project by its ID.
@@ -143,22 +138,24 @@ class ApiService:
         
         return api_project
     
-    async def create_project(self, project_create: ProjectCreate) -> Project:
+    async def create_project(self, project_data: Dict[str, Any]) -> Project:
         """Create a new project.
         
         Args:
-            project_create: Project creation data
+            project_data: Dictionary with project creation data:
+                - name: Name of the project (required)
+                - description: Description of the project
             
         Returns:
             The created project in API format
         """
+        # Create a Project instance using the create class method
+        project_instance = Project.create(**project_data)
+        
         # Create the project using the domain service
         domain_project = await self.project_service.create_project(
-            name=project_create.name,
-            description=project_create.description,
-            directory=project_create.directory,
-            teams=project_create.teams,
-            tags=project_create.tags
+            name=project_instance.name,
+            description=project_instance.description
         )
         
         # Convert domain project to API project
@@ -167,12 +164,14 @@ class ApiService:
         
         return api_project
     
-    async def update_project(self, project_id: str, project_update: ProjectUpdate) -> Project:
+    async def update_project(self, project_id: str, project_data: Dict[str, Any]) -> Project:
         """Update a project.
         
         Args:
             project_id: ID of the project to update
-            project_update: Project update data
+            project_data: Dictionary with fields to update:
+                - name: Optional new name for the project
+                - description: Optional new description for the project
             
         Returns:
             The updated project in API format
@@ -186,18 +185,15 @@ class ApiService:
         if not domain_project:
             raise ValueError(f"Project with ID {project_id} does not exist")
         
-        # Update the project fields
+        # Update the project fields using the update method
+        project_update = Project.update_from_dict(project_id, project_data)
+        
+        # Apply updates to domain project
         if project_update.name is not None:
             domain_project.name = project_update.name
         
         if project_update.description is not None:
             domain_project.description = project_update.description
-        
-        if project_update.teams is not None:
-            domain_project.teams = project_update.teams
-        
-        if project_update.tags is not None:
-            domain_project.tags = project_update.tags
         
         # Update the project using the domain service
         await self.project_service.update_project(domain_project)
@@ -304,249 +300,139 @@ class ApiService:
         """
         return await self.chat_service.start_chat(chat_request)
     
-    async def get_conversation_history(self, conversation_id: str) -> Optional[Dict[str, Any]]:
-        """Get the full chat history for a conversation with complete details.
+    async def get_project_status(self, project_id: str, include_history: bool = False) -> Optional[Dict[str, Any]]:
+        """Get the status of a project conversation.
         
         Args:
-            conversation_id: ID of the conversation
+            project_id: ID of the project
+            include_history: Whether to include message history or task metadata in the response
             
         Returns:
-            Dictionary with conversation details and messages, or None if not found
+            Dictionary with project details or None if not found
         """
-        history = await self.chat_service.get_conversation_history(conversation_id)
+        # Get project status using the enhanced ChatService method
+        project_status = await self.chat_service.get_project_status(project_id)
         
-        if not history:
-            logger.warning(f"Conversation {conversation_id} not found")
-            return None
-        
-        # Return the history as a dictionary
-        return history.dict()
-        
-    async def get_chat_status(self, conversation_id: str, include_history: bool = False) -> Optional[Dict[str, Any]]:
-        """Get the status of a chat conversation.
-        
-        Args:
-            conversation_id: ID of the conversation
-            include_history: Whether to include message history in the response
+        if not project_status:
+            # If no status record exists, try to get basic project history
+            project_history = await self.chat_service.get_project_history(project_id)
             
-        Returns:
-            Dictionary with conversation details or None if not found
-        """
-        # Get conversation status using the enhanced ChatService method
-        conversation_status = await self.chat_service.get_conversation_status(conversation_id)
-        
-        if not conversation_status:
-            # If no status record exists, try to get basic conversation history
-            conversation = await self.chat_service.get_conversation_history(conversation_id)
-            
-            if not conversation:
-                logger.warning(f"Conversation {conversation_id} not found")
+            if not project_history:
+                logger.warning(f"Project {project_id} not found")
                 return None
                 
             # If we have history but no status, return basic info from the history
             return {
-                "conversation_id": conversation.conversation_id,
-                "project_id": conversation.project_id,
-                "title": conversation.title,
-                "message": conversation.messages[-1].content if conversation.messages else "",
-                "status": conversation.status,
-                "created_at": conversation.created_at,
-                "updated_at": conversation.updated_at,
-                "messages": [msg.dict() for msg in conversation.messages] if include_history else None,
-                "files": conversation.files or []
+                "project_id": project_history.project_id,
+                "title": project_history.title,
+                "message": project_history.messages[-1].content if project_history.messages else "",
+                "status": project_history.status,
+                "created_at": project_history.created_at,
+                "updated_at": project_history.updated_at,
+                "messages": [msg.dict() for msg in project_history.messages] if include_history else None,
+                "files": project_history.files or []
             }
         
         # Get the full result as a dictionary
-        status_dict = conversation_status.dict()
+        status_dict = project_status.dict()
         
         # Include message history if requested
-        if include_history and not status_dict.get("messages"):
-            conversation = await self.chat_service.get_conversation_history(conversation_id)
-            if conversation:
-                status_dict["messages"] = [msg.dict() for msg in conversation.messages]
+        if include_history:
+            if not status_dict.get("messages"):
+                project_history = await self.chat_service.get_project_history(project_id)
+                if project_history:
+                    status_dict["messages"] = [msg.dict() for msg in project_history.messages]
+            
+            # Include task metadata if no messages were included
+            if not status_dict.get("messages") and not status_dict.get("tasks"):
+                # Get the project
+                project = await self.project_service.get_project(project_id)
+                if project:
+                    # Load tasks from the project
+                    project.load_tasks()
+                    
+                    # Add task metadata to result
+                    status_dict["tasks"] = [
+                        {
+                            "id": task.id,
+                            "name": task.name,
+                            "status": task.status,
+                            "created_at": task.created_at,
+                            "updated_at": task.updated_at
+                        } for task in project.tasks
+                    ]
         
         return status_dict
     
-    async def create_task(self, project_id: str, task_create: TaskCreate) -> Optional[Task]:
-        """Create a new task for a project.
-        
-        Args:
-            project_id: ID of the project
-            task_create: Task creation data
-            
-        Returns:
-            The created task in API format
-            
-        Raises:
-            ValueError: If the project does not exist
-        """
-        # Get the project
-        project = await self.project_service.get_project(project_id)
-        
-        if not project:
-            raise ValueError(f"Project with ID {project_id} not found")
-            
-        # Convert task_create to a Task
-        task = task_create.to_task(project_id=project_id)
-        
-        # Add the task to the project
-        project.tasks.append(task)
-        
-        # Save the project
-        project.save()
-        
-        return task
-    
-    async def update_task(self, project_id: str, task_id: str, task_update: TaskUpdate) -> Optional[Task]:
-        """Update a task in a project.
-        
-        Args:
-            project_id: ID of the project
-            task_id: ID of the task to update
-            task_update: Task update data
-            
-        Returns:
-            The updated task in API format
-            
-        Raises:
-            ValueError: If the project or task does not exist
-        """
-        # Get the project
-        project = await self.project_service.get_project(project_id)
-        
-        if not project:
-            raise ValueError(f"Project with ID {project_id} not found")
-            
-        # Load tasks from the project
-        project.load_tasks()
-        
-        # Find the task with the matching ID
-        task_index = next((i for i, t in enumerate(project.tasks) if t.id == task_id), None)
-        
-        if task_index is None:
-            return None
-            
-        # Get the existing task
-        task = project.tasks[task_index]
-        
-        # Convert to Task object if it's not already
-        if not isinstance(task, Task):
-            task = Task(**task)
-        
-        # Apply updates to the task
-        updated_task = task_update.apply_to_task(task)
-        
-        # Update the task in the project
-        project.tasks[task_index] = updated_task
-        
-        # Save the project
-        project.save()
-        
-        return updated_task
-    
-    async def get_task_markdown(self, project_id: str) -> Optional[Dict[str, Any]]:
-        """Get the task.md content for a project.
+    async def get_task_json(self, project_id: str) -> Dict[str, Any]:
+        """Get the tasks for a project.
         
         Args:
             project_id: ID of the project
             
         Returns:
-            Dictionary with the markdown content and metadata
-            
-        Raises:
-            ValueError: If the project does not exist
+            Dictionary with task content and metadata
         """
         # Get the project
         project = await self.project_service.get_project(project_id)
         
-        if not project:
-            raise ValueError(f"Project with ID {project_id} not found")
+        # Create a filesystem for the project
+        from roboco.core.fs import ProjectFS
+        fs = ProjectFS(project_id=project_id)
         
+        # Create a task manager for task operations
+        task_manager = TaskManager(fs=fs)
+        
+        # Load tasks directly from database
+        from roboco.db.service import get_tasks_by_project
+        tasks = get_tasks_by_project(project_id)
+        
+        # Convert tasks to a dictionary structure for API response
+        tasks_data = {
+            "project_id": project_id,
+            "tasks": [task.to_dict() for task in tasks]
+        }
+        
+        # Generate tasks.md content from tasks if it doesn't exist
         try:
-            # Try to read tasks.md file
+            # Check if tasks.md exists
             tasks_md = project.fs.read_sync("tasks.md")
-            
-            return {
-                "content": tasks_md,
-                "project_id": project_id,
-                "updated_at": project.updated_at
-            }
         except FileNotFoundError:
-            # Create empty tasks.md if it doesn't exist
-            empty_content = "# Tasks\n\nNo tasks defined yet.\n"
-            project.fs.write_sync("tasks.md", empty_content)
-            
-            return {
-                "content": empty_content,
-                "project_id": project_id,
-                "updated_at": project.updated_at
-            }
-        except Exception as e:
-            logger.error(f"Error reading tasks.md for project {project_id}: {str(e)}")
-            return None
+            # Generate markdown from tasks using TaskManager
+            tasks_md = task_manager.tasks_to_markdown(tasks, project.name)
+            # Save the markdown for future use
+            project.fs.write_sync("tasks.md", tasks_md)
+        
+        return {
+            "content": tasks_md,
+            "data": tasks_data,
+            "project_id": project_id,
+            "updated_at": project.updated_at
+        }
 
-    # Conversation-related methods
-    
-    async def list_conversations(self, project_id: Optional[str] = None, limit: int = 20) -> List[Dict[str, Any]]:
-        """List conversations, optionally filtered by project ID.
+    async def stop_chat(self, project_id: str) -> Optional[Dict[str, Any]]:
+        """Stop a running chat.
         
         Args:
-            project_id: Optional project ID to filter by
-            limit: Maximum number of conversations to return
+            project_id: ID of the project/chat to stop
             
         Returns:
-            List of conversation summary data
+            Updated chat status or None if not found
         """
         try:
-            return await self.chat_service.list_conversations(project_id, limit)
+            return await self.chat_service.stop_project(project_id)
         except Exception as e:
-            logger.error(f"Error listing conversations: {str(e)}")
-            return []
-    
-    async def list_messages_by_task(self, task_id: str, limit: int = 20) -> List[Dict[str, Any]]:
-        """List messages associated with a specific task.
+            logger.error(f"Error stopping chat for project {project_id}: {str(e)}")
+            return None
+
+    async def get_messages(self, project_id: Optional[str] = None, task_id: Optional[str] = None, limit: int = 100, offset: int = 0) -> List[Dict[str, Any]]:
+        """Get messages filtered by project ID and/or task ID with pagination.
         
         Args:
-            task_id: ID of the task
+            project_id: Optional ID of the project to filter by
+            task_id: Optional ID of the task to filter by
             limit: Maximum number of messages to return
-            
-        Returns:
-            List of message summary data
-        """
-        try:
-            # This would be implemented using a database query in a real implementation
-            # Here we'll just return an empty list for demonstration purposes
-            # The real implementation would search through conversation messages for those
-            # with a matching task_id
-            return []
-            
-            # Example real implementation:
-            # Use a database query to find all messages with matching task_id
-            # return await self.chat_service.find_messages_by_task_id(task_id, limit)
-        except Exception as e:
-            logger.error(f"Error listing messages for task {task_id}: {str(e)}")
-            return []
-    
-    async def stop_conversation(self, conversation_id: str) -> Optional[Dict[str, Any]]:
-        """Stop a running conversation.
-        
-        Args:
-            conversation_id: ID of the conversation to stop
-            
-        Returns:
-            Updated conversation status or None if not found
-        """
-        try:
-            return await self.chat_service.stop_conversation(conversation_id)
-        except Exception as e:
-            logger.error(f"Error stopping conversation {conversation_id}: {str(e)}")
-            return None
-
-    async def get_messages_for_task(self, task_id: str) -> List[Dict[str, Any]]:
-        """Get all messages generated during execution of a specific task.
-        
-        Args:
-            task_id: ID of the task
+            offset: Offset for pagination
             
         Returns:
             List of messages with agent information
@@ -554,11 +440,44 @@ class ApiService:
         from roboco.db.service import get_messages_by_task
         
         try:
-            # Get messages from the database
-            messages = get_messages_by_task(task_id)
-            
-            # Convert messages to dictionaries
-            return [message.to_dict() for message in messages]
+            # If task_id is provided, filter by task
+            if task_id:
+                messages = get_messages_by_task(task_id)
+                
+                # Apply pagination
+                paginated_messages = messages[offset:offset + limit]
+                
+                # Convert messages to dictionaries
+                return [message.to_dict() for message in paginated_messages]
+            # If only project_id is provided, we need to get all tasks for the project
+            elif project_id:
+                # Get the project to access its tasks
+                project = await self.project_service.get_project(project_id)
+                if not project:
+                    logger.warning(f"Project {project_id} not found")
+                    return []
+                
+                # Load tasks from the project
+                project.load_tasks()
+                
+                # Collect messages from all tasks in the project
+                all_messages = []
+                for task in project.tasks:
+                    task_messages = get_messages_by_task(task.id)
+                    all_messages.extend(task_messages)
+                
+                # Sort messages by timestamp (assuming there's a timestamp field)
+                all_messages.sort(key=lambda msg: msg.created_at if hasattr(msg, 'created_at') else 0)
+                
+                # Apply pagination
+                paginated_messages = all_messages[offset:offset + limit]
+                
+                # Convert messages to dictionaries
+                return [message.to_dict() for message in paginated_messages]
+            # If neither is provided, return empty list
+            else:
+                logger.warning("No project_id or task_id provided for get_messages")
+                return []
         except Exception as e:
-            logger.error(f"Error getting messages for task {task_id}: {str(e)}")
+            logger.error(f"Error getting messages (project_id={project_id}, task_id={task_id}): {str(e)}")
             return []

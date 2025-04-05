@@ -4,9 +4,11 @@ Database Service Layer
 This module provides service functions for database operations.
 """
 from datetime import datetime
-from typing import List, Optional, Dict, Any
-from uuid import uuid4
+from typing import List, Optional, Dict, Any, Tuple
 from sqlmodel import Session, select, or_
+import os
+import sqlite3
+from loguru import logger
 
 from roboco.core.models import (
     Project, Task, Message,
@@ -16,6 +18,7 @@ from roboco.api.models import (
     ProjectCreate, TaskCreate, MessageCreate
 )
 from roboco.db import get_session, get_session_context
+from roboco.utils.id_generator import generate_short_id
 
 # For simplified mock implementation in tests
 def create_project(project_data: ProjectCreate):
@@ -104,16 +107,19 @@ def delete_project(project_id: str) -> bool:
         return True
 
 
-def create_task(project_id: str, task_data: TaskCreate):
+def create_task(project_id: str, task_data: Any):
     """
     Create a new task in the database.
     
     Args:
         project_id: ID of the project this task belongs to
-        task_data: Data for the new task
+        task_data: Data for the new task, can be either a TaskCreate or a Task object
     """
     # Create task model from task_data
-    task = task_data.to_db_model()
+    if isinstance(task_data, Task):
+        task = task_data
+    else:
+        task = task_data.to_db_model()
     
     # Set project_id
     task.project_id = project_id
@@ -321,4 +327,82 @@ def delete_message(message_id: str) -> bool:
                         session.add(project)
                         session.commit()
         
-        return True 
+        return True
+
+
+def get_last_message_by_project(project_id: str) -> Optional[Message]:
+    """Get the last message for a specific project.
+    
+    Args:
+        project_id: ID of the project
+        
+    Returns:
+        The last Message object or None if no messages
+    """
+    try:
+        session = get_session()
+        message = session.query(Message).filter(
+            Message.project_id == project_id
+        ).order_by(Message.created_at.desc()).first()
+        return message
+    except Exception as e:
+        logger.error(f"Error getting last message for project {project_id}: {str(e)}")
+        return None 
+
+def create_tasks_batch(tasks_data: List[Dict[str, Any]]) -> List[Task]:
+    """
+    Create multiple tasks in the database in a single transaction.
+    
+    Args:
+        tasks_data: List of task dictionaries with data for new tasks
+        
+    Returns:
+        List of created Task objects
+    """
+    created_tasks = []
+    
+    with get_session_context() as session:
+        for task_dict in tasks_data:
+            # Create a Task object from the dictionary
+            # Make sure required field are present
+            if 'title' not in task_dict:
+                logger.warning(f"Skipping task without title: {task_dict}")
+                continue
+                
+            # Create task instance
+            task = Task(
+                id=task_dict.get('id', generate_short_id()),
+                title=task_dict['title'],
+                description=task_dict.get('description', task_dict['title']),
+                status=TaskStatus(task_dict.get('status', 'todo')),
+                project_id=task_dict.get('project_id'),
+                created_at=datetime.fromisoformat(task_dict['created_at']) if 'created_at' in task_dict else datetime.utcnow(),
+                updated_at=datetime.fromisoformat(task_dict['updated_at']) if 'updated_at' in task_dict else datetime.utcnow(),
+                completed_at=datetime.fromisoformat(task_dict['completed_at']) if 'completed_at' in task_dict else None,
+                meta=task_dict.get('meta', {})
+            )
+            
+            # If details are provided, add them to meta
+            if 'details' in task_dict:
+                task.meta['details'] = task_dict['details']
+            
+            session.add(task)
+            created_tasks.append(task)
+        
+        # Update the project's updated_at timestamp if we have tasks with project_id
+        project_ids = set(task.project_id for task in created_tasks if task.project_id)
+        for project_id in project_ids:
+            project = session.get(Project, project_id)
+            if project:
+                project.update_timestamp()
+                session.add(project)
+        
+        # Commit all changes
+        session.commit()
+        
+        # Refresh all tasks to get their database-assigned values
+        for task in created_tasks:
+            session.refresh(task)
+    
+    logger.info(f"Created {len(created_tasks)} tasks in batch")
+    return created_tasks 

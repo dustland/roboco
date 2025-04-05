@@ -171,7 +171,25 @@ class Tool(AutogenTool):
             try:
                 # Call the function with the parameters
                 if isinstance(args, dict):
-                    return command_func(**args)
+                    # Get function signature to understand parameter order
+                    sig = inspect.signature(command_func)
+                    param_names = list(sig.parameters.keys())
+                    
+                    # Handle case where args doesn't include required parameters
+                    missing_params = [p for p in param_names if p != 'self' and p not in args 
+                                      and sig.parameters[p].default == inspect.Parameter.empty]
+                    if missing_params:
+                        missing_str = ", ".join(missing_params)
+                        return {
+                            "success": False,
+                            "error": f"❌ Error executing command {command}: missing required parameters: {missing_str}",
+                            "command": command
+                        }
+                    
+                    # Filter args to only include parameters that exist in the function signature
+                    valid_args = {k: v for k, v in args.items() if k in param_names}
+                    
+                    return command_func(**valid_args)
                 elif isinstance(args, (list, tuple)):
                     return command_func(*args)
                 else:

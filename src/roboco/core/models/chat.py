@@ -49,16 +49,14 @@ class ChatResponse:
     """Response from chat service."""
     def __init__(
         self,
-        conversation_id: str,
+        project_id: str,
         message: str,
-        project_id: Optional[str] = None,
         task_id: Optional[str] = None,
         status: str = "completed",
         project_details: Optional[Dict[str, Any]] = None
     ):
-        self.conversation_id = conversation_id
-        self.message = message
         self.project_id = project_id
+        self.message = message
         self.task_id = task_id
         self.status = status
         self.project_details = project_details
@@ -66,13 +64,10 @@ class ChatResponse:
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary."""
         result = {
-            "conversation_id": self.conversation_id,
+            "project_id": self.project_id,
             "message": self.message,
             "status": self.status.value if hasattr(self.status, 'value') else self.status
         }
-        
-        if self.project_id:
-            result["project_id"] = self.project_id
         
         if self.task_id:
             result["task_id"] = self.task_id
@@ -89,10 +84,14 @@ class ChatResponse:
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'ChatResponse':
         """Create from dictionary."""
+        # Handle backward compatibility with old conversation_id field
+        project_id = data.get("project_id")
+        if not project_id:
+            project_id = data.get("conversation_id", "")
+            
         return cls(
-            conversation_id=data.get("conversation_id", ""),
+            project_id=project_id,
             message=data.get("message", ""),
-            project_id=data.get("project_id"),
             task_id=data.get("task_id"),
             status=data.get("status", "completed"),
             project_details=data.get("project_details")

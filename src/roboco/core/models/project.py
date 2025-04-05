@@ -6,8 +6,9 @@ SQLModel is used to combine Pydantic validation with SQLAlchemy persistence.
 """
 from typing import List, Optional, Dict, Any, TYPE_CHECKING
 from datetime import datetime
-from uuid import uuid4
 from sqlmodel import SQLModel, Field, Column, JSON, DateTime, Relationship
+
+from roboco.utils.id_generator import generate_short_id
 
 if TYPE_CHECKING:
     from roboco.core.models.task import Task
@@ -17,12 +18,17 @@ class Project(SQLModel, table=True):
     Unified Project model for both domain logic and database persistence.
     
     This model serves as a single source of truth for project data.
+    
+    Usage:
+    - For creating new projects: Use with required fields, ID will be generated if not provided
+    - For updating projects: Instantiate with project ID and only the fields to update
+    - For database operations: Use complete model instance
     """
     # Database table name
     __tablename__ = "projects"
     
     # Core fields
-    id: str = Field(default_factory=lambda: str(uuid4())[:8], primary_key=True)
+    id: str = Field(default_factory=generate_short_id, primary_key=True)
     name: str = Field(..., description="Name of the project")
     description: Optional[str] = Field(default=None, description="Detailed description of the project")
     
@@ -51,4 +57,36 @@ class Project(SQLModel, table=True):
         """Update the updated_at timestamp to now."""
         self.updated_at = datetime.utcnow()
 
-# Note: API models have been moved to roboco.api.models.project 
+    @classmethod
+    def create(cls, **kwargs) -> "Project":
+        """Factory method for creating a new project.
+        
+        This is a convenience method for creating a new project with default values.
+        
+        Args:
+            **kwargs: Project attributes (name is required)
+            
+        Returns:
+            A new Project instance
+        """
+        # id will be auto-generated if not provided
+        return cls(**kwargs)
+        
+    @classmethod
+    def update_from_dict(cls, project_id: str, update_data: Dict[str, Any]) -> "Project":
+        """Create a partial Project instance for updates.
+        
+        This is a convenience method for creating a Project with only fields that need updating.
+        
+        Args:
+            project_id: ID of the project to update
+            update_data: Dictionary of fields to update
+            
+        Returns:
+            A partial Project instance with only the fields to update
+        """
+        # Always include the ID for the update operation
+        update_data["id"] = project_id
+        return cls(**update_data)
+
+# Note: API-specific models should be defined in the API layer 

@@ -295,28 +295,57 @@ class FileSystemTool(Tool):
         logger.info(f"Executing project manifest")
         
         try:
-            # Use ProjectFS.initialize directly, avoiding circular imports
-            from roboco.core.project_manager import Project
-            from roboco.core.models.project_manifest import dict_to_project_manifest
+            # Use ProjectManager.initialize to avoid circular imports
+            from roboco.core.project_manager import ProjectManager
+            from roboco.core.models.project_manifest import dict_to_project_manifest, ProjectManifest
             
-            # Check if we have name and description in the manifest
-            if isinstance(manifest, dict) and 'name' in manifest and 'description' in manifest:
-                # Create the project using Project.initialize with extracted values
-                project = Project.initialize(
-                    name=manifest['name'],
-                    description=manifest['description'],
-                    project_id=manifest.get('id'),
-                    manifest=manifest
+            # Convert to ProjectManifest if received as dict
+            project_manifest = manifest
+            if isinstance(manifest, dict):
+                logger.info("Converting dict manifest to ProjectManifest object")
+                project_manifest = dict_to_project_manifest(manifest)
+            elif not isinstance(manifest, ProjectManifest):
+                # Not a dict and not a ProjectManifest - raise error
+                raise TypeError(f"Expected dict or ProjectManifest, got {type(manifest)}")
+            
+            # First check if project already exists
+            from roboco.db.service import get_project
+            project_id = project_manifest.id
+            
+            # Validate file paths: Reject any paths with project ID prefixes
+            invalid_paths = []
+            for file_info in project_manifest.files:
+                if file_info.path.startswith(f"{project_id}/") or file_info.path.startswith(f"{project_id}\\"):
+                    invalid_paths.append(file_info.path)
+            
+            # Also check folder paths
+            for folder in project_manifest.folder_structure:
+                if folder.startswith(f"{project_id}/") or folder.startswith(f"{project_id}\\"):
+                    invalid_paths.append(folder)
+            
+            # Fail fast if any invalid paths are found
+            if invalid_paths:
+                error_msg = f"Invalid file paths with project ID prefixes found: {', '.join(invalid_paths)}"
+                logger.error(error_msg)
+                return {
+                    "status": "error",
+                    "message": error_msg
+                }
+            
+            existing_project = get_project(project_id)
+            if existing_project:
+                logger.info(f"Project {project_id} already exists in database, loading instead of creating")
+                project = ProjectManager(
+                    project=existing_project,
+                    fs=ProjectFS(project_id=project_id)
                 )
             else:
-                # Convert to ProjectManifest first to extract required fields
-                project_manifest = dict_to_project_manifest(manifest) if isinstance(manifest, dict) else manifest
-                
-                # Create the project using Project.initialize with extracted values
-                project = Project.initialize(
+                # Create new project since it doesn't exist
+                logger.info(f"Creating new project with ID: {project_id}")
+                project = ProjectManager.initialize(
                     name=project_manifest.name,
                     description=project_manifest.description,
-                    project_id=project_manifest.id,
+                    project_id=project_id,
                     manifest=project_manifest
                 )
             
@@ -330,37 +359,16 @@ class FileSystemTool(Tool):
                 "project_id": project_id
             }
             
-        except ValueError as e:
+        except (ValueError, TypeError) as e:
+            # Catch specific validation errors for clear error messages
             error_msg = str(e)
-            logger.error(f"Error executing project manifest: {error_msg}")
-            logger.error(f"Traceback: {traceback.format_exc()}")
+            logger.error(f"Invalid project manifest: {error_msg}")
             return {
                 "status": "error",
-                "message": f"Failed to execute project manifest: {error_msg}"
-            }
-        except FileNotFoundError as e:
-            error_msg = f"File not found: {str(e)}"
-            logger.error(f"Error executing project manifest: {error_msg}")
-            logger.error(f"Traceback: {traceback.format_exc()}")
-            return {
-                "status": "error",
-                "message": f"Failed to execute project manifest: {error_msg}"
-            }
-        except PermissionError as e:
-            error_msg = f"Permission denied: {str(e)}"
-            logger.error(f"Error executing project manifest: {error_msg}")
-            return {
-                "status": "error",
-                "message": f"Failed to execute project manifest: {error_msg}"
-            }
-        except KeyError as e:
-            error_msg = f"Missing key in manifest: {str(e)}"
-            logger.error(f"Error executing project manifest: {error_msg}")
-            return {
-                "status": "error", 
-                "message": f"Failed to execute project manifest: {error_msg}"
+                "message": f"Invalid project manifest: {error_msg}"
             }
         except Exception as e:
+            # Log detailed error information but provide a clear message
             error_msg = str(e)
             logger.error(f"Error executing project manifest: {error_msg}")
             logger.error(f"Traceback: {traceback.format_exc()}")

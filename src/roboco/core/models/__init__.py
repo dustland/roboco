@@ -20,7 +20,8 @@ from roboco.core.models.project import (
 )
 
 from roboco.core.models.task import (
-    Task
+    Task,
+    TaskStatus
 )
 
 from roboco.core.models.chat import (
@@ -50,6 +51,7 @@ __all__ = [
     "MessageRole",
     "Project",
     "Task",
+    "TaskStatus",
     "ChatRequest",
     "ChatResponse",
     "ChatStatus",

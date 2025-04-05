@@ -63,13 +63,10 @@ async def chat_with_project(
 ):
     """Chat about a specific project."""
     try:
-        # Convert API request to service request
-        service_request = api_to_service_request(request)
-        
-        # Call service method
+        # Call service method directly with project_id and query
         service_response = await api_service.chat_service.continue_project_chat(
             project_id=project_id,
-            query=service_request.query
+            query=request.query
         )
         
         # Convert service response to API response

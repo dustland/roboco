@@ -12,9 +12,7 @@ from roboco.core.models import (
     Project, Task, Message
 )
 from roboco.api.models import (
-    ProjectCreate, ProjectUpdate,
-    TaskCreate, TaskUpdate, 
-    MessageCreate
+    ProjectCreate, ProjectUpdate
 )
 from roboco.db import service
 
@@ -57,15 +55,7 @@ def delete_project(project_id: str):
         raise HTTPException(status_code=404, detail="Project not found")
     return {"message": "Project deleted successfully"}
 
-# Task endpoints within a project
-@router.post("/{project_id}/tasks", response_model=Task)
-def create_task(project_id: str, task_data: TaskCreate):
-    """Create a new task in a project."""
-    task = service.create_task(project_id, task_data)
-    if not task:
-        raise HTTPException(status_code=404, detail="Project not found")
-    return task
-
+# Task endpoints within a project (read-only)
 @router.get("/{project_id}/tasks", response_model=List[Task])
 def get_project_tasks(project_id: str):
     """Get all tasks for a project."""
@@ -84,37 +74,7 @@ def get_task(project_id: str, task_id: str):
         raise HTTPException(status_code=404, detail="Task not found in this project")
     return task
 
-@router.put("/{project_id}/tasks/{task_id}", response_model=Task)
-def update_task(project_id: str, task_id: str, task_data: TaskUpdate):
-    """Update a task within a project."""
-    task = service.get_task(task_id)
-    if not task or task.project_id != project_id:
-        raise HTTPException(status_code=404, detail="Task not found in this project")
-    
-    updated_task = service.update_task(task_id, task_data)
-    return updated_task
-
-@router.delete("/{project_id}/tasks/{task_id}")
-def delete_task(project_id: str, task_id: str):
-    """Delete a task within a project."""
-    task = service.get_task(task_id)
-    if not task or task.project_id != project_id:
-        raise HTTPException(status_code=404, detail="Task not found in this project")
-    
-    success = service.delete_task(task_id)
-    return {"message": "Task deleted successfully"}
-
-# Message endpoints within a task within a project
-@router.post("/{project_id}/tasks/{task_id}/messages", response_model=Message)
-def create_message(project_id: str, task_id: str, message_data: MessageCreate):
-    """Create a new message in a task within a project."""
-    task = service.get_task(task_id)
-    if not task or task.project_id != project_id:
-        raise HTTPException(status_code=404, detail="Task not found in this project")
-    
-    message = service.create_message(task_id, message_data)
-    return message
-
+# Message endpoints within a task within a project (read-only)
 @router.get("/{project_id}/tasks/{task_id}/messages", response_model=List[Message])
 def get_task_messages(project_id: str, task_id: str):
     """Get all messages for a task within a project."""
@@ -135,18 +95,4 @@ def get_message(project_id: str, task_id: str, message_id: str):
     if not message or message.task_id != task_id:
         raise HTTPException(status_code=404, detail="Message not found in this task")
     
-    return message
-
-@router.delete("/{project_id}/tasks/{task_id}/messages/{message_id}")
-def delete_message(project_id: str, task_id: str, message_id: str):
-    """Delete a message in a task within a project."""
-    task = service.get_task(task_id)
-    if not task or task.project_id != project_id:
-        raise HTTPException(status_code=404, detail="Task not found in this project")
-    
-    message = service.get_message(message_id)
-    if not message or message.task_id != task_id:
-        raise HTTPException(status_code=404, detail="Message not found in this task")
-    
-    success = service.delete_message(message_id)
-    return {"message": "Message deleted successfully"} 
+    return message 

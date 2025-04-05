@@ -5,12 +5,11 @@ This module provides services for managing projects, including project creation
 and retrieval of project status.
 """
 
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Union
 from pathlib import Path
 import os
 from datetime import datetime
 import json
-from uuid import uuid4
 
 from roboco.core.config import load_config, get_workspace
 from loguru import logger
@@ -36,98 +35,108 @@ class ProjectService:
         self.config = load_config()
         self.workspace_dir = str(get_workspace(self.config))
 
-    async def get_project(self, project_id: str) -> ProjectManager:
+    async def get_project(self, project_id: str) -> Optional[ProjectManager]:
         """
-        Retrieve a project by its ID.
+        Get a project by ID.
         
         Args:
-            project_id: The ID of the project to retrieve
+            project_id: ID of the project to retrieve
             
         Returns:
-            The Project with the specified ID.
-            
-        Raises:
-            ProjectNotFoundError: If the project cannot be found.
+            ProjectManager instance or None if not found
         """
-        try:
-            # Load the project directly using the project_id
-            return ProjectManager.load(project_id)
-        except ProjectNotFoundError:
-            raise ProjectNotFoundError(f"Project with ID {project_id} not found")
-        except Exception as e:
-            logger.error(f"Error loading project {project_id}: {str(e)}")
-            raise ProjectNotFoundError(f"Project with ID {project_id} not found: {str(e)}")
+        # Import DB operations here to avoid circular imports
+        from roboco.db.service import get_project
+        
+        # Get project from database
+        project_data = get_project(project_id)
+        
+        if not project_data:
+            return None
+            
+        # Create filesystem for the project
+        fs = ProjectFS(project_id=project_id)
+        
+        # Create and return project manager
+        return ProjectManager(
+            project=project_data,
+            fs=fs
+        )
 
     async def list_projects(self) -> List[ProjectManager]:
         """
         List all projects.
         
         Returns:
-            List of all projects.
+            List of ProjectManager instances
         """
-        projects = []
-        workspace_dir = get_workspace(self.config)
+        # Import DB operations here to avoid circular imports
+        from roboco.db.service import get_all_projects
         
-        for project_id in os.listdir(workspace_dir):
-            project_path = os.path.join(workspace_dir, project_id)
+        # Get all projects from database
+        project_data_list = get_all_projects()
+        
+        # Create ProjectManager instances for each project
+        project_managers = []
+        for project_data in project_data_list:
+            fs = ProjectFS(project_id=project_data.id)
+            project_manager = ProjectManager(
+                project=project_data,
+                fs=fs
+            )
+            project_managers.append(project_manager)
             
-            if os.path.isdir(project_path):
-                json_path = os.path.join(project_path, 'project.json')
-                
-                if os.path.exists(json_path):
-                    try:
-                        # Load the project using Project.load
-                        project = ProjectManager.load(project_id)
-                        projects.append(project)
-                    except Exception as e:
-                        logger.error(f"Error loading project from {json_path}: {str(e)}")
-        
-        return projects
+        return project_managers
 
     async def create_project(
-        self,
+        self, 
         name: str,
-        description: str,
+        description: str = "",
         project_id: Optional[str] = None,
-        teams: Optional[List[str]] = None,
-        tags: Optional[List[str]] = None,
-        directory: Optional[str] = None, 
     ) -> ProjectManager:
         """
         Create a new project.
         
         Args:
-            name: Name of the project.
-            description: Description of the project.
-            project_id: Custom project ID (optional, defaults to 'project_{id}')
-            teams: Teams involved in the project (optional).
-            tags: Tags for the project (optional).
-            directory: Directory for the project (optional, defaults to project_id).
+            name: Name of the project
+            description: Optional description of the project
+            project_id: Optional specific ID to use
             
         Returns:
-            The newly created Project.
+            ProjectManager instance for the new project
         """
-        # Generate a unique ID for the project
-        generated_id = generate_short_id()
+        # Use provided ID or generate a new one
+        project_id = project_id or generate_short_id()
         
-        # Use the generated ID if no custom ID is provided
-        if not project_id:
-            project_id = f"project_{generated_id}"
+        # Import DB operations here to avoid circular imports
+        from roboco.db.service import create_project
         
-        # Use project_id as directory if not specified
-        if not directory:
-            directory = project_id
-            
-        # Create the project using Project.initialize
-        project = ProjectManager.initialize(
+        # Create Project instance
+        project = Project(
+            id=project_id,
             name=name,
             description=description,
-            project_id=project_id,
-            teams=teams,
-            directory=directory
         )
         
-        return project
+        # Save to database
+        from roboco.db import get_session_context
+        with get_session_context() as session:
+            session.add(project)
+            session.commit()
+            session.refresh(project)
+        
+        # Create filesystem for the project
+        fs = ProjectFS(project_id=project_id)
+        
+        # Create standard directory structure
+        fs.mkdir_sync("src")
+        fs.mkdir_sync("docs")
+        
+        # Create and return project manager
+        return ProjectManager(
+            project=project,
+            fs=fs
+        )
 
     async def get_project_status(self, project_id: str) -> Dict[str, Any]:
         """
@@ -178,44 +187,7 @@ class ProjectService:
             "path": str(project_fs.base_dir)
         }
 
-    async def find_projects_by_name(self, name: str) -> List[ProjectManager]:
-        """
-        Find projects by name.
-        
-        Args:
-            name: Name to search for (case-insensitive partial match).
-            
-        Returns:
-            List of projects matching the name.
-        """
-        projects = []
-        workspace_dir = get_workspace(self.config)
-        name_lower = name.lower()
-        
-        for project_id in os.listdir(workspace_dir):
-            project_path = os.path.join(workspace_dir, project_id)
-            
-            if os.path.isdir(project_path):
-                json_path = os.path.join(project_path, 'project.json')
-                
-                if os.path.exists(json_path):
-                    try:
-                        with open(json_path, 'r') as f:
-                            project_data = json.load(f)
-                            # Check if name matches
-                            if name_lower in project_data.get("name", "").lower():
-                                try:
-                                    # Load the project using Project.load
-                                    project = ProjectManager.load(project_id)
-                                    projects.append(project)
-                                except Exception as e:
-                                    logger.error(f"Error loading project: {str(e)}")
-                    except Exception as e:
-                        logger.error(f"Error reading project data from {json_path}: {str(e)}")
-        
-        return projects
-
-    async def create_project_from_query(
+    async def initiate_project(
         self, 
         query: str, 
         teams: Optional[List[str]] = None, 
@@ -223,11 +195,10 @@ class ProjectService:
         project_id: Optional[str] = None
     ) -> ProjectManager:
         """
-        Create a project from a natural language query.
+        Initiate a new project based on a natural language query.
         
         Uses PlanningTeam to intelligently parse the query and create a project
-        with appropriate attributes and structure. The project is created in the database
-        first, and then files are written to disk as a reference.
+        with appropriate attributes and structure.
         
         Args:
             query: Natural language description of the project
@@ -238,66 +209,54 @@ class ProjectService:
         Returns:
             The created project with all details
         """
-        # Generate a unique project ID early if not provided
-        if not project_id:
-            project_id = generate_short_id()
-            logger.info(f"Generated project ID: {project_id}")
+        # Use provided ID or generate a new one
+        project_id = project_id or generate_short_id()
+        logger.info(f"Initiating project from query: {query} with ID: {project_id}")
         
-        # Log the start of project creation
-        logger.info(f"Creating project from query: {query} with ID: {project_id}")
-        
-        # Create planning team with workspace directory
+        # Create planning team and run planning
         planning_team = PlanningTeam(project_id=project_id)
         
-        # Prepare planning context with provided project_id
-        planning_context = {
-            "project_id": project_id,
-            "query": query
-        }
+        # Prepare context with metadata to pass to planning phase
+        context = {"project_id": project_id, "query": query}
+        # If metadata is provided, include it in the context for the planning phase
+        if metadata:
+            context["metadata"] = metadata
         
-        # Get planning result - let exceptions propagate
+        # Run the planning process with the enhanced context
         planning_result = await planning_team.run_chat(
             query=query,
-            teams=teams,
-            context=planning_context
+            teams=teams or ["planning"],
+            context=context
         )
         
-        # Use the provided project_id or find it in planning result as fallback
-        project_id_to_use = project_id
-        if not project_id_to_use:
-            project_id_to_use = planning_result.get("project_id") or planning_result.get("project_dir")
-            if not project_id_to_use:
-                # Use the project ID as the directory name
-                project_id_to_use = f"project_{generate_short_id()}"
-                logger.info(f"No project_id in planning result, using generated name: {project_id_to_use}")
+        # Get the project instance directly from the planning result
+        project = planning_result.get("project")
         
-        try:
-            # Initialize the project using the database-first approach
-            # and explicitly set use_files=True to also create file references
-            project = ProjectManager.initialize(
-                name=planning_result.get("name", query[:30] + "..."),
-                description=planning_result.get("description", query),
-                project_id=project_id_to_use,
-                directory=project_id_to_use,
-                manifest=planning_result.get("manifest"),
-                use_files=True  # Create files as well as database records
-            )
+        # Verify we have a valid project
+        if not project:
+            raise ValueError(f"Planning phase did not create a valid project for ID {project_id}")
+        
+        return project
+
+    async def execute_project(self, project_or_id: Union[str, 'ProjectManager']) -> Dict[str, Any]:
+        """
+        Execute the project by running its defined tasks.
+        
+        Args:
+            project_or_id: Either a ProjectManager instance or a project ID string
             
-            # Add metadata if provided
-            if metadata:
-                for key, value in metadata.items():
-                    project.update_metadata(key, value)
+        Returns:
+            Dictionary with execution results
+        """
+        # Handle both ProjectManager instance and project_id string
+        if isinstance(project_or_id, str):
+            # Load the project manager if a string ID was provided
+            project = ProjectManager.load(project_or_id)
+        else:
+            # Use the provided ProjectManager instance directly
+            project = project_or_id
             
-            # Add summary from planning result
-            project.update_metadata("summary", planning_result.get("summary", ""))
-            project.update_metadata("created_from_query", query)
-            project.update_metadata("created_at", datetime.now().isoformat())
-            
-            # Save the project
-            project.save()
-            
-            return project
-            
-        except Exception as e:
-            logger.error(f"Error creating project from query: {str(e)}")
-            raise 
+        # Execute tasks
+        results = await project.execute_tasks()
+        
+        return results 
