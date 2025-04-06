@@ -197,3 +197,7 @@ workspace/
 user_data/
 user_data/*
 !user_data/.gitkeep
+
+*.db
+*.db-shm
+*.db-wal

@@ -143,11 +143,12 @@ class TaskManager:
         lines = [f"# Tasks for {project_name}", ""]
         
         for task in tasks:
-            # Create checkbox outside the heading but on the same line
-            status_indicator = "x" if task.status == TaskStatus.COMPLETED else " "
+            # Add the heading first, then the checkbox as a separate element
+            lines.append(f"## Task: {task.title}")
             
-            # Add the task title with checkbox in front
-            lines.append(f"- [{status_indicator}] ## Task: {task.title}")
+            # Add status indicator on the next line, not inside the heading
+            status_indicator = "x" if task.status == TaskStatus.COMPLETED else " "
+            lines.append(f"- [{status_indicator}] Status: {'Completed' if task.status == TaskStatus.COMPLETED else 'Todo'}")
             lines.append("")
             
             # Add description
