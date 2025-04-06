@@ -39,7 +39,7 @@ source venv/bin/activate  # On Unix/macOS
 pip install uv
 uv pip install -e .
 
-# Install UI dependencies (optional)
+# Install UI dependencies (recommended)
 uv pip install ".[ui]"
 
 # OR install with standard pip
@@ -50,20 +50,25 @@ uv pip install ".[ui]"
 cp .env.example .env
 # Edit .env with your API keys
 
-# Run the simple chat example (simplest way to get started)
-python examples/services/chat_example.py
-
-# Or use the integrated UI (recommended)
+# Run RoboCo with the UI (recommended approach)
 # First, start the API server in one terminal:
-roboco-api-dev
+roboco-api  # Uses multiple workers, recommended for chat applications
 # Then, in another terminal, start the UI:
 roboco-ui
+# Open your browser to http://localhost:8501
+```
 
-# Additional commands available after installation
-roboco-api  # Starts the API server using installed package
-roboco-api-dev  # Starts the API server in development mode with auto-reload
-roboco-db-api  # Starts a minimal database API server
-roboco-ui  # Starts the web UI (requires the API server to be running)
+## Development
+
+For development and testing, you can also run RoboCo directly from Python:
+
+```bash
+# Run a simple chat example (useful for quick testing)
+python examples/services/chat_example.py
+
+# Start the API server in development mode with auto-reload (single worker)
+# Note: roboco-api-dev uses a single worker and may timeout with complex chat requests
+roboco-api-dev
 ```
 
 ## Documentation
@@ -72,34 +77,6 @@ roboco-ui  # Starts the web UI (requires the API server to be running)
 - [Object Model](docs/object_model.md) - Core domain models
 - [Tool System](docs/tool.md) - Tool system
 - [MCP](docs/mcp.md) - Model-Context-Protocol support
-
-## Web Interface
-
-RoboCo includes a built-in web interface for interacting with the system and monitoring project execution:
-
-<img src="./assets/ui-screenshot.png" alt="RoboCo UI" width="700px">
-
-### Features
-
-- **Chat Interface**: Communicate with RoboCo agents through a familiar chat UI
-- **Execution Monitoring**: Track project progress and task completion in real-time
-- **File Explorer**: Browse and view files generated during project execution
-- **Execution Control**: Stop running processes when needed
-- **Project Management**: Load existing conversations and manage projects
-
-### Running the UI
-
-The UI requires the API server to be running. Launch them in separate terminals:
-
-```bash
-# Terminal 1: Start the API server
-roboco-api-dev
-
-# Terminal 2: Start the UI
-roboco-ui
-```
-
-Then open your browser to http://localhost:8501 to access the interface.
 
 ## Contributing
 
