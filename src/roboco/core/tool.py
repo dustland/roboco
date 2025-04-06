@@ -8,7 +8,6 @@ It wraps autogen.tools.Tool to provide a consistent interface for all Roboco too
 import inspect
 from typing import Any, Callable, Dict, Optional, TypeVar, Set
 from loguru import logger
-from docstring_parser import parse as parse_docstring
 
 from autogen.tools import Tool as AutogenTool
 
@@ -169,31 +168,61 @@ class Tool(AutogenTool):
             command_func = self.commands[command]
             
             try:
-                # Call the function with the parameters
+                # Get function signature to understand parameter requirements
+                sig = inspect.signature(command_func)
+                param_names = list(sig.parameters.keys())
+                
+                # If args is a dictionary, map keys to function parameters
                 if isinstance(args, dict):
-                    # Get function signature to understand parameter order
-                    sig = inspect.signature(command_func)
-                    param_names = list(sig.parameters.keys())
+                    # Skip 'self' as it's handled automatically for method calls
+                    param_names = [p for p in param_names if p != 'self']
                     
-                    # Handle case where args doesn't include required parameters
-                    missing_params = [p for p in param_names if p != 'self' and p not in args 
-                                      and sig.parameters[p].default == inspect.Parameter.empty]
-                    if missing_params:
-                        missing_str = ", ".join(missing_params)
+                    # First check for required parameters that might be missing
+                    required_params = [p for p in param_names if sig.parameters[p].default == inspect.Parameter.empty]
+                    missing_required = [p for p in required_params if p not in args]
+                    
+                    if missing_required:
                         return {
                             "success": False,
-                            "error": f"❌ Error executing command {command}: missing required parameters: {missing_str}",
+                            "error": f"❌ Error executing command {command}: missing required parameters: {', '.join(missing_required)}",
                             "command": command
                         }
                     
                     # Filter args to only include parameters that exist in the function signature
+                    # This prevents unrelated keys from causing errors
                     valid_args = {k: v for k, v in args.items() if k in param_names}
                     
+                    # Call the function with keyword arguments
                     return command_func(**valid_args)
+                    
+                # If args is a list or tuple, use positional arguments
                 elif isinstance(args, (list, tuple)):
+                    # Skip 'self' when counting required parameters
+                    required_count = len([p for p in param_names if p != 'self' and 
+                                         sig.parameters[p].default == inspect.Parameter.empty])
+                    
+                    if len(args) < required_count:
+                        return {
+                            "success": False,
+                            "error": f"❌ Error executing command {command}: expected at least {required_count} arguments, got {len(args)}",
+                            "command": command
+                        }
+                    
                     return command_func(*args)
+                    
+                # Handle single argument that's not a dict/list/tuple
                 else:
-                    return command_func(args)
+                    # If there's only one parameter (excluding self), pass the argument directly
+                    non_self_params = [p for p in param_names if p != 'self']
+                    if len(non_self_params) == 1:
+                        return command_func(args)
+                    else:
+                        return {
+                            "success": False,
+                            "error": f"❌ Error executing command {command}: expected a dict, list, or tuple for multiple parameters, got {type(args).__name__}",
+                            "command": command
+                        }
+                        
             except TypeError as e:
                 # Provide more helpful error message
                 logger.error(f"❌ Error executing command {command}: {e}")

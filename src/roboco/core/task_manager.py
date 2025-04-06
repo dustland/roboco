@@ -8,6 +8,8 @@ import re
 import traceback
 from datetime import datetime
 from typing import List, Optional, Dict, Any
+import markdown
+from bs4 import BeautifulSoup
 
 from roboco.core.fs import ProjectFS
 from roboco.core.models.task import TaskStatus
@@ -45,6 +47,9 @@ class TaskManager:
         """
         Parse tasks from markdown format into Task objects.
         
+        Uses the markdown package to convert markdown to HTML, then
+        BeautifulSoup to parse the HTML structure for tasks.
+        
         Args:
             markdown_content: Markdown content containing task definitions
             project_id: ID of the project the tasks belong to
@@ -53,25 +58,56 @@ class TaskManager:
             List of Task objects
         """
         tasks = []
-        # Update regex to handle status indicators [x] or [ ]
-        task_pattern = r'## (?:\[([ x])\] )?Task: ([^\n]+)(?:\n+([^#][^\n]*))?\n+((?:- [^\n]+\n+)+)'
-        task_matches = re.finditer(task_pattern, markdown_content)
         
-        for match in task_matches:
-            # Group 1 is the status (if present), Group 2 is the title
-            status_indicator = match.group(1)
-            title = match.group(2).strip()
-            description = match.group(3).strip() if match.group(3) else title
-            details_text = match.group(4).strip()
+        # Convert markdown to HTML and parse with BeautifulSoup
+        html = markdown.markdown(markdown_content)
+        soup = BeautifulSoup(html, 'html.parser')
+        
+        # Find all h2 headers (## Task: Title)
+        h2_elements = soup.find_all('h2')
+        
+        for h2 in h2_elements:
+            # Handle both old format (status in heading) and new format (status after heading)
+            title_text = ""
+            status = TaskStatus.TODO  # Default status
             
-            # Determine task status based on the status indicator
-            status = TaskStatus.COMPLETED if status_indicator == 'x' else TaskStatus.TODO
-            
-            # Extract details from bullet points
+            # Check if we have the old format with status in heading
+            if '[x]' in h2.text or '[ ]' in h2.text:
+                # Old format: extract status from heading
+                status = TaskStatus.COMPLETED if '[x]' in h2.text else TaskStatus.TODO
+                # Clean up the title text
+                title_text = h2.text.replace('[x]', '').replace('[ ]', '').replace('Task:', '').strip()
+            elif 'Task:' in h2.text:
+                # New format: extract title only from heading
+                title_text = h2.text.replace('Task:', '').strip()
+            else:
+                # Not a task heading, skip it
+                continue
+                
+            # Find next sibling elements to find status indicator, description and details
+            current = h2.next_sibling
+            description = title_text  # Default to title if no description found
             details = []
-            for line in details_text.split('\n'):
-                if line.strip().startswith('- '):
-                    details.append(line.strip()[2:].strip())
+            desc_found = False
+            status_found = False
+            
+            # Process elements after the heading
+            while current and not (current.name == 'h2'):
+                # Check if this is the status indicator line (only for new format)
+                if not status_found and current.name and current.text and ('[x]' in current.text or '[ ]' in current.text):
+                    status = TaskStatus.COMPLETED if '[x]' in current.text else TaskStatus.TODO
+                    status_found = True
+                # Otherwise, if it's a paragraph and we haven't found description yet, treat as description
+                elif current.name == 'p' and not desc_found:
+                    # Skip the status indicator paragraph
+                    if not ('[x]' in current.text or '[ ]' in current.text):
+                        description = current.text.strip()
+                        desc_found = True
+                # If it's a list, extract detail points
+                elif current.name == 'ul':
+                    for li in current.find_all('li'):
+                        details.append(li.text.strip())
+                current = current.next_sibling
             
             # Create task metadata
             meta = {"details": details} if details else {}
@@ -79,7 +115,7 @@ class TaskManager:
             # Create the Task object
             task = Task(
                 id=generate_short_id(),
-                title=title,
+                title=title_text,
                 description=description,
                 status=status,
                 project_id=project_id,
@@ -90,7 +126,7 @@ class TaskManager:
             
             tasks.append(task)
         
-        logger.info(f"Parsed {len(tasks)} tasks from markdown")
+        logger.info(f"Parsed {len(tasks)} tasks from markdown using HTML parsing")
         return tasks
     
     def tasks_to_markdown(self, tasks: List[Task], project_name: str) -> str:
@@ -107,19 +143,23 @@ class TaskManager:
         lines = [f"# Tasks for {project_name}", ""]
         
         for task in tasks:
-            # Add status indicator based on task status
-            status_indicator = "[x]" if task.status == TaskStatus.COMPLETED else "[ ]"
+            # Create checkbox outside the heading but on the same line
+            status_indicator = "x" if task.status == TaskStatus.COMPLETED else " "
             
-            # Add the task title with status indicator
-            lines.append(f"## {status_indicator} Task: {task.title}")
+            # Add the task title with checkbox in front
+            lines.append(f"- [{status_indicator}] ## Task: {task.title}")
+            lines.append("")
+            
+            # Add description
             lines.append(f"{task.description}")
             lines.append("")
             
+            # Add details
             details = task.meta.get("details", []) if task.meta else []
-            for detail in details:
-                lines.append(f"- {detail}")
-            
-            lines.append("")
+            if details:
+                for detail in details:
+                    lines.append(f"- {detail}")
+                lines.append("")
         
         return "\n".join(lines)
     

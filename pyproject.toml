@@ -28,9 +28,13 @@ dependencies = [
     "tavily-python",
     "PyGithub", # GitHub API client
     "arxiv", # ArXiv API client
-    "pyautogen @ file:///Users/hugh/dustland/ag2", # Local version of pyautogen
+    "pyautogen @ git+https://github.com/dustland/ag2.git", # Use GitHub version of pyautogen
     "mcp>=1.4.1",
     "markdown>=3.4.0", # For markdown processing
+    "sqlmodel>=0.0.8", # SQL ORM
+    "sqlalchemy>=2.0.0", # SQL toolkit
+    "requests>=2.31.0", # HTTP library
+    "beautifulsoup4>=4.12.0", # For HTML parsing
 ]
 
 [project.optional-dependencies]

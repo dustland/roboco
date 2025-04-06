@@ -132,6 +132,9 @@ class TaskRepository(BaseRepository):
         if not task:
             return None
             
+        # Store the original status for comparison
+        original_status = task.status
+            
         task.status = TaskStatus.COMPLETED
         task.completed_at = datetime.utcnow()
         task.updated_at = datetime.utcnow()
@@ -139,6 +142,45 @@ class TaskRepository(BaseRepository):
         self.session.add(task)
         self.session.commit()
         self.session.refresh(task)
+        
+        # Update the project's updated_at timestamp
+        if task.project_id:
+            from roboco.core.models.project import Project
+            project = self.session.get(Project, task.project_id)
+            if project:
+                project.updated_at = datetime.utcnow()
+                self.session.add(project)
+                self.session.commit()
+                
+                # Update the tasks.md file
+                if original_status != TaskStatus.COMPLETED:
+                    try:
+                        # Import here to avoid circular imports
+                        from roboco.core.fs import ProjectFS
+                        from roboco.core.task_manager import TaskManager
+                        from roboco.db.service import get_tasks_by_project
+                        
+                        # Initialize file system
+                        fs = ProjectFS(project_id=task.project_id)
+                        
+                        # Check if tasks.md exists
+                        if fs.exists_sync("tasks.md"):
+                            # Create task manager
+                            task_manager = TaskManager(fs=fs)
+                            
+                            # Get all tasks for this project
+                            all_tasks = get_tasks_by_project(task.project_id)
+                            
+                            # Generate updated markdown
+                            markdown_content = task_manager.tasks_to_markdown(all_tasks, project.name)
+                            
+                            # Write the updated markdown back to tasks.md
+                            fs.write_sync("tasks.md", markdown_content)
+                            logger.info(f"Updated tasks.md for project {task.project_id} after task completion")
+                    except Exception as e:
+                        # Log but don't fail the operation if tasks.md update fails
+                        logger.error(f"Failed to update tasks.md after task completion: {str(e)}")
+        
         return task
 
 

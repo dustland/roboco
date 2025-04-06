@@ -225,6 +225,9 @@ You MUST reject the implementation and return it to the Developer if ANY of thes
 - Key requirements identified in research are missing from implementation
 - Implementation fundamentally deviates from the research-based approach
 - Significant technical recommendations from research were not followed
+- File paths include project folder/ID names (e.g., `project_id/src/file.js` instead of `src/file.js`)
+- Code contains incorrect import paths that include project folders
+- Resource references (images, data files, etc.) use absolute paths or include project ID
 
 ## Effective Use of Tools
 

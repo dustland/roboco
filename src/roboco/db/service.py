@@ -175,6 +175,9 @@ def update_task(task_id: str, task_data: TaskCreate):
         if not task:
             return None
         
+        # Store the original status to detect status changes
+        original_status = task.status
+        
         # Update fields from task_data
         update_data = task_data.model_dump(exclude_unset=True)
         for key, value in update_data.items():
@@ -193,12 +196,41 @@ def update_task(task_id: str, task_data: TaskCreate):
         session.refresh(task)
         
         # Also update the project's updated_at timestamp
-        if task.project_id:
-            project = session.get(Project, task.project_id)
+        project_id = task.project_id
+        project = None
+        if project_id:
+            project = session.get(Project, project_id)
             if project:
                 project.update_timestamp()
                 session.add(project)
                 session.commit()
+        
+        # If status changed, update the tasks.md file
+        status_changed = original_status != task.status
+        if status_changed and project_id and project:
+            try:
+                # Initialize ProjectFS for file access
+                from roboco.core.fs import ProjectFS
+                fs = ProjectFS(project_id=project_id)
+                
+                # Check if tasks.md exists
+                if fs.exists_sync("tasks.md"):
+                    # Create TaskManager instance
+                    from roboco.core.task_manager import TaskManager
+                    task_manager = TaskManager(fs=fs)
+                    
+                    # Get all tasks for this project
+                    all_tasks = get_tasks_by_project(project_id)
+                    
+                    # Generate updated markdown
+                    markdown_content = task_manager.tasks_to_markdown(all_tasks, project.name)
+                    
+                    # Write the updated markdown back to tasks.md
+                    fs.write_sync("tasks.md", markdown_content)
+                    logger.info(f"Updated tasks.md for project {project_id} after task status change")
+            except Exception as e:
+                # Log but don't fail the operation if tasks.md update fails
+                logger.error(f"Failed to update tasks.md after task status change: {str(e)}")
         
         return task
 

@@ -8,7 +8,6 @@ from datetime import datetime
 from typing import Dict, Any, List, Optional, Callable, Union
 from loguru import logger
 import traceback
-import json
 
 # ag2 and autogen are identical packages
 from autogen import ConversableAgent, register_function
@@ -97,6 +96,10 @@ class Agent(ConversableAgent):
         
         # Add anti-loop protection instructions with stronger language
         system_message = f"{system_message}\n\nCRITICAL INSTRUCTION: Do not transfer control back to an agent that just transferred to you without doing meaningful work first. This creates an infinite loop. Empty or single-word responses with just 'None' are not permitted. You MUST provide substantive content when responding to handoffs."
+        
+        # Note: Detailed agent guidelines including file path rules are included via
+        # the agent.md file, which is appended to all agent prompts through the
+        # AgentFactory._load_markdown_prompt mechanism.
         
         # Create termination message checker function if check_terminate_msg is provided
         is_termination_msg = None

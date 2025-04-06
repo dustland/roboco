@@ -79,21 +79,49 @@ class AgentFactory:
     def _load_markdown_prompt(self, role_key: str) -> Optional[str]:
         """Load a detailed prompt from a markdown file.
         
+        This method loads the role-specific prompt and appends the agent.md guidelines
+        to ensure consistent behavior across all agents.
+        
         Args:
             role_key: The key of the role to load the prompt for
             
         Returns:
-            The contents of the markdown file, or None if the file doesn't exist
+            The combined prompt content, or None if the role prompt doesn't exist
         """
-        file_path = os.path.join(self.prompts_dir, f"{role_key}.md")
-        try:
-            with open(file_path, 'r', encoding='utf-8') as file:
-                prompt = file.read()
-                logger.info(f"Loaded detailed prompt from {file_path}")
-                return prompt
-        except Exception as e:
-            logger.warning(f"Failed to load markdown prompt from {file_path}: {str(e)}")
+        # Define paths
+        role_prompt_path = os.path.join(self.prompts_dir, f"{role_key}.md")
+        agent_guidelines_path = os.path.join(self.prompts_dir, "agent.md")
+        
+        # Check if role prompt exists
+        if not os.path.exists(role_prompt_path):
+            logger.warning(f"Role prompt file not found: {role_prompt_path}")
             return None
+        
+        # Load the role-specific prompt
+        try:
+            with open(role_prompt_path, 'r', encoding='utf-8') as file:
+                role_prompt = file.read()
+                logger.info(f"Loaded role prompt from {role_prompt_path}")
+        except Exception as e:
+            logger.warning(f"Failed to load role prompt from {role_prompt_path}: {str(e)}")
+            return None
+            
+        # Initialize the final prompt with the role prompt
+        final_prompt = role_prompt
+            
+        # Add agent guidelines (append if exists)
+        if os.path.exists(agent_guidelines_path):
+            try:
+                with open(agent_guidelines_path, 'r', encoding='utf-8') as file:
+                    agent_guidelines = file.read()
+                    final_prompt = f"{final_prompt}\n\n---\n\n{agent_guidelines}"
+                    logger.debug(f"Appended agent guidelines to prompt for {role_key}")
+            except Exception as e:
+                logger.warning(f"Failed to load agent guidelines from {agent_guidelines_path}: {str(e)}")
+        else:
+            logger.debug(f"Agent guidelines not found at {agent_guidelines_path}")
+            
+        return final_prompt
     
     def _get_system_prompt(self, role_key: str) -> str:
         """Get the system prompt for a specific role.
