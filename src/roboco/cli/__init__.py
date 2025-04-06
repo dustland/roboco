@@ -21,7 +21,15 @@ def cli(args: Optional[List[str]] = None) -> int:
     server_parser.add_argument("--host", default="127.0.0.1", help="Host to bind the server to")
     server_parser.add_argument("--port", type=int, default=8000, help="Port to bind the server to")
     server_parser.add_argument("--reload", action="store_true", help="Enable auto-reload on code changes")
-    server_parser.add_argument("--workers", type=int, default=1, help="Number of worker processes")
+    server_parser.add_argument("--workers", type=int, default=4, 
+                               help="Number of worker processes (default: 4, helps prevent API from becoming unresponsive during chat operations)")
+    
+    # UI command
+    ui_parser = subparsers.add_parser("ui", help="Start the RoboCo Streamlit UI")
+    ui_parser.add_argument("--host", default="127.0.0.1", help="Host to bind the Streamlit UI to")
+    ui_parser.add_argument("--port", type=int, default=8501, help="Port to bind the Streamlit UI to")
+    ui_parser.add_argument("--server-host", default="127.0.0.1", help="Host of the RoboCo API server")
+    ui_parser.add_argument("--server-port", type=int, default=8000, help="Port of the RoboCo API server")
     
     # Parse args
     parsed_args = parser.parse_args(args)
@@ -33,6 +41,14 @@ def cli(args: Optional[List[str]] = None) -> int:
             port=parsed_args.port,
             reload=parsed_args.reload,
             workers=parsed_args.workers
+        )
+    elif parsed_args.command == "ui":
+        from roboco.cli.ui import launch_ui
+        return launch_ui(
+            host=parsed_args.host,
+            port=parsed_args.port,
+            server_host=parsed_args.server_host,
+            server_port=parsed_args.server_port
         )
     else:
         parser.print_help()

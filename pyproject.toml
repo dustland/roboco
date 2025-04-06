@@ -35,6 +35,8 @@ dependencies = [
     "sqlalchemy>=2.0.0", # SQL toolkit
     "requests>=2.31.0", # HTTP library
     "beautifulsoup4>=4.12.0", # For HTML parsing
+    "streamlit>=1.44.1",
+    "pyarrow>=19.0.1",
 ]
 
 [project.optional-dependencies]
@@ -46,7 +48,12 @@ dev = [
     "pytest-cov",
     "flake8",
 ]
-all = []
+ui = [
+    "streamlit>=1.32.0",
+]
+all = [
+    "streamlit>=1.32.0",
+]
 
 [project.urls]
 "Homepage" = "https://github.com/dustland/roboco"
@@ -56,6 +63,7 @@ all = []
 roboco = "roboco.cli:cli"
 roboco-api = "roboco.api.server:run_api_server"
 roboco-api-dev = "roboco.api.server:run_dev_server"
+roboco-ui = "roboco.cli.ui:launch_ui"
 
 [tool.setuptools]
 package-dir = {"" = "src"}

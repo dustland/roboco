@@ -12,7 +12,7 @@ def main(
     host: str = "127.0.0.1", 
     port: int = 8000,
     reload: bool = False,
-    workers: int = 1
+    workers: int = 4
 ) -> int:
     """
     Start the RoboCo API server.
@@ -28,6 +28,17 @@ def main(
     """
     try:
         print(f"Starting RoboCo API server on http://{host}:{port}")
+        
+        # Effective worker count based on reload mode
+        effective_workers = 1 if reload else workers
+        
+        if reload and workers > 1:
+            print("\n⚠️ Warning: In reload mode, only a single worker can be used.")
+            print("   To use multiple workers, disable reload mode.")
+            print(f"   Proceeding with 1 worker instead of requested {workers}.\n")
+        else:
+            print(f"Using {effective_workers} worker{'s' if effective_workers > 1 else ''}")
+        
         print("Press Ctrl+C to stop")
         
         # Configure Uvicorn options
@@ -36,7 +47,7 @@ def main(
             "host": host,
             "port": port,
             "reload": reload,
-            "workers": workers if not reload else 1,  # Cannot use multiple workers with reload
+            "workers": effective_workers,
             "log_level": "info",
         }
         

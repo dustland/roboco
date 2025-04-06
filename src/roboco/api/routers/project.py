@@ -55,6 +55,38 @@ def delete_project(project_id: str):
         raise HTTPException(status_code=404, detail="Project not found")
     return {"message": "Project deleted successfully"}
 
+@router.post("/{project_id}/stop")
+def stop_project_execution(project_id: str):
+    """Stop the execution of a project.
+    
+    This endpoint attempts to gracefully stop any ongoing execution
+    for the specified project. It will return success even if no
+    execution is currently running.
+    """
+    from roboco.core.project_manager import ProjectManager
+    
+    # Check if project exists
+    project = service.get_project(project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    
+    try:
+        # Load project manager
+        project_manager = ProjectManager.load(project_id)
+        
+        # Set project status to stopped
+        project.meta = project.meta or {}
+        project.meta["execution_status"] = "stopped"
+        project.meta["stopped_at"] = str(Project.now())
+        service.update_project(project_id, project)
+        
+        return {"success": True, "message": f"Execution stopped for project {project_id}"}
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, 
+            detail=f"Failed to stop project execution: {str(e)}"
+        )
+
 # Task endpoints within a project (read-only)
 @router.get("/{project_id}/tasks", response_model=List[Task])
 def get_project_tasks(project_id: str):

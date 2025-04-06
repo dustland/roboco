@@ -236,6 +236,10 @@ class VersatileTeam(Team):
             OnCondition(
                 condition="Indicates a need for testing, evaluation, review, validation, or quality assessment.",
                 target=self.evaluator
+            ),
+            # If no specialist handoff is needed, lead should finalize the response
+            AfterWork(
+                agent=AfterWorkOption.TERMINATE  # Return final response to the user when no conditions match
             )
         ])
         
@@ -277,12 +281,12 @@ class VersatileTeam(Team):
                 condition="Includes substantive evaluation results AND (indicates issues with data retrieval, API functionality, or data processing OR mentions bugs/improvements needed in the code).",
                 target=self.developer
             ),
-            # Default: Evaluator back to Lead when evaluation is complete and all tests pass
+            # Evaluator back to Lead when evaluation is complete and has findings
             OnCondition(
-                condition="Indicates all tests have passed, including data retrieval validation AND no critical issues were found.",
+                condition="Includes detailed test results, validation findings, or quality assessment AND indicates the evaluation work is complete or has reached a conclusion.",
                 target=self.lead
             ),
-            # Fallback to Lead if no conditions match
+            # Fallback to Lead if no conditions match - this prevents loops
             AfterWork(
                 agent=self.lead
             )

@@ -26,7 +26,6 @@ def api_to_service_request(api_request: ApiChatRequest) -> ServiceChatRequest:
 def service_to_api_response(service_response: ServiceChatResponse) -> ApiChatResponse:
     """Convert a service chat response to an API chat response."""
     return ApiChatResponse(
-        conversation_id=service_response.conversation_id,
         message=service_response.message,
         project_id=service_response.project_id,
         task_id=service_response.task_id,

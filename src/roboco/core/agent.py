@@ -218,6 +218,10 @@ class Agent(ConversableAgent):
         
         This method is called by the AutoGen framework.
         """
+        # Ensure messages is not None
+        if messages is None:
+            messages = []
+            
         # Track handoffs and detect potential loops
         if sender is not None:
             sender_name = getattr(sender, "name", str(sender))
@@ -225,33 +229,13 @@ class Agent(ConversableAgent):
             # Track who we received a message from
             self.last_handoff_from = sender_name
             
-            # Increase handoff count for this sender
+            # Increase handoff count for this sender - we keep this for tracking purposes
             if sender_name not in self.handoff_count:
                 self.handoff_count[sender_name] = 1
             else:
                 self.handoff_count[sender_name] += 1
                 
-            # Check if this is a potential loop (many handoffs from same sender)
-            if self.handoff_count[sender_name] > 3:
-                logger.warning(f"⚠️ Potential handoff loop detected: {sender_name} → {self.name} occurred {self.handoff_count[sender_name]} times")
-                
-                # Log the previous messages to help with debugging
-                if messages and len(messages) >= 3:
-                    logger.warning("Recent message history:")
-                    for i, msg in enumerate(messages[-3:]):
-                        content = msg.get("content", "")
-                        name = msg.get("name", "unknown")
-                        logger.warning(f"  [{i}] {name}: {content[:50]}{'...' if len(content) > 50 else ''}")
-                
-                # Add a warning message to help break the loop
-                if messages and len(messages) > 0:
-                    # Check if the last message is from the sender
-                    if messages[-1].get("name", "") == sender_name:
-                        # Add a hint to break the loop with stronger language
-                        messages.append({
-                            "role": "system", 
-                            "content": f"CRITICAL INSTRUCTION: You've received multiple consecutive handoffs from {sender_name}. This indicates an infinite conversation loop. DO NOT hand control back to {sender_name} immediately. You MUST perform a substantive task or provide meaningful information before any handoff. Empty responses with just 'None' are not permitted and will be rejected."
-                        })
+            # The handoff loop detection warnings have been removed as the process works fine without them
         
         try:
             # Call the original method to generate a response
@@ -263,16 +247,12 @@ class Agent(ConversableAgent):
                 content = response.get("content", "")
                 if not content or content == "None" or len(content.strip()) <= 5:
                     is_empty_response = True
-                    logger.warning(f"⚠️ Empty response detected from {self.name}: '{content}'")
-                    logger.warning(f"This may contribute to handoff loops. Responses should be substantive.")
+                    logger.debug(f"Empty response detected from {self.name}: '{content}'")
                     
-                    # Log additional information to help debug
+                    # Log additional information in debug level only
                     logger.debug(f"Agent model: {getattr(self, 'llm_config', {}).get('model', 'unknown')}")
                     logger.debug(f"Last handoff from: {self.last_handoff_from}")
                     logger.debug(f"Handoff counts: {self.handoff_count}")
-                    
-                    # Consider modifying the response to break the loop
-                    # We're not automatically changing it per your request, but adding robust logging
             
             return response
             

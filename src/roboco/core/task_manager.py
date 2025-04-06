@@ -10,6 +10,7 @@ from datetime import datetime
 from typing import List, Optional, Dict, Any
 import markdown
 from bs4 import BeautifulSoup
+import os
 
 from roboco.core.fs import ProjectFS
 from roboco.core.models.task import TaskStatus
@@ -544,28 +545,41 @@ Instructions:
         """
         context_parts = []
         
-        # Add basic context
-        context_parts.append(f"Task: {current_task.description}")
+        # Add current task information with clear heading
+        context_parts.append("## Current Task")
+        context_parts.append(f"Title: {current_task.title}")
+        context_parts.append(f"Description: {current_task.description}")
+        context_parts.append(f"Status: {current_task.status.value}")
         
-        # Add other tasks if available for context
+        # Add other tasks if available with clear separation
         if tasks:
             task_summaries = []
             for task in tasks:
-                if task != current_task:
+                if task.id != current_task.id:  # Use ID comparison for safety
                     status = "COMPLETED" if task.status == TaskStatus.COMPLETED else "TODO"
-                    task_summaries.append(f"- {task.description} [{status}]")
+                    task_summaries.append(f"- Title: {task.title}")
+                    task_summaries.append(f"  Description: {task.description}")
+                    task_summaries.append(f"  Status: {status}")
             
             if task_summaries:
-                context_parts.append("\nOther tasks in project:")
+                context_parts.append("\n## Other Tasks")
                 context_parts.extend(task_summaries)
         
-        # Add project structure - simply list all directories without assumptions
+        # Add project structure information with clear heading
         try:
-            # List top-level directories and files
+            # Get project ID from base directory name
+            project_id = os.path.basename(self.fs.base_dir)
+            
+            # Add basic project structure information
+            context_parts.append("\n## Project Structure")
+            context_parts.append(f"- Project root: {project_id}")
+            context_parts.append(f"- Source code directory: src")
+            context_parts.append(f"- Documentation directory: docs")
+            
+            # List top-level directories and files with clear heading
             root_items = self.fs.list_sync(".")
             if root_items:
-                context_parts.append("\nProject Structure:")
-                context_parts.append("\nRoot Directory Contents:")
+                context_parts.append("\n## Root Directory Contents")
                 for item in root_items:
                     context_parts.append(f"- {item}")
         

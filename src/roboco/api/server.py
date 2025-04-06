@@ -104,19 +104,33 @@ def run_api_server():
     Run with 'roboco-api' after installing the package.
     """
     import uvicorn
+    import multiprocessing
     
     # Get configuration from environment or use defaults
     host = os.getenv("HOST", "127.0.0.1")
     port = int(os.getenv("PORT", "8000"))
     
-    # Run the server - use direct app instance for production
-    uvicorn.run(app, host=host, port=port)
+    # Calculate default workers: Either specified by env var, minimum of 4, or CPU count
+    default_workers = int(os.getenv("WORKERS", "4"))
+    
+    logger.info(f"Starting Roboco API server on {host}:{port} with {default_workers} workers")
+    
+    # Run the server - use direct app instance for production with multiple workers
+    uvicorn.run(
+        app, 
+        host=host, 
+        port=port, 
+        workers=default_workers
+    )
 
 
 def run_dev_server():
     """
     Entry point for the API server in development mode with auto-reload.
     Run with 'roboco-api-dev' after installing the package.
+    
+    Note: In development mode with auto-reload enabled, we can only use a single worker.
+    For multi-worker support, use the regular 'roboco-api' command.
     """
     import uvicorn
     
@@ -126,8 +140,9 @@ def run_dev_server():
     
     logger.info(f"Starting Roboco API server in development mode on {host}:{port}")
     logger.info("Auto-reload is enabled - server will restart when code changes")
+    logger.warning("Development mode only supports a single worker. For multi-worker support, use 'roboco-api' instead.")
     
-    # Run with reload=True for development mode
+    # Run with reload=True for development mode (limited to a single worker)
     uvicorn.run(
         "roboco.api.server:app", 
         host=host, 

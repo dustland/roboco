@@ -21,8 +21,7 @@ from roboco.api.models.message import (
 
 # Chat models
 from roboco.api.models.chat import (
-    ChatRequest, ChatResponse, 
-    ConversationItem, ConversationStatus
+    ChatRequest, ChatResponse
 )
 
 __all__ = [
@@ -42,7 +41,5 @@ __all__ = [
 
     # Chat API models
     "ChatRequest",
-    "ChatResponse",
-    "ConversationItem", 
-    "ConversationStatus"
+    "ChatResponse"
 ] 

@@ -39,8 +39,12 @@ source venv/bin/activate  # On Unix/macOS
 pip install uv
 uv pip install -e .
 
+# Install UI dependencies (optional)
+uv pip install ".[ui]"
+
 # OR install with standard pip
 # pip install -e .
+# pip install -e ".[ui]"  # With UI dependencies
 
 # Configure API keys
 cp .env.example .env
@@ -49,10 +53,17 @@ cp .env.example .env
 # Run the simple chat example (simplest way to get started)
 python examples/services/chat_example.py
 
+# Or use the integrated UI (recommended)
+# First, start the API server in one terminal:
+roboco-api-dev
+# Then, in another terminal, start the UI:
+roboco-ui
+
 # Additional commands available after installation
 roboco-api  # Starts the API server using installed package
 roboco-api-dev  # Starts the API server in development mode with auto-reload
 roboco-db-api  # Starts a minimal database API server
+roboco-ui  # Starts the web UI (requires the API server to be running)
 ```
 
 ## Documentation
@@ -61,6 +72,34 @@ roboco-db-api  # Starts a minimal database API server
 - [Object Model](docs/object_model.md) - Core domain models
 - [Tool System](docs/tool.md) - Tool system
 - [MCP](docs/mcp.md) - Model-Context-Protocol support
+
+## Web Interface
+
+RoboCo includes a built-in web interface for interacting with the system and monitoring project execution:
+
+<img src="./assets/ui-screenshot.png" alt="RoboCo UI" width="700px">
+
+### Features
+
+- **Chat Interface**: Communicate with RoboCo agents through a familiar chat UI
+- **Execution Monitoring**: Track project progress and task completion in real-time
+- **File Explorer**: Browse and view files generated during project execution
+- **Execution Control**: Stop running processes when needed
+- **Project Management**: Load existing conversations and manage projects
+
+### Running the UI
+
+The UI requires the API server to be running. Launch them in separate terminals:
+
+```bash
+# Terminal 1: Start the API server
+roboco-api-dev
+
+# Terminal 2: Start the UI
+roboco-ui
+```
+
+Then open your browser to http://localhost:8501 to access the interface.
 
 ## Contributing
 
