@@ -15,13 +15,12 @@ RoboCo is a powerful platform that combines Domain-Driven Design with Multi-Agen
 
 ## Key Features
 
-- **Domain-Driven Design**: Clean architecture with proper separation of concerns and dependency injection
-- **Multi-Agent Teams**: Specialized agents that collaborate to solve complex problems
-- **Sprint Management**: Built-in project and sprint management for agile development
+- **Configuration-Based Multi-Agent Teams**: Specialized agents that collaborate to solve complex problems including Lead, Researcher, Developer, Evaluator etc, and also with prompts configurable
+- **Project Management**: Built-in project and task tracking with markdown integration
 - **MCP Integration**: Model Context Protocol for enhanced agent communication and reasoning
-- **Extensible Tools**: Plug-and-play tools for research, analysis, and interaction
-- **REST API**: Comprehensive API with FastAPI for seamless integration
-- **Workspace Management**: Organized workspaces for artifacts and project resources
+- **Extensible Tools**: Plug-and-play tools for research, analysis, and code generation
+- **Multi-Language Support**: Code generation and execution in multiple programming languages
+- **REST API**: Comprehensive API with FastAPI for seamless integration, easier for visualization of the execution
 
 ## Quick Start
 
@@ -30,22 +29,27 @@ RoboCo is a powerful platform that combines Domain-Driven Design with Multi-Agen
 git clone https://github.com/dustland/roboco.git
 cd roboco
 
-# Setup environment
-./setup.sh  # On Unix/macOS
-# or
-setup.bat   # On Windows
+# Create and activate virtual environment
+python -m venv venv
+source venv/bin/activate  # On Unix/macOS
+# OR
+# venv\Scripts\activate  # On Windows
+
+# Install dependencies with uv (faster, modern approach)
+pip install uv
+uv pip install -e .
+
+# OR install with standard pip
+# pip install -e .
 
 # Configure API keys
 cp .env.example .env
 # Edit .env with your API keys
 
-# Start the API server
-./start.sh  # Uses default host (127.0.0.1) and port (8000)
-# Or with custom options
-./start.sh --host=0.0.0.0 --port=8080 --reload
+# Run the simple chat example (simplest way to get started)
+python examples/services/chat_example.py
 
-# If installed as a package
-pip install -e .
+# Additional commands available after installation
 roboco-api  # Starts the API server using installed package
 roboco-api-dev  # Starts the API server in development mode with auto-reload
 roboco-db-api  # Starts a minimal database API server
@@ -58,52 +62,9 @@ roboco-db-api  # Starts a minimal database API server
 - [Tool System](docs/tool.md) - Tool system
 - [MCP](docs/mcp.md) - Model-Context-Protocol support
 
-## Configuration
-
-RoboCo uses environment variables for configuration with sensible defaults:
-
-```
-# .env
-OPENAI_API_KEY=your_api_key_here
-WORKSPACE_DIR=~/roboco_workspace
-LOG_LEVEL=INFO
-```
-
-The `start.sh` script provides a convenient way to launch the API server with various configuration options:
-
-```bash
-# Basic usage
-./start.sh
-
-# Available options
-./start.sh --host=0.0.0.0     # Bind to all interfaces
-./start.sh --port=8080        # Use custom port
-./start.sh --reload           # Enable auto-reload for development
-./start.sh --workers=4        # Use multiple worker processes
-./start.sh --help             # Show all available options
-```
-
-When using the `roboco-api` script, you can configure the server with environment variables:
-
-```bash
-# Set host and port via environment variables
-HOST=0.0.0.0 PORT=8080 roboco-api
-
-# Or export them for the session
-export HOST=0.0.0.0
-export PORT=8080
-roboco-api
-```
-
 ## Contributing
 
 We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) for details and our [Code of Conduct](CODE_OF_CONDUCT.md).
-
-## Contact
-
-- 🌐 X: [@dustland_ai](https://twitter.com/dustland_ai)
-- 🌐 Github: [dustland](https//github.com/dustland)
-- 🌐 Website: [dustland.ai](https://dustland.ai)
 
 ## Acknowledgments
 
