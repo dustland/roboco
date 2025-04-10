@@ -6,14 +6,15 @@ It focuses solely on chat operations, delegating project management to ProjectSe
 """
 
 from typing import Dict, Any, Optional
-from loguru import logger
-
-logger = logger.bind(module=__name__)
 
 from roboco.services.project_service import ProjectService
 from roboco.core.models.chat import ChatRequest, ChatResponse, ChatStatus
 from roboco.utils.id_generator import generate_short_id
 
+from loguru import logger
+
+# Initialize logger immediately after import
+logger = logger.bind(module=__name__)
 
 class ChatService:
     """
@@ -46,12 +47,26 @@ class ChatService:
                 metadata={"chat_request": chat_request.dict()}
             )
             
+            if not project:
+                raise ValueError("Failed to create project - project_service.initiate_project returned None")
+                
+            # Log the project details to help diagnose issues
+            logger.info(f"Created project with ID: {project.project_id}, name: {project.name}")
+            
             # Pass the project instance directly to execute_project
             logger.info(f"Executing tasks for project: {project.project_id}")
-            await self.project_service.execute_project(project)
+            try:
+                await self.project_service.execute_project(project)
+            except Exception as exec_err:
+                logger.error(f"Error executing project: {str(exec_err)}")
+                # Continue with partial results, don't abort the whole operation
             
             # Get project status from project service
-            project_status = await self.project_service.get_project_status(project.project_id)
+            try:
+                project_status = await self.project_service.get_project_status(project.project_id)
+            except Exception as status_err:
+                logger.error(f"Error getting project status: {str(status_err)}")
+                project_status = {"status": "error", "message": str(status_err)}
             
             # Create response from project data
             return ChatResponse(
@@ -61,7 +76,9 @@ class ChatService:
                 status=ChatStatus.COMPLETED
             )
         except Exception as e:
+            import traceback
             logger.error(f"Error in start_chat: {str(e)}")
+            logger.error(f"Traceback: {traceback.format_exc()}")
             # Return error response
             return ChatResponse(
                 project_id=generate_short_id(),  # Generate placeholder ID for error case

@@ -14,55 +14,48 @@ from loguru import logger
 logger = logger.bind(module=__name__)
 
 # Define Pydantic models for project manifest
-class ProjectFile(BaseModel):
-    """File to be created in the project."""
-    path: str = Field(..., description="Path to the file within the project")
-    content: str = Field(..., description="Content of the file")
-    
-    @field_validator('path')
-    @classmethod
-    def validate_path(cls, v):
-        """Validate that the path is relative and doesn't contain ../ traversal."""
-        if v.startswith('/'):
-            raise ValueError(f"Path must be relative, not absolute: {v}")
-        if '../' in v:
-            raise ValueError(f"Path must not contain directory traversal: {v}")
-        return v
+class TaskItem(BaseModel):
+    """Task definition within a project manifest."""
+    title: str = Field(..., description="Title of the task")
+    description: str = Field(..., description="Description of the task")
+    details: List[str] = Field(default_factory=list, description="Detailed list of task steps or requirements")
+    status: str = Field(default="todo", description="Status of the task (todo, in_progress, completed, etc.)")
 
 class ProjectManifest(BaseModel):
     """Manifest describing a project structure and metadata."""
     id: str = Field(..., description="Project unique identifier")
     name: str = Field(..., description="Human-readable project name")
     description: str = Field(..., description="Project description")
-    structure: Dict[str, Any] = Field(default_factory=dict, description="Project structure type")
-    folder_structure: List[str] = Field(default_factory=list, description="List of top-level directories")
-    files: Optional[List[ProjectFile]] = Field(default_factory=list, description="Files to create")
+    tasks: List[TaskItem] = Field(default_factory=list, description="Tasks for the project")
     
-    @model_validator(mode='after')
-    def validate_paths(self):
-        """Validate that file and folder paths don't include project ID as prefix."""
-        project_id = self.id
-        if not project_id:
-            return self
+    def tasks_to_markdown(self) -> str:
+        """Convert tasks to markdown format.
+        
+        Returns:
+            Markdown string representation of the tasks
+        """
+        lines = [f"# Tasks for {self.name}", ""]
+        
+        for task in self.tasks:
+            # Add the heading first, then the checkbox as a separate element
+            lines.append(f"## Task: {task.title}")
             
-        # Check folder paths
-        for folder in self.folder_structure:
-            if folder.startswith(f"{project_id}/") or folder.startswith(f"{project_id}\\"):
-                raise ValueError(
-                    f"Folder path '{folder}' includes project ID as prefix. "
-                    f"Paths must be relative to the project root without including the project ID."
-                )
-                
-        # Check file paths
-        for file_info in self.files:
-            if hasattr(file_info, 'path'):
-                if file_info.path.startswith(f"{project_id}/") or file_info.path.startswith(f"{project_id}\\"):
-                    raise ValueError(
-                        f"File path '{file_info.path}' includes project ID as prefix. "
-                        f"Paths must be relative to the project root without including the project ID."
-                    )
-                    
-        return self
+            # Add status indicator on the next line, not inside the heading
+            status_indicator = "x" if task.status == "completed" else " "
+            lines.append(f"- [{status_indicator}] Status: {'Completed' if task.status == 'completed' else 'Todo'}")
+            lines.append("")
+            
+            # Add description
+            lines.append(f"{task.description}")
+            lines.append("")
+            
+            # Add details
+            if task.details:
+                for detail in task.details:
+                    lines.append(f"- {detail}")
+                lines.append("")
+        
+        return "\n".join(lines)
     
     model_config = {
         "json_schema_extra": {
@@ -70,16 +63,18 @@ class ProjectManifest(BaseModel):
                 "id": "A1c23fb",
                 "name": "Todo App",
                 "description": "A simple todo application",
-                "structure": {"type": "dev"},
-                "folder_structure": ["src", "docs", "tests"],
-                "files": [
+                "tasks": [
                     {
-                        "path": "tasks.json",
-                        "content": "{\"project_id\": \"A1c23fb\", \"tasks\": []}"
+                        "title": "Set up project structure",
+                        "description": "Create the initial project directory structure",
+                        "details": ["Create src directory", "Create docs directory", "Create tests directory"],
+                        "status": "todo"
                     },
                     {
-                        "path": "project.json",
-                        "content": "{\"id\": \"A1c23fb\", \"name\": \"Todo App\", \"description\": \"A simple todo application\", \"created_at\": \"2023-01-01T00:00:00\"}"
+                        "title": "Implement core functionality",
+                        "description": "Develop the core features of the application",
+                        "details": ["Create data models", "Implement business logic", "Set up database connections"],
+                        "status": "todo"
                     }
                 ]
             }

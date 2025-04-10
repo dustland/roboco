@@ -38,38 +38,80 @@ class Team(ABC):
         config_path: Optional[str] = None,
         fs: ProjectFS = None
     ):
-        """Initialize a team of agents.
+        """Initialize the team.
         
         Args:
-            name: Name of the team
-            agents: Dictionary of agents in the team (name -> agent)
-            config_path: Optional path to team configuration file
+            name: Team name
+            agents: Dictionary mapping agent names to instances
+            config_path: Optional path to configuration file
+            fs: ProjectFS instance for file operations
         """
         self.name = name
         self.agents = agents or {}
+        self.config_path = config_path
+        self.fs = fs or ProjectFS()
         
+        # Create task ID tracking for message recording
+        self.current_task_id = None
+        self.message_recorder = None  # Will be set by the task manager when task execution starts
+        
+        # Setup swarm orchestration
+        self.swarm_enabled = False
+        self.shared_context = {}
+        
+        # Link agents back to their team
+        for agent_name, agent in self.agents.items():
+            # Create a reference from the agent to this team
+            agent.team = self
+            
         # Load configuration
         self.config = load_config(config_path)
         self.llm_config = get_llm_config(self.config)
         
-        self.fs = fs
-        
         # Storage for output artifacts
         self.artifacts = {}
         
-        # Swarm configuration
-        self.swarm_enabled = False
-        self.shared_context = {}
+        logger.info(f"Initialized team '{name}' with {len(self.agents)} agents")
+    
+    def add_agent(self, role_key: str, agent: ConversableAgent) -> None:
+        """Add an agent to the team.
         
-        logger.info(f"Initialized Team: {name} with {len(self.agents)} agents")
+        Args:
+            role_key: Role key (used as the key in the agents dictionary)
+            agent: Agent to add
+        """
+        self.agents[role_key] = agent
+        # Create a reference from the agent to this team
+        agent.team = self
+        
+        # Ensure agent has required attributes for proper message handling
+        if not hasattr(agent, 'last_handoff_from'):
+            agent.last_handoff_from = None
+        if not hasattr(agent, 'handoff_count'):
+            agent.handoff_count = {}
+            
+        logger.info(f"Added agent '{agent.name}' to team with role '{role_key}'")
     
-    def add_agent(self, agent_name: str, agent: ConversableAgent) -> None:
-        """Add an agent to the team."""
-        self.agents[agent_name] = agent
-    
-    def get_agent(self, agent_name: str) -> Optional[ConversableAgent]:
-        """Get an agent from the team by name."""
-        return self.agents.get(agent_name)
+    def get_agent(self, name_or_role: str) -> Optional[ConversableAgent]:
+        """Get an agent by name or role key.
+        
+        Args:
+            name_or_role: Name or role key of the agent to get
+            
+        Returns:
+            Agent if found, otherwise None
+        """
+        # Check if the agent exists in the collection by role key
+        if name_or_role in self.agents:
+            return self.agents[name_or_role]
+            
+        # Alternative lookup by agent name if not found by role key
+        for role, agent in self.agents.items():
+            if agent.name.lower() == name_or_role.lower():
+                return agent
+                
+        # Return None if no match is found
+        return None
     
     def create_agent(self, agent_class: type, name: str, **kwargs) -> ConversableAgent:
         """Create an agent with the given class and add it to the team."""
@@ -309,11 +351,17 @@ class Team(ABC):
         # Run the swarm
         logger.info(f"Starting swarm with initial agent {initial_agent_name}")
         try:
+            # Prepare initial message with a richer system prompt to avoid empty messages
+            initial_message = {
+                "role": "user", 
+                "content": f"Task: {query}\n\nPlease analyze this task and coordinate with the team to complete it. Provide detailed instructions to team members."
+            }
+            
             # initiate_swarm_chat returns a tuple of (chat_result, context_variables, last_agent)
             chat_result = initiate_swarm_chat(
                 initial_agent=initial_agent,
                 agents=all_agents,
-                messages=[{"role": "user", "content": query}],
+                messages=[initial_message],
                 context_variables=context,
                 max_rounds=max_rounds,
                 after_work=AfterWorkOption.TERMINATE

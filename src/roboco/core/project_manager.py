@@ -32,7 +32,6 @@ class ProjectManager:
         self,
         project: Project,
         fs: ProjectFS,
-        directory: Optional[str] = None,
     ):
         """
         Initialize a project manager.
@@ -40,19 +39,12 @@ class ProjectManager:
         Args:
             project: Project model instance
             fs: ProjectFS instance for file operations
-            directory: Directory path for the project (defaults to project.id)
         """
         # Store the Project model instance
         self.project = project
         
-        # Use project.id as directory if not specified
-        self.directory = directory or project.id
-            
         # Initialize file system
         self.fs = fs
-        
-        # Store tasks as Task objects
-        self.tasks = []
         
         # Initialize team manager for task execution
         self._team_manager = TeamManager(self.fs)
@@ -149,12 +141,10 @@ class ProjectManager:
         # Start with the project model's dictionary
         result = self.project.to_dict()
         
-        # Add additional manager-specific fields
-        result["directory"] = self.directory
-        
-        # Include tasks if loaded
-        if self.tasks:
-            result["tasks"] = [task.to_dict() if hasattr(task, 'to_dict') else task for task in self.tasks]
+        # Include tasks if needed by getting them directly from the task manager
+        tasks = self._task_manager.load_tasks(self.project.id)
+        if tasks:
+            result["tasks"] = [task.to_dict() if hasattr(task, 'to_dict') else task for task in tasks]
         
         return result
     
@@ -178,7 +168,6 @@ class ProjectManager:
         return cls(
             project=project,
             fs=fs,
-            directory=project.meta.get("directory", project.id)
         )
     
     @classmethod
@@ -229,24 +218,51 @@ class ProjectManager:
         if not fs and project.id:
             fs = ProjectFS(project_id=project.id)
         
-        # Get directory or use project_id as fallback
-        directory = data.get("directory", project.id)
-        
         # Create the project manager
         project_manager = cls(
             project=project,
-            fs=fs,
-            directory=directory
+            fs=fs
         )
         
-        # Add tasks if present
-        tasks = []
-        for task_data in data.get("tasks", []):
-            if isinstance(task_data, dict):
-                tasks.append(Task(**task_data))
-            else:
-                tasks.append(task_data)
-        project_manager.tasks = tasks
+        # Handle tasks if present in the data
+        task_data_list = data.get("tasks", [])
+        if task_data_list:
+            # Create TaskManager to handle task creation
+            task_manager = TaskManager(fs)
+            
+            # Process each task
+            for task_data in task_data_list:
+                if isinstance(task_data, dict):
+                    # Extract task fields
+                    title = task_data.get("title", "Untitled Task")
+                    description = task_data.get("description", "")
+                    status_str = task_data.get("status", "todo")
+                    
+                    # Map string status to TaskStatus enum
+                    from roboco.core.models.task import TaskStatus
+                    status = TaskStatus.TODO
+                    if status_str == "completed":
+                        status = TaskStatus.COMPLETED
+                    elif status_str == "in_progress":
+                        status = TaskStatus.IN_PROGRESS
+                    elif status_str == "blocked":
+                        status = TaskStatus.BLOCKED
+                    elif status_str == "canceled":
+                        status = TaskStatus.CANCELED
+                    elif status_str == "failed":
+                        status = TaskStatus.FAILED
+                    
+                    # Extract details
+                    details = task_data.get("details", [])
+                    
+                    # Create the task using TaskManager
+                    task_manager.create_task(
+                        title=title,
+                        description=description,
+                        project_id=project.id,
+                        status=status,
+                        details=details
+                    )
         
         return project_manager
     
@@ -311,42 +327,60 @@ class ProjectManager:
             fs=fs
         )
     
-    def load_tasks(self) -> List[Task]:
+    async def execute_task(self, task: Task) -> Dict[str, Any]:
         """
-        Load tasks from the database.
-        
-        Returns:
-            List of Task objects
-        """
-        # Import DB operations here to avoid circular imports
-        from roboco.db.service import get_tasks_by_project
-        
-        # Get tasks from database
-        self.tasks = get_tasks_by_project(self.project.id)
-        return self.tasks
-        
-    def mark_task_completed(self, task: Task) -> bool:
-        """
-        Mark a specific task as completed in the database.
+        Execute a single task by delegating to TaskManager.
         
         Args:
-            task: The task to mark as completed
+            task: Task to execute
             
         Returns:
-            True if the task was marked as completed
+            Results of task execution
         """
-        # Import DB operations here to avoid circular imports
-        from roboco.db.service import update_task
-        from roboco.core.models.task import TaskStatus
+        # Get all project tasks for context directly from the task manager
+        all_tasks = self._task_manager.load_tasks(self.project.id)
+            
+        # Get project info for context generation
+        project_info = {
+            "name": self.name,
+            "description": self.description,
+            "id": self.project_id
+        }
         
-        # Update task status
-        task.status = TaskStatus.COMPLETED
-        task.completed_at = datetime.utcnow()
+        # Delegate to TaskManager for execution
+        return await self._task_manager.execute_task(task, all_tasks)
+    
+    async def execute(self) -> Dict[str, Any]:
+        """
+        Execute the project by running all its tasks.
         
-        # Update the task in the database
-        updated_task = update_task(task.id, task)
+        Returns:
+            Dictionary containing execution results
+        """
+        # Load tasks directly from the task manager
+        tasks = self._task_manager.load_tasks(self.project.id)
         
-        return True
+        if not tasks:
+            return {"error": "No tasks found in the project", "status": "failed"}
+        
+        logger.info(f"Found {len(tasks)} tasks in project")
+        
+        # Delegate to TaskManager for execution
+        results = await self._task_manager.execute_tasks(tasks)
+        
+        # Add file summary
+        results["files"] = self.fs.list_sync(".")
+        
+        # Update project timestamp and save
+        self.project.update_timestamp()
+        self.save()
+        
+        # Log summary
+        completed_count = sum(1 for task_result in results["tasks"].values() 
+                             if task_result.get("status") in ["completed", "already_completed"])
+        logger.info(f"Project tasks execution: {completed_count}/{len(tasks)} completed")
+        
+        return results
     
     def _convert_to_dict(self, obj):
         """
@@ -373,262 +407,43 @@ class ProjectManager:
         # Otherwise convert to a dictionary using vars()
         return vars(obj)
     
-    def _create_batch_task_header(self, num_tasks: int) -> str:
-        """
-        Create a visually distinct header for a batch of tasks.
-        
-        Args:
-            num_tasks: Number of tasks to be executed
-            
-        Returns:
-            A formatted header string
-        """
-        separator = "*" * 80
-        title = f" BEGINNING EXECUTION OF {num_tasks} TASKS "
-        
-        # Center the title within the separator
-        centered_title = title.center(80, "*")
-        
-        header = f"\n{separator}\n{centered_title}\n{separator}\n"
-        return header
-        
-    def _create_batch_completion_header(self, status: str, completed: int, total: int) -> str:
-        """
-        Create a visually distinct header for batch task completion.
-        
-        Args:
-            status: Overall status of the batch
-            completed: Number of successfully completed tasks
-            total: Total number of tasks
-            
-        Returns:
-            A formatted completion header string
-        """
-        separator = "*" * 80
-        status_symbol = "✅" if status == "success" else "⚠️" if status == "partial_failure" else "❌"
-        title = f" {status_symbol} TASK BATCH COMPLETE: {completed}/{total} tasks completed successfully [{status.upper()}] "
-        
-        # Center the title within the separator
-        centered_title = title.center(80, "*")
-        
-        header = f"\n{separator}\n{centered_title}\n{separator}\n"
-        return header
-    
-    async def execute_task(self, task: Task) -> Dict[str, Any]:
-        """
-        Execute a single task.
-        
-        Args:
-            task: Task to execute
-            
-        Returns:
-            Results of task execution
-        """
-        # Skip already completed tasks
-        if task.status == TaskStatus.COMPLETED:
-            logger.info(f"Task '{task.description}' is already marked as completed, skipping execution")
-            return {
-                "task": task.description,
-                "status": "already_completed"
-            }
-        
-        # Log task execution
-        task_header = self._task_manager.create_task_header(task)
-        logger.info(task_header)
-        logger.info(f"Executing task: {task.description}")
-        
-        # Get team for this task
-        team = self.team_manager.get_team_for_task(task)
-        
-        # Get context for task execution
-        project_info = {
-            "name": self.name,
-            "description": self.description,
-            "id": self.project_id
-        }
-        execution_context = self._task_manager.generate_task_context(task, self.tasks, project_info)
-        
-        # Initialize results
-        results = {"task": task.description, "status": "pending"}
-        
-        try:
-            # Format task prompt
-            task_prompt = f"""
-Task: {task.description}
-
-Details:
-No additional details provided.
-
-CONTEXT:
-{execution_context}
-
-Instructions:
-- You have access to the filesystem tool for all file operations
-- Use the filesystem tool to read and write files, create directories, etc.
-- All file paths must be relative to the project root
-- Maintain a clean, organized directory structure
-"""
-            
-            # Execute task
-            task_result = await team.run_chat(query=task_prompt)
-            task_result = self._convert_to_dict(task_result)
-            
-            # Process result
-            if "error" not in task_result:
-                # Mark task as completed
-                task.status = TaskStatus.COMPLETED
-                task.completed_at = datetime.utcnow()
-                self.mark_task_completed(task)
-                
-                results.update({
-                    "status": "completed",
-                    "response": task_result.get("response", "")
-                })
-                logger.info(f"Task '{task.description}' completed successfully")
-            else:
-                results.update({
-                    "status": "failed",
-                    "error": task_result.get("error", "Unknown error")
-                })
-                logger.error(f"Task '{task.description}' failed: {task_result.get('error')}")
-            
-        except Exception as e:
-            results.update({
-                "status": "failed",
-                "error": str(e),
-                "error_details": traceback.format_exc()
-            })
-            logger.error(f"Error executing task '{task.description}': {e}")
-        
-        # Log completion
-        completion_header = self._task_manager.create_task_completion_header(task, results["status"])
-        logger.info(completion_header)
-        
-        return results
-
-    async def execute_tasks(self, keyword_filter: Optional[str] = None) -> Dict[str, Any]:
-        """
-        Execute all tasks in the project, optionally filtered by a keyword.
-        Stops execution if any task fails.
-        
-        Args:
-            keyword_filter: Optional keyword to filter tasks by description
-            
-        Returns:
-            Dictionary containing execution results
-        """
-        # Make sure tasks are loaded
-        if not self.tasks:
-            self.load_tasks()
-        
-        if not self.tasks:
-            return {"error": "No tasks found in the project", "status": "failed"}
-        
-        logger.info(f"Found {len(self.tasks)} tasks in project")
-        
-        # Filter tasks if needed
-        tasks_to_execute = self.tasks
-        if keyword_filter:
-            filtered_tasks = [t for t in self.tasks if keyword_filter.lower() in t.description.lower()]
-            if not filtered_tasks:
-                return {"error": f"No tasks matching '{keyword_filter}' found", "status": "failed"}
-            tasks_to_execute = filtered_tasks
-            logger.info(f"Filtered to {len(tasks_to_execute)} tasks")
-        
-        # Track results
-        results = {
-            "tasks": {},
-            "status": "success",
-            "completed_count": 0
-        }
-        
-        # Execute each task
-        for task in tasks_to_execute:
-            task_result = await self.execute_task(task)
-            results["tasks"][task.description] = self._convert_to_dict(task_result)
-            
-            # Check task completion status
-            if task_result["status"] in ["completed", "already_completed"]:
-                results["completed_count"] += 1
-            else:
-                # Task failed, stop execution
-                results["status"] = "failed"
-                logger.error(f"Task '{task.description}' failed. Stopping further execution.")
-                break
-        
-        # Add file summary
-        results["files"] = self.fs.list_sync(".")
-        
-        # Update project timestamp and save
-        self.project.update_timestamp()
-        self.save()
-        
-        logger.info(f"Project tasks execution: {results['completed_count']}/{len(tasks_to_execute)} completed")
-        return results
-        
     @classmethod
-    def initialize(
-        cls,
-        name: str,
-        description: str,
-        project_id: str,
-        directory: Optional[str] = None,
-        manifest: ProjectManifest = None,
-        use_files: bool = True
-    ) -> 'ProjectManager':
+    def initialize(cls, name: str, description: str, 
+                project_id: Optional[str] = None, 
+                manifest: Optional[ProjectManifest] = None,
+                use_files: bool = True) -> 'ProjectManager':
         """
-        Initialize a new project both in database and optionally on disk.
+        Initialize a new project with the given parameters.
         
         Args:
-            name: Project name
-            description: Project description
-            project_id: Project ID
-            directory: Optional directory path (defaults to project_id)
-            manifest: ProjectManifest object
-            use_files: Whether to create files on disk (defaults to True)
+            name: Name of the project
+            description: Description of the project 
+            project_id: Optional project ID to use (generated if not provided)
+            manifest: Optional project manifest to use for initialization
+            use_files: Whether to create the file structure (default: True)
             
         Returns:
-            ProjectManager instance for the newly created project
+            ProjectManager instance
         """
-        # Use project_id as directory if not specified
-        if not directory:
-            directory = project_id
-            
-        # Validate manifest is provided
-        if manifest is None:
-            raise ValueError("ProjectManifest is required for project initialization")
-            
-        # Validate manifest is the right type
-        if not isinstance(manifest, ProjectManifest):
-            raise TypeError("manifest must be a ProjectManifest object")
-            
-        # Use manifest's ID
-        project_id = manifest.id
-            
-        # Validate file paths: Reject any paths with project ID prefixes
-        invalid_paths = []
-        for file_info in manifest.files:
-            if file_info.path.startswith(f"{project_id}/") or file_info.path.startswith(f"{project_id}\\"):
-                invalid_paths.append(file_info.path)
+        from roboco.core.models.project import Project
+        import json
         
-        # Also check folder paths
-        for folder in manifest.folder_structure:
-            if folder.startswith(f"{project_id}/") or folder.startswith(f"{project_id}\\"):
-                invalid_paths.append(folder)
-        
-        # Fail fast if any invalid paths are found
-        if invalid_paths:
-            error_msg = f"Invalid file paths with project ID prefixes found: {', '.join(invalid_paths)}"
-            logger.error(error_msg)
-            raise ValueError(error_msg)
+        # Generate project ID or use the provided one
+        if project_id is None:
+            project_id = generate_short_id()
+            logger.info(f"Generated project ID: {project_id}")
             
+        # Use manifest's ID if provided
+        if manifest:
+            project_id = manifest.id
+        
         # Create ProjectFS for the new project
         fs = ProjectFS(project_id=project_id)
         
         # Create metadata dictionary
         meta = {}
-        if manifest.folder_structure:
-            meta["folder_structure"] = manifest.folder_structure
+        # Default folder structure for every project
+        meta["folder_structure"] = ["src", "docs", "tests"]
         
         # Create the Project model instance
         project = Project(
@@ -654,31 +469,9 @@ Instructions:
         
         # Create file structure if requested
         if use_files:
-            # Create directories
-            for folder in manifest.folder_structure:
+            # Create standard directories
+            for folder in meta["folder_structure"]:
                 fs.mkdir_sync(folder)
-            
-            # Create files
-            for file_info in manifest.files:
-                # Handle tasks.md file specially
-                if file_info.path == "tasks.md":
-                    # Save tasks.md file as provided
-                    markdown_content = file_info.content
-                    fs.write_sync(file_info.path, markdown_content)
-                    
-                    # Create task manager for task operations
-                    task_manager = TaskManager(fs=fs)
-                    
-                    # Parse the markdown content into Task objects
-                    task_objects = task_manager.parse_tasks_from_markdown(markdown_content, project_id)
-                    
-                    # Store tasks in database
-                    from roboco.db.service import create_task
-                    for task in task_objects:
-                        create_task(project_id, task)
-                else:
-                    # Write file as is
-                    fs.write_sync(file_info.path, file_info.content)
             
             # Write project.json
             project_json = project.to_dict()
@@ -687,9 +480,27 @@ Instructions:
         # Create the project manager
         project_manager = cls(
             project=project,
-            fs=fs,
-            directory=directory
+            fs=fs
         )
+        
+        # Generate and create tasks if we have tasks in the manifest
+        if manifest and manifest.tasks:
+            # Create a task manager
+            task_manager = TaskManager(fs)
+            
+            # Generate tasks.md content
+            tasks_md_content = manifest.tasks_to_markdown()
+            fs.write_sync("tasks.md", tasks_md_content)
+            
+            # Let the TaskManager handle task creation
+            for task_data in manifest.tasks:
+                task_manager.create_task(
+                    title=task_data.title,
+                    description=task_data.description,
+                    project_id=project_id,
+                    status=TaskStatus.TODO if task_data.status == "todo" else TaskStatus.COMPLETED,
+                    details=task_data.details
+                )
         
         return project_manager
         

@@ -239,6 +239,34 @@ class Agent(ConversableAgent):
         
         try:
             # Call the original method to generate a response
+            # Check for empty messages list - this indicates a potential bug in the caller
+            if not messages or len(messages) == 0:
+                error_msg = f"Empty messages list passed to {self.name}.generate_reply - this indicates a bug in the caller"
+                logger.error(error_msg)
+                
+                # Special case for Lead agent since we've observed this specific issue there
+                if self.name == "Lead":
+                    logger.warning(f"Creating default message for Lead agent to avoid swarm failure")
+                    messages = [{
+                        "role": "user", 
+                        "content": "Please provide initial guidance for this task."
+                    }]
+                else:
+                    # For other agents, raise an exception to expose the bug
+                    raise ValueError(error_msg)
+            
+            # Make sure all messages have content without hiding issues
+            for i, msg in enumerate(messages):
+                if not isinstance(msg, dict):
+                    error_msg = f"Message {i} is not a dictionary: {type(msg)}"
+                    logger.error(error_msg)
+                    raise TypeError(error_msg)
+                    
+                if "content" not in msg or msg["content"] is None:
+                    error_msg = f"Message {i} has no content field"
+                    logger.error(error_msg)
+                    raise ValueError(error_msg)
+            
             response = super().generate_reply(messages, sender)
             
             # Check if the response is empty or just "None"
@@ -271,7 +299,13 @@ class Agent(ConversableAgent):
         """Log API errors with helpful context."""
         logger.error(f"API Error in {self.name}: {str(exception)}")
         if messages:
-            logger.debug(f"Last message: {messages[-1] if messages else 'No messages'}")
+            # Only try to access the last message if the list is not empty
+            if len(messages) > 0:
+                logger.debug(f"Last message: {messages[-1]}")
+            else:
+                logger.debug("Last message: <empty message list>")
+        else:
+            logger.debug("Last message: No messages provided")
         logger.debug(traceback.format_exc())
         
     def add_to_context(self, key: str, value: Any) -> None:

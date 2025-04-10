@@ -7,14 +7,14 @@ configuration, and communication.
 
 from typing import Dict, Any, List, Optional, Type
 import os
-import json
-from datetime import datetime
-from loguru import logger
 
 from roboco.core.config import load_config, get_llm_config, get_workspace
 from roboco.core.agent import Agent
-from roboco.agents.human_proxy import HumanProxy
 
+from loguru import logger
+
+# Initialize logger immediately after import
+logger = logger.bind(module=__name__)
 
 class AgentService:
     """
@@ -41,14 +41,6 @@ class AgentService:
         """Register the core agent types."""
         self._agent_types = {}
         self._agent_types["Agent"] = Agent
-        self._agent_types["HumanProxy"] = HumanProxy
-        
-        # Dynamically discover and register other agent types
-        try:
-            from roboco.agents.robotics_scientist import RoboticsScientist
-            self._agent_types["RoboticsScientist"] = RoboticsScientist
-        except ImportError:
-            pass
             
         try:
             from roboco.agents.genesis_agent import GenesisAgent

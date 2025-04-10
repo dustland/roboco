@@ -130,29 +130,41 @@ class TaskRepository(BaseRepository):
         """Mark a task as completed."""
         task = self.get(task_id)
         if not task:
+            logger.warning(f"Task not found for id: {task_id}")
             return None
             
-        # Store the original status for comparison
+        # Check if already completed
+        if task.status == TaskStatus.COMPLETED:
+            logger.info(f"Task already completed: {task_id}")
+            return task
+            
+        # Save original status for comparison
         original_status = task.status
             
-        task.status = TaskStatus.COMPLETED
-        task.completed_at = datetime.utcnow()
-        task.updated_at = datetime.utcnow()
+        # Mark as completed
+        from roboco.core.models.project import Project
         
-        self.session.add(task)
-        self.session.commit()
-        self.session.refresh(task)
-        
-        # Update the project's updated_at timestamp
-        if task.project_id:
-            from roboco.core.models.project import Project
-            project = self.session.get(Project, task.project_id)
-            if project:
-                project.updated_at = datetime.utcnow()
-                self.session.add(project)
-                self.session.commit()
+        with get_session_context() as session:
+            try:
+                # Get task with session binding
+                stmt = select(Task).where(Task.id == task_id)
+                result = session.execute(stmt)
+                task = result.scalar_one()
                 
-                # Update the tasks.md file
+                # Mark as completed
+                task.status = TaskStatus.COMPLETED
+                task.completed_at = datetime.utcnow()
+                task.updated_at = datetime.utcnow()
+                
+                # Commit the change
+                session.commit()
+                
+                # Get project for tasks.md update
+                project_stmt = select(Project).where(Project.id == task.project_id)
+                project_result = session.execute(project_stmt)
+                project = project_result.scalar_one_or_none()
+                
+                # Update the tasks.md file (if it exists and status changed)
                 if original_status != TaskStatus.COMPLETED:
                     try:
                         # Import here to avoid circular imports
@@ -180,6 +192,10 @@ class TaskRepository(BaseRepository):
                     except Exception as e:
                         # Log but don't fail the operation if tasks.md update fails
                         logger.error(f"Failed to update tasks.md after task completion: {str(e)}")
+            except Exception as e:
+                logger.error(f"Error marking task {task_id} as completed: {str(e)}")
+                session.rollback()
+                raise  # Re-raise to be handled by caller
         
         return task
 

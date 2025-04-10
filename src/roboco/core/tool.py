@@ -116,7 +116,7 @@ class Tool(AutogenTool):
             
             # Register all discovered commands
             self.commands = discovered_commands
-            logger.info(f"Auto-registered {len(discovered_commands)} commands: {', '.join(discovered_commands.keys())}")
+            # logger.info(f"Auto-registered {len(discovered_commands)} commands: {', '.join(discovered_commands.keys())}")
         
         # Create and store the command executor function
         self._command_executor = func_or_tool if func_or_tool is not None else self._create_command_executor()
@@ -295,10 +295,10 @@ class Tool(AutogenTool):
             try:
                 # Use the stored command executor
                 # Print the actual description for debugging
-                logger.info(f"🔧 Tool {self.name} being registered with {agent.name}\n")
+                # logger.info(f"🔧 Tool {self.name} being registered with {agent.name}\n")
                 agent.register_tool(self._command_executor, executor_agent, description=self.description)
                 self.registered_with_agents.add(agent)
-                logger.debug(f"✅ Tool {self.name} registered with agent {agent.name}")
+                # logger.debug(f"✅ Tool {self.name} registered with agent {agent.name}")
             except Exception as e:
                 logger.warning(f"❌ Error registering tool {self.name} with agent {agent.name}: {e}")
     

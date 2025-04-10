@@ -6,18 +6,18 @@ and retrieval of project status.
 """
 
 from typing import List, Optional, Dict, Any, Union
-from pathlib import Path
-import os
 from datetime import datetime
-import json
 
 from roboco.core.config import load_config, get_workspace
-from loguru import logger
 from roboco.core.project_manager import ProjectManager
-from roboco.core.fs import ProjectFS, ProjectNotFoundError, get_project_fs
+from roboco.core.fs import ProjectFS, ProjectNotFoundError
 from roboco.teams.planning import PlanningTeam
 from roboco.utils.id_generator import generate_short_id
+from roboco.core.models import Project
 
+from loguru import logger
+
+# Initialize logger immediately after import
 logger = logger.bind(module=__name__)
 
 
@@ -239,24 +239,23 @@ class ProjectService:
         return project
 
     async def execute_project(self, project_or_id: Union[str, 'ProjectManager']) -> Dict[str, Any]:
-        """
-        Execute the project by running its defined tasks.
+        """Execute all tasks in a project.
         
         Args:
-            project_or_id: Either a ProjectManager instance or a project ID string
+            project_or_id: Project instance or a project ID
             
         Returns:
-            Dictionary with execution results
+            Dictionary containing execution results
         """
         # Handle both ProjectManager instance and project_id string
         if isinstance(project_or_id, str):
-            # Load the project manager if a string ID was provided
+            # Load the project manager if provided with ID
             project = ProjectManager.load(project_or_id)
         else:
             # Use the provided ProjectManager instance directly
             project = project_or_id
             
         # Execute tasks
-        results = await project.execute_tasks()
+        results = await project.execute()
         
         return results 

@@ -101,7 +101,7 @@ class AgentFactory:
         try:
             with open(role_prompt_path, 'r', encoding='utf-8') as file:
                 role_prompt = file.read()
-                logger.info(f"Loaded role prompt from {role_prompt_path}")
+                # logger.info(f"Loaded role prompt from {role_prompt_path}")
         except Exception as e:
             logger.warning(f"Failed to load role prompt from {role_prompt_path}: {str(e)}")
             return None
@@ -115,7 +115,7 @@ class AgentFactory:
                 with open(agent_guidelines_path, 'r', encoding='utf-8') as file:
                     agent_guidelines = file.read()
                     final_prompt = f"{final_prompt}\n\n---\n\n{agent_guidelines}"
-                    logger.debug(f"Appended agent guidelines to prompt for {role_key}")
+                    # logger.debug(f"Appended agent guidelines to prompt for {role_key}")
             except Exception as e:
                 logger.warning(f"Failed to load agent guidelines from {agent_guidelines_path}: {str(e)}")
         else:
@@ -138,7 +138,7 @@ class AgentFactory:
         # First try to load detailed markdown prompt
         markdown_prompt = self._load_markdown_prompt(role_key)
         if markdown_prompt:
-            logger.info(f"Using detailed markdown prompt for role '{role_key}'")
+            # logger.info(f"Using detailed markdown prompt for role '{role_key}'")
             return markdown_prompt
         
         # If no markdown prompt exists, create a default prompt based on role name
@@ -146,7 +146,7 @@ class AgentFactory:
         if role_config:
             role_name = role_config.name
             default_prompt = f"You are the {role_name} agent."
-            logger.info(f"Using default prompt for role '{role_key}': '{default_prompt}'")
+            # logger.info(f"Using default prompt for role '{role_key}': '{default_prompt}'")
             return default_prompt
         else:
             # Create a generic prompt based on role key
@@ -184,7 +184,7 @@ class AgentFactory:
                 # Merge model config with role-specific overrides
                 merged_config = {**model_config, **role_llm_config}
                 
-                logger.info(f"Created merged LLM configuration for role '{role_key}' using model '{role_model}'")
+                # logger.info(f"Created merged LLM configuration for role '{role_key}' using model '{role_model}'")
                 return merged_config
         
         # If no role-specific model, return the default config
@@ -287,7 +287,7 @@ class AgentFactory:
             return agent_class(**agent_params)
         else:
             # Create a basic Agent
-            logger.info(f"Creating Agent for role '{role_key}'")
+            # logger.info(f"Creating Agent for role '{role_key}'")
             return Agent(**agent_params)
         
     def debug_registry(self):

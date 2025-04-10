@@ -6,8 +6,6 @@ different agent compositions, assigning appropriate teams for tasks, and
 configuring team behaviors and handoffs.
 """
 
-import os
-import yaml
 from typing import Dict, Any, List, Optional, Type, Set, Union
 from loguru import logger
 
@@ -64,7 +62,6 @@ class TeamManager:
         
         # Initialize team loading configuration
         self.teams_config_path = teams_config_path
-        self.teams_config = self._load_teams_config(teams_config_path)
         
         # Initialize available tools
         self.available_tools = {
@@ -80,13 +77,7 @@ class TeamManager:
         
         # Simple mapping of task keywords to team types
         self.task_team_mapping = {
-            "research": "research",
             "planning": "planning",
-            "design": "design",
-            "development": "development",
-            "implementation": "development",
-            "testing": "testing",
-            "deployment": "deployment",
             "general": "versatile",
             "universal": "versatile",
             "common": "versatile",
@@ -94,46 +85,6 @@ class TeamManager:
             "other": "versatile",
             "versatile": "versatile"
         }
-    
-    # --- Methods from TeamBuilder ---
-    
-    def _load_teams_config(self, config_path: str) -> Dict[str, Any]:
-        """Load the teams configuration from YAML file.
-        
-        Args:
-            config_path: Path to the teams configuration file
-            
-        Returns:
-            Dictionary containing team configurations
-        """
-        try:
-            with open(config_path, 'r', encoding='utf-8') as file:
-                config = yaml.safe_load(file)
-                logger.info(f"Successfully loaded teams configuration from {config_path}")
-                return config
-        except Exception as e:
-            logger.warning(f"Failed to load teams config from {config_path}: {str(e)}")
-            logger.warning("Using default empty configuration")
-            return {"teams": {}}
-    
-    def get_team_config(self, team_key: str) -> Dict[str, Any]:
-        """Get the configuration for a specific team.
-        
-        Retrieves team configuration from the global teams.yaml file.
-        
-        Args:
-            team_key: The key of the team in the configuration
-            
-        Returns:
-            The team configuration
-        """
-        # Get the team configuration from the global teams.yaml
-        try:
-            team_config = self.teams_config["teams"][team_key].copy()
-            return team_config
-        except (KeyError, TypeError):
-            logger.warning(f"Team '{team_key}' not found in config file {self.teams_config_path}")
-            raise KeyError(f"Team '{team_key}' not found in configuration")
     
     def with_roles(self, *role_keys: str) -> 'TeamManager':
         """Select the roles to include in the team.
@@ -224,72 +175,6 @@ class TeamManager:
                 "condition": None
             })
         return self
-    
-    def create_team_from_config(self, team_key: str, **kwargs) -> Team:
-        """Create a team based on configuration files.
-        
-        Args:
-            team_key: The key of the team in the configuration
-            **kwargs: Additional arguments to override configuration values
-            
-        Returns:
-            An initialized Team instance
-        """
-        # Get the team configuration
-        team_config = self.get_team_config(team_key)
-        
-        # Override with any kwargs
-        team_config.update(kwargs)
-        
-        # Configure a new builder based on the team config
-        builder = TeamManager()
-        
-        # Configure roles
-        if "roles" in team_config:
-            builder.with_roles(*team_config["roles"])
-        
-        # Configure tool executor
-        if "tool_executor" in team_config:
-            builder.with_tool_executor(team_config["tool_executor"])
-        
-        # Configure tools
-        if "tools" in team_config:
-            tool_executor = team_config.get("tool_executor", "human_proxy")
-            tool_instances = []
-            
-            for tool_name in team_config["tools"]:
-                if tool_name in builder.available_tools:
-                    tool_instances.append(builder.available_tools[tool_name]())
-            
-            if tool_instances:
-                builder.with_tools(tool_executor, tool_instances)
-        
-        # Configure agent settings
-        if "agent_settings" in team_config:
-            for role, settings in team_config["agent_settings"].items():
-                builder.with_agent_config(role, **settings)
-        
-        # Configure handoffs
-        if "handoffs" in team_config:
-            for handoff in team_config["handoffs"]:
-                builder.with_handoff(
-                    handoff["from"],
-                    handoff["to"],
-                    handoff.get("condition")
-                )
-        
-        # Configure team class
-        team_class = Team
-        if "team_class" in team_config:
-            team_class_name = team_config["team_class"]
-            # Import the team class dynamically
-            if team_class_name == "PlanningTeam":
-                team_class = PlanningTeam
-            elif team_class_name == "VersatileTeam":
-                team_class = VersatileTeam
-        
-        # Build the team
-        return builder.build(team_class=team_class, name=team_config.get("name"))
     
     def build(self, team_class: Type[Team] = Team, name: str = None, **team_kwargs) -> Team:
         """Build a team with the configured roles and agents.

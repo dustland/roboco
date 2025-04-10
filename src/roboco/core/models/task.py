@@ -22,6 +22,7 @@ class TaskStatus(str, Enum):
     BLOCKED = "blocked"
     COMPLETED = "completed"
     CANCELED = "canceled"
+    FAILED = "failed"  # Added for better error handling
 
 class Task(SQLModel, table=True):
     """

@@ -8,7 +8,6 @@ with specialized roles designed to handle any type of task phase effectively.
 import json
 import os
 from typing import Dict, Any, List, Optional
-from datetime import datetime
 from loguru import logger
 
 # Initialize logger
@@ -16,10 +15,7 @@ logger = logger.bind(module=__name__)
 
 from roboco.core.fs import ProjectFS
 from roboco.core.team import Team
-from roboco.core.models import Task
-from roboco.agents.human_proxy import HumanProxy
 from roboco.core.agent_factory import AgentFactory
-from roboco.core.config import get_llm_config
 from roboco.tools.bash import BashTool
 from autogen import AfterWork, AfterWorkOption, OnCondition, register_hand_off
 
@@ -45,11 +41,63 @@ class VersatileTeam(Team):
             workspace_dir: Directory for workspace files
             config_path: Optional path to team configuration file
         """
-        super().__init__(name="VersatileTeam", config_path=config_path)
+        # Store fs for later use
         self.fs = fs
         
-        # Initialize the agents with specialized roles
-        self._initialize_agents()
+        # Create agents first before initializing the parent class
+        agent_factory = AgentFactory.get_instance()
+        
+        # Create the lead agent with the system message from the roles config
+        lead = agent_factory.create_agent(
+            role_key="lead",
+        )
+
+        # Create the researcher agent
+        researcher = agent_factory.create_agent(
+            role_key="researcher",
+        )
+
+        # Create the developer agent
+        developer = agent_factory.create_agent(
+            role_key="developer",
+        )
+
+        # Create the writer agent
+        writer = agent_factory.create_agent(
+            role_key="writer",
+        )
+
+        # Create the evaluator agent
+        evaluator = agent_factory.create_agent(
+            role_key="evaluator",
+        )
+        
+        # Create the executor agent - use agent_factory for consistency
+        executor = agent_factory.create_agent(
+            role_key="executor",
+            code_execution_config={"work_dir": "workspace", "use_docker": False}
+        )
+        
+        # Create agents dictionary
+        agents = {
+            "lead": lead,
+            "researcher": researcher, 
+            "developer": developer,
+            "writer": writer,
+            "evaluator": evaluator,
+            "executor": executor
+        }
+        
+        # Initialize parent class with the agents
+        super().__init__(name="VersatileTeam", agents=agents, config_path=config_path, fs=fs)
+        
+        # Store agent instances for easier access
+        self.lead = lead
+        self.researcher = researcher
+        self.developer = developer
+        self.writer = writer
+        self.evaluator = evaluator
+        self.executor = executor
         
         # Register tools with agents
         self._register_tools()
@@ -68,51 +116,6 @@ class VersatileTeam(Team):
         self._register_handoffs()
         
         logger.info(f"Initialized VersatileTeam with specialized roles in workspace: {self.fs.base_dir}")
-    
-    def _initialize_agents(self):
-        """Initialize agents with specialized roles for the team."""
-        agent_factory = AgentFactory.get_instance()
-        
-        # Create the lead agent with the system message from the roles config
-        self.lead = agent_factory.create_agent(
-            role_key="lead",
-        )
-
-        # Create the researcher agent
-        self.researcher = agent_factory.create_agent(
-            role_key="researcher",
-        )
-
-        # Create the developer agent
-        self.developer = agent_factory.create_agent(
-            role_key="developer",
-        )
-
-        # Create the writer agent
-        self.writer = agent_factory.create_agent(
-            role_key="writer",
-        )
-
-        # Create the evaluator agent
-        self.evaluator = agent_factory.create_agent(
-            role_key="evaluator",
-        )
-        
-        # Create the executor agent - use agent_factory for consistency
-        self.executor = agent_factory.create_agent(
-            role_key="executor",
-            code_execution_config={"work_dir": "workspace", "use_docker": False}
-        )
-        
-        # Add all agents to the team
-        self.agents = {
-            "lead": self.lead,
-            "researcher": self.researcher, 
-            "developer": self.developer,
-            "writer": self.writer,
-            "evaluator": self.evaluator,
-            "executor": self.executor
-        }
     
     def _register_tools(self):
         """Register necessary tools with the agents."""
@@ -306,7 +309,15 @@ class VersatileTeam(Team):
                 original_receive = agent.receive
                 
                 async def receive_with_logging(self, message, sender, config=None):
+                    # Ensure message is a dict
+                    if not isinstance(message, dict):
+                        logger.warning(f"Agent {self.name} received a non-dict message: {type(message)}")
+                        message = {"content": str(message) if message is not None else ""}
+                    
+                    # Safely get content, ensuring it's a string
                     content = message.get("content", "")
+                    if content is None:
+                        content = ""
                     
                     # Check for short messages
                     short_message_response = self._check_message_length(content, sender)
@@ -322,26 +333,46 @@ class VersatileTeam(Team):
                 
                 def _check_message_length(self, content, sender):
                     """Check if message is too short and return rejection if needed"""
-                    if len(content.strip()) < 100 and sender is not None and sender.name != "executor" and self.name != "lead":
-                        logger.warning(f"Agent {sender.name} sent a very short message to {self.name} ({len(content.strip())} chars)")
+                    # Ensure content is a string and sender exists
+                    if not isinstance(content, str):
+                        logger.warning(f"Agent {self.name} received non-string content: {type(content)}")
+                        content = str(content) if content is not None else ""
+                    
+                    # Skip length check for missing sender or specific agent types
+                    if sender is None:
+                        return None
+                    
+                    # Get sender name safely
+                    sender_name = getattr(sender, "name", str(sender)) if sender else "unknown"
+                    
+                    # Only apply length checks to messages between regular agents
+                    if len(content.strip()) < 100 and sender_name != "executor" and self.name != "lead":
+                        logger.warning(f"Agent {sender_name} sent a very short message to {self.name} ({len(content.strip())} chars)")
                         if len(content.strip()) < 30:
                             return {"content": f"Message rejected: Your message was too short. Please provide substantive work or explanation."}
                     return None
                 
                 def _check_feedback_loops(self, sender):
                     """Check and update feedback loop counters, break loops if needed"""
-                    if not hasattr(self, "shared_context") or sender is None:
+                    if not hasattr(self, "shared_context"):
                         return None
                         
+                    if sender is None:
+                        logger.debug(f"Agent {self.name} received a message with no sender")
+                        return None
+                    
+                    # Get sender name safely
+                    sender_name = getattr(sender, "name", str(sender))
+                    
                     # Log the handoff
-                    logger.info(f"Handoff from {sender.name if hasattr(sender, 'name') else 'unknown'} to {self.name}")
+                    logger.info(f"Handoff from {sender_name} to {self.name}")
                     
                     # Check researcher→developer loop
-                    if self.name == "developer" and sender.name == "researcher":
+                    if self.name == "developer" and sender_name == "researcher":
                         return self._update_loop_counter("researcher_developer")
                     
                     # Check developer→researcher loop    
-                    elif self.name == "researcher" and sender.name == "developer":
+                    elif self.name == "researcher" and sender_name == "developer":
                         return self._update_loop_counter("developer_researcher")
                     
                     return None
@@ -368,7 +399,7 @@ class VersatileTeam(Team):
                 # Replace the receive method with our logging version
                 agent.receive = receive_with_logging.__get__(agent)
         
-        logger.info("Registered improved handoff pattern with explicit reasoning requirements and loop prevention")
+        # logger.info("Registered improved handoff pattern with explicit reasoning requirements and loop prevention")
     
     def _chat_result_to_dict(self, chat_result):
         """
@@ -495,6 +526,33 @@ class VersatileTeam(Team):
                 "status": "failed"
             }
         
+        # Check for error messages in the result
+        if "error" in swarm_result:
+            logger.error(f"Error in hybrid pattern session: {swarm_result.get('error')}")
+            return {
+                "error": swarm_result.get('error', "Unknown error in hybrid pattern session"),
+                "status": "failed"
+            }
+            
+        # Check if the last message contains an error
+        messages = swarm_result.get("messages", [])
+        if messages and len(messages) > 0:
+            last_message = messages[-1]
+            content = last_message.get("content", "")
+            # Check if the content contains error indicators
+            if content and isinstance(content, str) and (
+                content.startswith("ERROR:") or 
+                "API call failed" in content or
+                "exception" in content.lower() or
+                "error" in content.lower()
+            ):
+                logger.error(f"Task failed with error in last message: {content}")
+                return {
+                    "error": content,
+                    "messages": messages,
+                    "status": "failed"
+                }
+        
         # Save the results
         # Create a file name based on the first few words of the description
         task_file_name = "_".join(task.description.split()[:5]).lower()
@@ -583,8 +641,12 @@ class VersatileTeam(Team):
                 
                 f.write(f"\n### Pattern Efficiency\n")
                 f.write(f"- Total handoffs: {total_handoffs}\n")
-                f.write(f"- Direct feedback loops: {direct_feedback_loops} ({direct_feedback_loops/total_handoffs*100:.1f}%)\n")
-                f.write(f"- Star pattern handoffs: {star_pattern_handoffs} ({star_pattern_handoffs/total_handoffs*100:.1f}%)\n")
+                if total_handoffs > 0:
+                    f.write(f"- Direct feedback loops: {direct_feedback_loops} ({direct_feedback_loops/total_handoffs*100:.1f}%)\n")
+                    f.write(f"- Star pattern handoffs: {star_pattern_handoffs} ({star_pattern_handoffs/total_handoffs*100:.1f}%)\n")
+                else:
+                    f.write(f"- Direct feedback loops: {direct_feedback_loops} (0%)\n")
+                    f.write(f"- Star pattern handoffs: {star_pattern_handoffs} (0%)\n")
             
             logger.info(f"Hybrid pattern session completed with {len(agent_sequence)} agent handoffs")
             logger.info(f"Detected {direct_feedback_loops} direct feedback loops")

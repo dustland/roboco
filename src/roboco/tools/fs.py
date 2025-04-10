@@ -277,14 +277,10 @@ class FileSystemTool(Tool):
         """
         Execute a project manifest to create a new project.
         
-        The ProjectManifest is a domain object that describes the structure of a project, 
-        including its name, description, directory structure, and files. This follows
+        The ProjectManifest is a domain object that describes a project, 
+        including its name, description, and tasks. This follows
         Domain-Driven Design principles by using the domain object as the primary way to 
         create projects.
-        
-        Note: File paths in the manifest should be relative to the project directory,
-        not prefixed with the project directory name. Any project directory prefixes 
-        will be automatically removed.
         
         Args:
             manifest: Project manifest data
@@ -302,7 +298,6 @@ class FileSystemTool(Tool):
             # Convert to ProjectManifest if received as dict
             project_manifest = manifest
             if isinstance(manifest, dict):
-                logger.info("Converting dict manifest to ProjectManifest object")
                 project_manifest = dict_to_project_manifest(manifest)
             elif not isinstance(manifest, ProjectManifest):
                 # Not a dict and not a ProjectManifest - raise error
@@ -312,26 +307,7 @@ class FileSystemTool(Tool):
             from roboco.db.service import get_project
             project_id = project_manifest.id
             
-            # Validate file paths: Reject any paths with project ID prefixes
-            invalid_paths = []
-            for file_info in project_manifest.files:
-                if file_info.path.startswith(f"{project_id}/") or file_info.path.startswith(f"{project_id}\\"):
-                    invalid_paths.append(file_info.path)
-            
-            # Also check folder paths
-            for folder in project_manifest.folder_structure:
-                if folder.startswith(f"{project_id}/") or folder.startswith(f"{project_id}\\"):
-                    invalid_paths.append(folder)
-            
-            # Fail fast if any invalid paths are found
-            if invalid_paths:
-                error_msg = f"Invalid file paths with project ID prefixes found: {', '.join(invalid_paths)}"
-                logger.error(error_msg)
-                return {
-                    "status": "error",
-                    "message": error_msg
-                }
-            
+            # Check if project already exists
             existing_project = get_project(project_id)
             if existing_project:
                 logger.info(f"Project {project_id} already exists in database, loading instead of creating")

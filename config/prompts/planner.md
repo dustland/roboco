@@ -41,24 +41,28 @@ Below is the EXACT format that MUST be followed for the project manifest. Copy t
   "id": "project_id",
   "name": "Project Name",
   "description": "Detailed description of the project",
-  "structure": {
-    "type": "standard"
-  },
-  "folder_structure": ["src", "docs", "tests"],
-  "files": [
+  "tasks": [
     {
-      "path": "tasks.md",
-      "content": "# Tasks for Project Name\n\n## Task: Task Title 1\nTask description goes here\n- Detail point 1\n- Detail point 2\n- Detail point 3\n\n## Task: Task Title 2\nAnother task description\n- Another detail point 1\n- Another detail point 2\n- Another detail point 3"
+      "title": "Task Title 1",
+      "description": "Task description goes here",
+      "details": ["Detail point 1", "Detail point 2", "Detail point 3"],
+      "status": "todo"
     },
     {
-      "path": "project.json",
-      "content": "{\"id\": \"project_id\", \"name\": \"Project Name\", \"description\": \"Detailed description\", \"created_at\": \"2023-01-01T00:00:00\"}"
+      "title": "Task Title 2",
+      "description": "Another task description",
+      "details": [
+        "Another detail point 1",
+        "Another detail point 2",
+        "Another detail point 3"
+      ],
+      "status": "todo"
     }
   ]
 }
 ```
 
-CRITICAL: When using the `execute_project_manifest` function, you MUST structure your files exactly as shown above. Do NOT use any other format.
+CRITICAL: When using the `execute_project_manifest` function, you MUST structure your manifest exactly as shown above. Do NOT use any other format.
 
 Here is a complete example of calling the execute_project_manifest tool correctly:
 
@@ -69,16 +73,28 @@ execute_command(
         "id": "todo-app",
         "name": "Todo Application",
         "description": "A simple web application for managing todos",
-        "structure": {"type": "standard"},
-        "folder_structure": ["src", "docs", "tests"],
-        "files": [
+        "tasks": [
             {
-                "path": "tasks.md",
-                "content": "# Tasks for Todo Application\n\n## [ ] Task: Create Basic UI Components\nDevelop the foundational UI elements for the todo application\n- Build a form component for adding new todos\n- Create a todo list component to display all todos\n- Implement a todo item component with completion checkbox\n- Design a filter component to show completed/active todos\n\n## [ ] Task: Implement Core Functionality\nBuild the essential features of the todo application\n- Create data model for todo items\n- Implement add, edit, and delete todo operations\n- Add toggle completion functionality\n- Build filtering and sorting capabilities"
+                "title": "Create Basic UI Components",
+                "description": "Develop the foundational UI elements for the todo application",
+                "details": [
+                    "Build a form component for adding new todos",
+                    "Create a todo list component to display all todos",
+                    "Implement a todo item component with completion checkbox",
+                    "Design a filter component to show completed/active todos"
+                ],
+                "status": "todo"
             },
             {
-                "path": "project.json",
-                "content": "{\"id\": \"todo-app\", \"name\": \"Todo Application\", \"description\": \"A simple web application for managing todos\", \"created_at\": \"2023-01-01T00:00:00\"}"
+                "title": "Implement Core Functionality",
+                "description": "Build the essential features of the todo application",
+                "details": [
+                    "Create data model for todo items",
+                    "Implement add, edit, and delete todo operations",
+                    "Add toggle completion functionality",
+                    "Build filtering and sorting capabilities"
+                ],
+                "status": "todo"
             }
         ]
     }
@@ -101,7 +117,8 @@ execute_command(
     manifest={
         "id": "project-id",
         "name": "Project Name",
-        "files": [...]
+        "description": "Project description",
+        "tasks": [...]
     }
 )
 
@@ -117,90 +134,32 @@ IMPORTANT: All of these fields are REQUIRED:
 - id: The unique identifier for the project
 - name: The human-readable project name
 - description: A detailed description of the project
-- structure: An object with at least a "type" property, value can be "dev", "research", "docs", etc.
+- tasks: An array of task objects (at least one task is required)
+
+Each task object MUST include these fields:
+
+- title: A concise title for the task
+- description: A detailed description of what the task involves
+- details: An array of specific points or steps for the task
+- status: Current status (usually "todo" for new tasks)
 
 ## PROJECT ID INSTRUCTIONS:
 
 If you are given a specific project_id to use in your instructions (marked with "IMPORTANT: Use the following project ID: [id]"), you MUST use exactly that ID in your project manifest and all related output.
 
-## PATH GUIDELINES - CRITICAL REQUIREMENT
+## STANDARD PROJECT STRUCTURE:
 
-⚠️ **CRITICAL:** All file paths in the manifest MUST be relative to the project directory without including the project ID prefix.
+The system will automatically create a standard project structure with these directories:
 
-- Projects will FAIL to create if any paths include the project ID as a prefix
-- File paths must start directly with the subdirectory or filename
-
-## Examples:
-
-✅ **CORRECT PATHS:**
-
-- `src/index.js`
-- `docs/README.md`
-- `tests/app.test.js`
-- `project.json`
-
-❌ **INCORRECT PATHS (will cause failure):**
-
-- `project_id/src/index.js`
-- `my-project/docs/README.md`
-- `/project_id/src/index.js`
-
-The system automatically resolves all paths relative to the project directory. Including the project ID in paths will cause an error and prevent project creation.
-
-## STRUCTURE TYPES:
-
-Valid structure types include:
-
-- "standard": Basic project structure with src and docs
-- "dev": src, tests, and docs for a development project
-- "research": docs, reports, and references for a research project, expecting a final doc in the reports/ directory
-
-## FILE ORGANIZATION GUIDELINES:
-
-- Projects should have an organized directory structure that makes sense for the specific project
-- You can suggest any directory structure that fits the project needs
-- The manifest should include appropriate directories in the "folder_structure" array
-
-The manifest should include both the tasks.md and project.json files in the "files" array:
-
-- tasks.md: Contains the task list in markdown format as specified below
-- project.json: Contains basic project metadata
+- src: For source code files
+- docs: For documentation
+- tests: For test files
 
 After executing the manifest, respond with the project directory in this format: PROJECT_ID: [project_id]
 
-## PROJECT MANIFEST GUIDELINES:
+## TASKS ORGANIZATION:
 
-- Project name is used for display purposes and can include spaces and proper casing
-- Put a tasks.md file in the root of the project directory that contains a list of tasks for the project.
-- Put a project.json file in the root of the project directory that contains project information including name, description, created_at, etc.
-
-## TASKS.MD FORMAT:
-
-Create a structured task list in markdown format with the following structure:
-
-```markdown
-# Tasks for [Project Name]
-
-## [ ] Task: [Task Title 1]
-
-[Task description]
-
-- [Detailed task point 1.1]
-- [Detailed task point 1.2]
-- [Detailed task point 1.3]
-
-## [ ] Task: [Task Title 2]
-
-[Task description]
-
-- [Detailed task point 2.1]
-- [Detailed task point 2.2]
-- [Detailed task point 2.3]
-```
-
-Note that the `[ ]` indicates a task that hasn't been completed yet. When a task is completed, it will be marked with `[x]`.
-
-## TASK CREATION PRINCIPLES:
+When creating the tasks list, follow these principles:
 
 - FOCUS ON GOALS:
   - Create fewer, more substantial high-level tasks (around 4-8 total tasks)
@@ -228,16 +187,19 @@ For project planning tasks, structure your response as:
 
 **Manifest**: [The complete project manifest]
 
-## EXAMPLE OF AN OUTSTANDING HIGH-LEVEL TASK IN MARKDOWN FORMAT:
+## EXAMPLE OF AN OUTSTANDING HIGH-LEVEL TASK:
 
-```markdown
-## [ ] Task: Implement User Authentication System
-
-Create a complete, secure user authentication system with multiple login options and proper security features
-
-- Design secure login/registration flow with email verification
-- Set up database schema for user accounts and credentials
-- Implement password recovery functionality with secure token generation
-- Create middleware for route protection and permission verification
-- Add social login options for Google and GitHub
+```json
+{
+  "title": "Implement User Authentication System",
+  "description": "Create a complete, secure user authentication system with multiple login options and proper security features",
+  "details": [
+    "Design secure login/registration flow with email verification",
+    "Set up database schema for user accounts and credentials",
+    "Implement password recovery functionality with secure token generation",
+    "Create middleware for route protection and permission verification",
+    "Add social login options for Google and GitHub"
+  ],
+  "status": "todo"
+}
 ```

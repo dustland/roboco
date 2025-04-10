@@ -15,7 +15,7 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from loguru import logger
 
-from roboco.api.routers import project, task, chat
+from roboco.api.routers import project, task, chat, files
 from roboco.core.config import get_workspace, load_config
 
 
@@ -47,6 +47,7 @@ app.mount("/workspace", StaticFiles(directory=workspace_dir), name="workspace")
 app.include_router(project.router, prefix="/projects", tags=["projects"])
 app.include_router(task.router, prefix="/tasks", tags=["tasks"])
 app.include_router(chat.router, prefix="/chat", tags=["chat"])
+app.include_router(files.router, prefix="", tags=["files"])  # No prefix as we use /projects/{project_id}/files in the router
 
 
 @app.get("/")

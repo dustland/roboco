@@ -43,7 +43,7 @@ async def get_task_messages(
 ):
     """Get all messages generated during execution of a specific task."""
     try:
-        messages = await api_service.get_messages_for_task(task_id)
+        messages = await api_service.get_messages(task_id=task_id)
         return messages
     except Exception as e:
         logger.error(f"Error getting messages for task {task_id}: {str(e)}")

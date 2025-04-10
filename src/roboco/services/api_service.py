@@ -7,10 +7,7 @@ the API endpoints and the domain services.
 
 from typing import List, Optional, Dict, Any
 import os
-from loguru import logger
-import json
 
-logger = logger.bind(module=__name__)
 
 from roboco.services.project_service import ProjectService
 from roboco.services.agent_service import AgentService
@@ -20,6 +17,11 @@ from roboco.core.models.project import Project
 from roboco.core.models.chat import ChatRequest, ChatResponse
 from roboco.core.task_manager import TaskManager
 from roboco.core.config import load_config
+
+from loguru import logger
+
+# Initialize logger immediately after import
+logger = logger.bind(module=__name__)
 
 # Local utility function
 def project_to_pydantic(project):
@@ -393,15 +395,11 @@ class ApiService:
             "tasks": [task.to_dict() for task in tasks]
         }
         
-        # Generate tasks.md content from tasks if it doesn't exist
-        try:
-            # Check if tasks.md exists
-            tasks_md = project.fs.read_sync("tasks.md")
-        except FileNotFoundError:
-            # Generate markdown from tasks using TaskManager
-            tasks_md = task_manager.tasks_to_markdown(tasks, project.name)
-            # Save the markdown for future use
-            project.fs.write_sync("tasks.md", tasks_md)
+        # Generate tasks.md content from tasks
+        tasks_md = task_manager.tasks_to_markdown(tasks, project.name)
+        
+        # Always update the tasks.md file to ensure it's in sync with the database
+        project.fs.write_sync("tasks.md", tasks_md)
         
         return {
             "content": tasks_md,

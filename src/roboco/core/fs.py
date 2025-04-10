@@ -209,14 +209,43 @@ class ProjectFS:
         abs_path = self._resolve_path(path)
         try:
             if os.path.isdir(abs_path):
-                # Use os.rmdir for empty directories
-                os.rmdir(abs_path)
-            elif os.path.isfile(abs_path):
+                shutil.rmtree(abs_path)
+            else:
                 os.remove(abs_path)
             return True
         except Exception as e:
             logger.error(f"Failed to delete {path}: {str(e)}")
             return False
+            
+    def stat_sync(self, path: str) -> Dict[str, Any]:
+        """
+        Get file/directory statistics.
+        
+        Args:
+            path: Path relative to base_dir
+            
+        Returns:
+            Dictionary with file statistics including size and modification time
+            
+        Raises:
+            FileNotFoundError: If the file does not exist
+        """
+        abs_path = self._resolve_path(path)
+        
+        # Check if the path exists
+        if not os.path.exists(abs_path):
+            raise FileNotFoundError(f"Path does not exist: {path}")
+            
+        # Get file stats
+        stat_info = os.stat(abs_path)
+        
+        # Return formatted stats
+        return {
+            "size": stat_info.st_size,
+            "modified": datetime.fromtimestamp(stat_info.st_mtime).isoformat(),
+            "created": datetime.fromtimestamp(stat_info.st_ctime).isoformat(),
+            "is_dir": os.path.isdir(abs_path)
+        }
             
     def list_sync(self, path: str) -> List[str]:
         """
@@ -392,6 +421,21 @@ class ProjectFS:
             json.JSONDecodeError: If the file contains invalid JSON
         """
         return self.read_json_sync(path)
+        
+    async def stat(self, path: str) -> Dict[str, Any]:
+        """
+        Get file/directory statistics (async wrapper).
+        
+        Args:
+            path: Path relative to base_dir
+            
+        Returns:
+            Dictionary with file statistics including size and modification time
+            
+        Raises:
+            FileNotFoundError: If the file does not exist
+        """
+        return self.stat_sync(path)
 
     def get_project_data(self) -> Dict[str, Any]:
         """

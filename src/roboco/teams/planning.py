@@ -13,17 +13,19 @@ from roboco.core.agent import Agent
 from roboco.core.agent_factory import AgentFactory
 from roboco.core.config import get_workspace
 from roboco.core.fs import ProjectFS
+from roboco.core.team import Team
 
 logger = logger.bind(module=__name__)
 
-class PlanningTeam:
+class PlanningTeam(Team):
     """Team for creating and managing projects."""
     
-    def __init__(self, project_id: str):
+    def __init__(self, project_id: str, config_path: Optional[str] = None):
         """Initialize the project team.
         
         Args:
-            project_id: Optional project ID to use consistently
+            project_id: Project ID to use consistently
+            config_path: Optional path to team configuration file
         """
         # Store project_id for later use
         self.project_id = project_id
@@ -34,6 +36,10 @@ class PlanningTeam:
         # Get the agent factory instance
         agent_factory = AgentFactory.get_instance()
         
+        # Create filesystem
+        fs = ProjectFS(project_id=project_id)
+        
+        # Create agents first before initializing the parent class
         # Create executor agent from the factory
         executer = agent_factory.create_agent(
             role_key="executor",
@@ -52,34 +58,35 @@ class PlanningTeam:
             code_execution_config=False
         )
         
-        self.agents = {
+        # Create agents dictionary
+        agents = {
             "executer": executer,
             "planner": planner
         }
         
+        # Initialize the parent class with our agents
+        super().__init__(name="PlanningTeam", agents=agents, config_path=config_path, fs=fs)
+        
         # Register tools with agents
-        from roboco.tools.fs import FileSystemTool
-        # Use the project_id if available
-        fs = ProjectFS(project_id=self.project_id)
-        fs_tool = FileSystemTool(fs=fs)
-
-        fs_tool.register_with_agents(planner, executor_agent=executer)
+        self._register_tools()
         
-    def get_agent(self, name: str) -> Agent:
-        """Get an agent by name.
-        
-        Args:
-            name: Name of the agent
+    def _register_tools(self):
+        """Register necessary tools with the agents."""
+        try:
+            from roboco.tools.fs import FileSystemTool
             
-        Returns:
-            The agent
+            # Create file system tool
+            fs_tool = FileSystemTool(fs=self.fs)
             
-        Raises:
-            ValueError: If the agent is not found
-        """
-        if name not in self.agents:
-            raise ValueError(f"Agent '{name}' not found")
-        return self.agents[name]
+            # Register with agents
+            executer = self.get_agent("executer")
+            planner = self.get_agent("planner")
+            fs_tool.register_with_agents(planner, executor_agent=executer)
+            
+        except ImportError:
+            logger.warning("FileSystemTool not available")
+        except Exception as e:
+            logger.warning(f"Could not initialize FileSystemTool: {str(e)}")
     
     async def run_chat(self, query: str, teams: Optional[List[str]] = None, context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """
