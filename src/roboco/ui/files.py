@@ -124,7 +124,7 @@ def explore_project_files() -> None:
         
         # Display directories first with folder icons
         if directories:
-            st.markdown("##### 📁 Directories")
+            st.markdown("##### Directories")
             
             # Create columns for grid layout
             cols = st.columns(3)
@@ -141,13 +141,9 @@ def explore_project_files() -> None:
                         st.session_state.current_path = directory["path"]
                         st.rerun()
                     
-                    # Show modified date if available
-                    if modified:
-                        st.caption(f"Modified: {modified}")
-        
         # Display files with appropriate icons based on extension
         if regular_files:
-            st.markdown("##### 📄 Files")
+            st.markdown("##### Files")
             
             # Define file type icons
             file_icons = {
@@ -192,14 +188,10 @@ def explore_project_files() -> None:
                     modified = file.get("modified", "")
                     
                     # Display file as a button
-                    if st.button(f"{icon} {file_name}", key=f"file_{i}", use_container_width=True):
+                    if st.button(f"{icon} {file_name[:20]} · {size_str}", key=f"file_{i}", use_container_width=True):
                         # Set this file as selected
                         st.session_state.selected_file = file["path"]
                         st.rerun()
-                    
-                    # Show file size and modified date if available
-                    if size_str:
-                        st.caption(f"{size_str} • {modified if modified else ''}")
         
         # If no files or directories
         if not directories and not regular_files:
