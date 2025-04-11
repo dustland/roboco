@@ -354,7 +354,15 @@ class Team(ABC):
             # Prepare initial message with a richer system prompt to avoid empty messages
             initial_message = {
                 "role": "user", 
-                "content": f"Task: {query}\n\nPlease analyze this task and coordinate with the team to complete it. Provide detailed instructions to team members."
+                "content": f"""Task: {query}
+
+Please analyze this task and coordinate with other team members to complete it efficiently. As you work:
+1. Break down complex problems into smaller tasks
+2. Consider which team member is best suited for each subtask
+3. Provide detailed context when handing off to another agent
+4. Explicitly acknowledge when a subtask or the overall task is complete
+
+Begin by analyzing the task requirements and developing a plan of action."""
             }
             
             # initiate_swarm_chat returns a tuple of (chat_result, context_variables, last_agent)
