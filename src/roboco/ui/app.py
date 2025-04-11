@@ -31,7 +31,7 @@ def main():
     # Set page config
     st.set_page_config(
         page_title="RoboCo Chat",
-        page_icon="🤖",
+        page_icon="👽",
         layout="wide",
         initial_sidebar_state="expanded"
     )
@@ -39,28 +39,16 @@ def main():
     # Apply all UI fixes and styling
     clean_ui_display()
     
-    # Add a direct style tag to fix any CSS issues
-    st.markdown("""
-    <style>
-    .css-nahz7x {display: none;}  /* Hide any raw CSS */
-    pre code {display: none;}  /* Hide code blocks */
-    div.stTabs [data-baseweb="tab-panel"] {padding-top: 0.5rem;}  /* Make chat tab take up more space */
-    div.main div.block-container {padding-top: 1rem; padding-bottom: 1rem; max-width: 100%;}  /* Reduce padding */
-    div.stChatMessage {margin-bottom: 0.5rem;}  /* Give more space to chat messages */
-    div.stChatInputContainer {position: sticky !important; bottom: 0; background-color: white; padding-top: 1rem; margin-top: 1rem; z-index: 100;}  /* Keep chat input visible */
-    </style>
-    """, unsafe_allow_html=True)
-    
-    # Streamlit UI layout - cleaner header with smaller title to save space
-    st.markdown("## 🤖 RoboCo Chat")
+    # Streamlit UI layout - simplified header
+    st.markdown("## RoboCo Chat")
     
     if not api_connected:
-        st.error("❌ Cannot connect to RoboCo API. Make sure to start the API server with `roboco server --workers 4`")
+        st.error("Cannot connect to RoboCo API. Make sure to start the API server with `roboco server --workers 4`")
         st.info("Run the command in a separate terminal and refresh this page")
         return
     
-    # Better layout with chat tab selected by default
-    tab1, tab2, tab3 = st.tabs(["💬 Chat", "📁 Project Files", "⚙️ Settings"])
+    # Simplified tabs without emojis
+    tab1, tab2, tab3 = st.tabs(["Start Chat", "Project Files", "Settings"])
     
     with tab1:
         # Give the chat view more space by removing redundant headers

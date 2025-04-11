@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "roboco"
-version = "0.3.0"
+version = "0.4.0"
 description = "RoboCo - A Multi-agents Platform"
 authors = [
     {name = "Dustland Team", email = "hi@dustland.ai"}
@@ -28,7 +28,7 @@ dependencies = [
     "tavily-python",
     "PyGithub", # GitHub API client
     "arxiv", # ArXiv API client
-    "pyautogen @ git+https://github.com/dustland/ag2.git", # Use GitHub version of pyautogen
+    "autogen",
     "mcp>=1.4.1",
     "markdown>=3.4.0", # For markdown processing
     "sqlmodel>=0.0.8", # SQL ORM

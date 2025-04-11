@@ -19,35 +19,30 @@ from roboco.ui.utils import get_api_url
 
 def chat_view():
     """Render the chat interface."""
-    # Add a cleaner header
-    st.markdown("### 💭 Chat with RoboCo")
-    
     # Only show help content if there are no active projects or conversations
     if not st.session_state.project_id:
         # Show configuration warning when no project exists
         st.warning("""
-        ⚙️ **Server Configuration**
-        
         For optimal performance, run the server with multiple workers:
-        ```
+        ```bash
         roboco server --workers 4
         ```
         This allows the API to handle chat requests and status updates simultaneously.
         """)
         
         # Add sample message suggestions when no project exists
-        st.subheader("Sample tasks to try:")
+        st.markdown("**Sample tasks to try:**")
         
         sample_messages = [
             "Create a simple calculator web app with React and CSS Grid layout",
-            "Build a modern todo app with Vue.js, local storage, and dark mode support",
+            "Build a modern todo app with Next.js, local storage, and dark mode support",
             "Research the latest advancements in quantum computing and summarize key findings",
             "Create a responsive blog template with HTML, CSS, and a working comment system"
         ]
         
         # Display sample messages in a single column
         for i, message in enumerate(sample_messages):
-            if st.button(message, key=f"sample_{i}", use_container_width=True):
+            if st.button(message, key=f"sample_{i}", type="secondary", use_container_width=True):
                 handle_chat_input(message)
     else:
         # Fetch project tasks and their messages
@@ -136,7 +131,7 @@ def chat_view():
         .main-chat-area {
             display: flex;
             flex-direction: column;
-            height: 85vh;
+            min-height: 0;
         }
         .messages-container {
             flex-grow: 1;
@@ -149,20 +144,20 @@ def chat_view():
         """, unsafe_allow_html=True)
         
         # Create tabs for each task plus a "Main" tab for all messages
-        tab_titles = ["📋 Main Chat"]
+        tab_titles = ["🏠 Main Chat"]
         for i, task in enumerate(tasks):
             status = task.get("status", "").upper()
             
             # Add emoji based on status
             if status == "COMPLETED":
-                emoji = "✓"
+                emoji = "✅"
             elif status == "FAILED":
-                emoji = "✗"
+                emoji = "❌"
             else:
                 emoji = "○"
                 
             # Use simpler numerical labels instead of task titles
-            tab_titles.append(f"{emoji} {i+1}")
+            tab_titles.append(f"{emoji} Task {i+1}")
         
         # Create the tabs
         tabs = st.tabs(tab_titles)
@@ -208,7 +203,7 @@ def chat_view():
                     
                     # Task details
                     st.markdown(f"""
-                    <div style="padding: 10px; border-radius: 5px; background-color: #f8f9fa; margin-bottom: 15px;">
+                    <div style="padding: 10px; border-radius: 5px; margin-bottom: 15px;">
                         <h4>{status_emoji} {task.get('title', 'Untitled Task')}</h4>
                         <p><strong>Description:</strong> {task.get('description', 'No description')}</p>
                         <p><strong>Status:</strong> {status}</p>
