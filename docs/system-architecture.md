@@ -1,75 +1,96 @@
-# RoboCo Multi-Agent Framework: Architecture Design
+# RoboCo: System Architecture
 
 ## 1. Introduction
 
-This document outlines the v2 architecture of the RoboCo Multi-Agent Framework, a platform designed to support the development and orchestration of collaborative AI agents. RoboCo aims to provide a flexible, observable, and interruptible environment for complex tasks, with a particular emphasis on robust context management for applications like long-form document generation.
+RoboCo is a multi-agent framework designed for building, orchestrating, and operating sophisticated AI systems. It provides a robust, modular, and observable environment for collaborative agents to perform complex tasks. This document outlines the high-level architecture of the framework and its core subsystems.
 
-The key design goals influencing this architecture include:
+## 2. Architectural Vision
 
-- **Modularity**: Components (agents, tools, context store) should be well-defined and loosely coupled.
-- **Extensibility**: The framework should be easily extendable with new agents, tools, and capabilities, and by adding new MCP servers for additional data sources or integrations.
-- **Observability**: System operations and agent interactions should be transparent and traceable.
-- **Interruptibility**: Users should be able to pause, resume, and redirect ongoing agent processes.
-- **Scalable Context Management**: The system must handle large volumes of information exceeding typical LLM context windows.
+The design of RoboCo is guided by a set of core principles:
 
-This document details the core components, interaction patterns, and the specialized sub-systems that enable these goals. All agent interactions with context and external tools are mediated through Model Context Protocol (MCP) servers, which provide a unified and extensible interface for resource access.
+- **Modularity**: The system is composed of distinct, loosely coupled components that can be developed and scaled independently.
+- **Observability**: All significant actions within the system are transparent and traceable through a centralized event stream.
+- **Extensibility**: The framework can be easily extended with new agents, tools, and other capabilities.
+- **Resilience**: The architecture supports stateful recovery, allowing agent workflows to be paused, resumed, and tolerant to failures.
 
-## 2. Multi-agent Autonomous System
+## 3. High-Level Architecture
 
-We use the term "multi-agent system" to refer to a system that consists of multiple agents that collaborate to achieve a common goal. The RoboCo framework is designed to facilitate such collaboration effectively.
-
-Here is a high-level overview of the multi-agent autonomous system in RoboCo:
+The RoboCo framework is composed of an **Execution Core** and four primary subsystems: the **Config System**, **Context System**, **Tool System**, and **Event System**. This architecture emphasizes a configuration-driven approach where individual agents are the primary consumers of the framework's capabilities.
 
 ```mermaid
 graph TD
-    subgraph User Interaction
-        User[Human User] --> UPA[UserProxyAgent]
+    subgraph "Configuration"
+        CFS[Config System]
     end
 
-    subgraph Agent Core
-        UPA --> OA["GroupChatManager"]
-        OA --> GroupChat{GroupChat}
-        GroupChat --> SA1[Specialized Agent 1]
-        GroupChat --> SA2[Specialized Agent 2]
-        GroupChat --> SAN[...]
-        SA1 --> Tools
-        SA2 --> Tools
-        SAN --> Tools
+    subgraph "Execution Core"
+        U[User] --> UPA[User Proxy Agent]
+        UPA --> T[Team]
+        T --> A1[Agent 1]
+        T --> A2[Agent 2]
+        T --> AN[...]
     end
 
-    subgraph Services & Context
-        Tools[Agent Tools] --> MCP[MCP Servers]
-        MCP --> Resource1["External Resource 1 (e.g., Web Search)"]
-        MCP --> Resource2["External Resource 2 (e.g., Database)"]
-        MCP --> FBCM[File-Based Context Management]
-        FBCM --> DocStore[(Document Store: outline.json, sections/, metadata.json, _document_summary.json)]
+    subgraph "Core Subsystems"
+        CS[Context System]
+        TS[Tool System]
+        ES[Event System]
     end
 
-    classDef user fill:#D5F5E3,stroke:#2ECC71,stroke-width:2px;
-    classDef agent fill:#D6EAF8,stroke:#3498DB,stroke-width:2px;
-    classDef orchestrator fill:#FCF3CF,stroke:#F1C40F,stroke-width:2px;
-    classDef group fill:#E8DAEF,stroke:#8E44AD,stroke-width:2px;
-    classDef tool fill:#EBDEF0,stroke:#8E44AD,stroke-width:2px;
-    classDef mcp fill:#FDEDEC,stroke:#E74C3C,stroke-width:2px;
-    classDef context fill:#FEF9E7,stroke:#F39C12,stroke-width:2px;
-    classDef resource fill:#E5E7E9,stroke:#808B96,stroke-width:2px;
+    CFS -- "Defines" --> T & A1 & A2 & AN
 
-    class User user;
-    class UPA,SA1,SA2,SAN agent;
-    class OA orchestrator;
-    class GroupChat group;
-    class Tools tool;
-    class MCP mcp;
-    class FBCM,DocStore context;
-    class Resource1,Resource2 resource;
+    A1 --> CS & TS
+    A2 --> CS & TS
+    AN --> CS & TS
+
+    T -- "Events" --> ES
+    A1 -- "Events" --> ES
+    A2 -- "Events" --> ES
+    AN -- "Events" --> ES
+    CS -- "Events" --> ES
+    TS -- "Events" --> ES
+
+    style UPA fill:#cde4ff
+    style T fill:#cde4ff
+    style A1 fill:#e8dff5
+    style A2 fill:#e8dff5
+    style AN fill:#e8dff5
+    style CS fill:#fff2cc
+    style TS fill:#d4edda
+    style ES fill:#f8d7da
+    style CFS fill:#d1e7dd
 ```
 
-Key concepts in this system include:
+### 3.1. Execution Core
 
-- **`Agent`**: An autonomous unit, typically an LLM-backed entity, responsible for specific tasks or roles within the system (e.g., `PlannerAgent`, `WriterAgent`).
-- **`UserProxyAgent`**: An agent that acts as the primary interface between the human user and the agent system.
-- **`GroupChatManager`**: Coordinates the activities of other agents, manages conversation flow, and directs the overall task execution.
-- **`Specialized Agents`**: Agents designed for particular functions (e.g., research, writing, planning) that contribute to the overall goal.
+The Execution Core is responsible for orchestrating agent collaboration based on a given configuration.
+
+- **User Proxy Agent**: The primary interface between a human user and the agent system.
+- **Team**: An orchestrator, defined by the **Config System**, that manages the interaction between a group of specialized agents to achieve a goal.
+- **Agents (`Agent 1`, `Agent 2`, ...)**: Individual, specialized agents that perform specific tasks. Each agent independently consumes capabilities from the **Tool** and **Context** systems.
+
+### 3.2. Core Subsystems
+
+**Config System**
+The Config System is the foundation of the framework's "config-based design" philosophy. It provides the schemas and tools to define the structure and behavior of the agent system, including the composition of teams, the roles of individual agents, and the tools they are permitted to use.
+
+> For a detailed design, see: [Config-Based Design](./config-based-design.md)
+
+**Context System**
+The Context System provides the memory for the agent framework. It allows agents to persist and retrieve state, ensuring that workflows are resilient and can handle information that exceeds LLM context windows.
+
+> For a detailed design, see: [Context Management Architecture](./context-management.md)
+
+**Tool System**
+The Tool System enables agents to interact with the outside world. It provides a secure and observable framework for discovering, executing, and monitoring tools like web search, code interpreters, and other APIs.
+
+> For a detailed design, see: [Tool System Architecture](./tool-system.md)
+
+**Event System**
+The Event System is the central nervous system of the framework. It operates on a publish-subscribe model, where all other components emit events about their state and actions. This provides a unified stream for observability, debugging, and control.
+
+> For a detailed design, see: [Event System Architecture](./event-system.md)
+
 - **`GroupChat`**: A collaborative environment managed by the `GroupChatManager` where multiple agents can interact.
 - **`Tools (via MCP)`**: Capabilities or functions (e.g., file I/O, web search, database access) that agents can invoke to perform actions or retrieve information. These are accessed via the Model Context Protocol (MCP).
 - **`Context`**: Shared information and the state of the ongoing task, managed through mechanisms like the File-Based Context Management system.
@@ -157,9 +178,9 @@ RoboCo leverages and extends MCP to provide a standardized interface for agents 
 - **MCP Servers**: These are dedicated, often lightweight, servers that expose access to specific resources or capabilities through the MCP protocol. Each MCP server implements a standard interface for a particular type of resource (e.g., a server for document context operations, a server for file system access, a server for web search, a server for a specific database or business tool).
 - **MCP Registration**: In the RoboCo framework, all tools registered with agents are essentially MCP protocol clients. When an agent decides to use a tool, it communicates with the appropriate MCP server to fulfill its request. This abstraction decouples the agent's logic from the specific implementation of the tool or resource access.
 
-## 7. MCP Design Principles
+## 7. Design Principles
 
-The adoption of MCP in RoboCo is guided by several key design principles:
+The system design is guided by several key design principles:
 
 - **Modularity**: Each distinct resource, tool, or capability is encapsulated within its own MCP server. This promotes separation of concerns and makes the system easier to manage and update.
 - **Extensibility**: Integrating new tools, data sources, or capabilities into RoboCo primarily involves developing a new MCP server for that resource and registering the corresponding client-side tool with the agents. This makes the framework highly extensible.

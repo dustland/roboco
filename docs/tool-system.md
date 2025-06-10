@@ -35,65 +35,39 @@ All tool interactions are mediated through the Model Context Protocol (MCP), cre
 **Separation of Concerns**
 Agents specialize in reasoning and decision-making, while tools encapsulate specific capabilities. This separation allows each component to evolve independently - agents can be upgraded without affecting tools, and new tools can be introduced without modifying agent logic.
 
-**Discoverability**
-Through the Tool Registry, tools actively advertise their capabilities. This enables agents to dynamically discover and adapt to available functionality at runtime rather than requiring pre-configured integrations.
-
-**Comprehensive Observability**
-The system provides deep insights into tool health, performance, and usage patterns. This is not merely an operational concern but a core architectural feature that informs system design and user experience.
-
-**Security by Default**
-Authentication, authorization, and auditing mechanisms are integrated at the protocol level rather than implemented ad hoc by individual tools. This ensures consistent security enforcement across all tool interactions.
-
-### 2.2 System Architecture Overview
-
-The tool system architecture comprises three core components that work in concert:
 
 ```mermaid
 graph TD
-    A[Agents] -->|Uses| B[Tool System]
-    B --> C[Tool Registry]
-    B --> D[Execution Engine]
-    B --> E[Monitoring Subsystem]
-    
-    C -->|Manages| F[Local Tools]
-    C -->|Manages| G[Remote Tools]
-    C -->|Manages| H[Managed Services]
-    
-    D -->|Executes| F
-    D -->|Orchestrates| G
-    D -->|Integrates| H
-    
-    E -->|Monitors| F
-    E -->|Monitors| G
-    E -->|Monitors| H
+    A[Agent] -->|1. Discovers| R[Tool Registry]
+    A -->|2. Executes| E[Execution Engine]
+    E -->|3. Invokes| T[Physical Tools]
+    E -->|4. Reports| M[Monitoring Subsystem]
 ```
 
-This architecture enables:
-- **Unified Access**: Agents interact with all tools through a consistent interface
-- **Scalability**: Components can be distributed across multiple nodes
-- **Resilience**: Health monitoring and automatic failover mechanisms
-- **Security**: Centralized policy enforcement at protocol boundaries
+## 3. Tool Integration Patterns
 
-## 3. Component Architecture
+The framework is designed to support a flexible range of tool types:
 
-### 3.1 Tool Registry: The System Catalog
+-   **Local Tools**: Functions executed directly within the agent's process. Ideal for low-latency, trusted operations.
+-   **Remote Tools**: Services accessed over the network via the Model Context Protocol (MCP). This allows for a distributed and scalable tool architecture.
+-   **Managed Services**: Third-party, enterprise-grade services (e.g., SaaS APIs) integrated via secure connectors.
 
-The Tool Registry serves as the central nervous system of the tool ecosystem. Rather than simply being a directory, it actively manages tool lifecycle and capability discovery:
+## 4. System Integration
 
-**Core Responsibilities**
-- **Dynamic Catalog Management**: Maintains a real-time inventory of available tools and their capabilities
-- **Lifecycle Governance**: Manages tool registration, versioning, and retirement processes
-- **Dependency Resolution**: Ensures all required components are available before tool activation
-- **Access Control Enforcement**: Implements fine-grained permissions based on agent roles
+The Tool System is a core pillar of the RoboCo framework and is deeply integrated with other subsystems:
 
-**Design Rationale**
-The registry adopts a service-oriented architecture to enable:
-- Dynamic discovery without agent reconfiguration
-- Centralized policy enforcement
-- Decoupled tool development and deployment
-- Real-time health status propagation
+-   **Event System**: Every phase of a tool's lifecycle—`ToolCallInitiated`, `ToolCallCompleted`, `ToolCallFailed`—generates a structured event on the central **Event Bus**. This provides the foundation for real-time monitoring, auditing, and debugging.
 
-### 3.2 Execution Engine: The Orchestration Layer
+-   **Context Management**: The framework provides a set of built-in tools for state manipulation, most notably `get_context` and `set_context`. These system tools are managed by the Execution Engine and generate events just like any other tool, making agent state changes fully observable and traceable actions.
+
+## 5. Security and Governance
+
+Security is a paramount concern and is enforced through a multi-layered approach:
+
+-   **Authentication**: Agents and tools must authenticate via mechanisms like OAuth 2.0 or API Keys before they can interact.
+-   **Authorization**: Fine-grained policies, managed in the Tool Registry, define which agents are permitted to execute which tools.
+-   **Auditing**: A comprehensive, immutable log of all tool executions is maintained for security analysis and compliance.
+-   **Sandboxing**: High-risk tools can be designated to run in isolated, sandboxed environments to mitigate potential security threats.
 
 The Execution Engine handles the end-to-end lifecycle of tool invocation, providing critical services that abstract complexity from agents:
 

@@ -9,6 +9,27 @@ resolution-markers = [
 ]
 
 [[package]]
+name = "ag2"
+version = "0.9.2"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "anyio" },
+    { name = "asyncer" },
+    { name = "diskcache" },
+    { name = "docker" },
+    { name = "httpx" },
+    { name = "packaging" },
+    { name = "pydantic" },
+    { name = "python-dotenv" },
+    { name = "termcolor" },
+    { name = "tiktoken" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/a8/f5/6e7f8c1d453074ea2bb39f4dc5690447ba7751070b4634baee4af9fe61fc/ag2-0.9.2.tar.gz", hash = "sha256:58f7820e288663efecbdb141868fa10f8948b5ccfdf3bfe5a48399d431efb501", size = 3312974 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/24/55/ccc0e5d1b333baa77b8b825594e6efa2b8a4029ce2804f6d0ce1f323c067/ag2-0.9.2-py3-none-any.whl", hash = "sha256:4f8f925e9fd0168a1b7a7049c2a39924ec52a1191791044a973343cb64036c80", size = 824008 },
+]
+
+[[package]]
 name = "altair"
 version = "5.5.0"
 source = { registry = "https://pypi.org/simple" }
@@ -79,6 +100,18 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/5a/b0/1367933a8532ee6ff8d63537de4f1177af4bff9f3e829baf7331f595bb24/attrs-25.3.0.tar.gz", hash = "sha256:75d7cefc7fb576747b2c81b4442d4d4a1ce0900973527c011d1030fd3bf4af1b", size = 812032 }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/77/06/bb80f5f86020c4551da315d78b3ab75e8228f89f0162f2c3a819e407941a/attrs-25.3.0-py3-none-any.whl", hash = "sha256:427318ce031701fea540783410126f03899a97ffc6f61596ad581ac2e40e3bc3", size = 63815 },
+]
+
+[[package]]
+name = "autogen"
+version = "0.9.2"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "ag2" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/c4/67/6c0168e36fce967f4b35e12bda60a84130cf2e29eee6971f1f3e5a8d34f0/autogen-0.9.2.tar.gz", hash = "sha256:79c92591c5a9471bc893b8ca3dd6be82f330cc511b4a47b017c1c3b78dd6379c", size = 42845 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/16/6e/1802229311c5440a41aa130b2b21addf2d19e438b0a57fcc6383effa1e2e/autogen-0.9.2-py3-none-any.whl", hash = "sha256:ce4e044ed3f53e409c69b7d6ae635b94a37708422474eaa47de33627a0615e36", size = 13606 },
 ]
 
 [[package]]
@@ -1035,23 +1068,6 @@ wheels = [
 ]
 
 [[package]]
-name = "pyautogen"
-version = "0.8.5rc0"
-source = { git = "https://github.com/dustland/ag2.git#d3b420b81e3976072c2ca74ac42429d175927aa9" }
-dependencies = [
-    { name = "anyio" },
-    { name = "asyncer" },
-    { name = "diskcache" },
-    { name = "docker" },
-    { name = "httpx" },
-    { name = "packaging" },
-    { name = "pydantic" },
-    { name = "python-dotenv" },
-    { name = "termcolor" },
-    { name = "tiktoken" },
-]
-
-[[package]]
 name = "pycodestyle"
 version = "2.12.1"
 source = { registry = "https://pypi.org/simple" }
@@ -1438,10 +1454,12 @@ wheels = [
 
 [[package]]
 name = "roboco"
-version = "0.3.0"
+version = "0.4.0"
 source = { editable = "." }
 dependencies = [
+    { name = "ag2" },
     { name = "arxiv" },
+    { name = "autogen" },
     { name = "beautifulsoup4" },
     { name = "fastapi" },
     { name = "loguru" },
@@ -1450,7 +1468,6 @@ dependencies = [
     { name = "numpy", version = "1.26.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
     { name = "numpy", version = "2.2.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
     { name = "pyarrow" },
-    { name = "pyautogen" },
     { name = "pydantic" },
     { name = "pygithub" },
     { name = "python-dotenv" },
@@ -1482,7 +1499,9 @@ ui = [
 
 [package.metadata]
 requires-dist = [
+    { name = "ag2", specifier = ">=0.9.2" },
     { name = "arxiv" },
+    { name = "autogen" },
     { name = "beautifulsoup4", specifier = ">=4.12.0" },
     { name = "black", marker = "extra == 'dev'" },
     { name = "fastapi", specifier = ">=0.104.0" },
@@ -1494,7 +1513,6 @@ requires-dist = [
     { name = "mypy", marker = "extra == 'dev'" },
     { name = "numpy", specifier = ">=1.24.3" },
     { name = "pyarrow", specifier = ">=19.0.1" },
-    { name = "pyautogen", git = "https://github.com/dustland/ag2.git" },
     { name = "pydantic", specifier = ">=2.7.1" },
     { name = "pygithub" },
     { name = "pytest", marker = "extra == 'dev'" },
