@@ -3,16 +3,21 @@
 ## 1. Introduction
 
 Roboco is a multi-agent framework designed for building, orchestrating, and operating sophisticated AI systems. It provides a robust, modular, and observable environment for collaborative agents to perform complex tasks. This document outlines the high-level architecture of the framework and its core subsystems.
-The design of Roboco is guided by a set of core principles:
 
-- **Modularity**: The system is composed of distinct, loosely coupled components that can be developed and scaled independently.
-- **Observability**: All significant actions within the system are transparent and traceable through a centralized event stream.
-- **Extensibility**: The framework can be easily extended with new agents, tools, and other capabilities.
-- **Resilience**: The architecture supports stateful recovery, allowing agent workflows to be paused, resumed, and tolerant to failures.
+## 2. Design Principles
 
-## 2. High-Level System Architecture
+The system design is guided by several key principles:
 
-The Roboco framework is composed of an **Execution Core** and five primary subsystems: the **Config System**, **Memory System**, **Tool System**, **Storage System**, and **Event System**. This architecture emphasizes a configuration-driven approach where individual agents are the primary consumers of the framework's capabilities.
+- **Modularity**: Components are loosely coupled with clear interfaces
+- **Extensibility**: Supports multiple integration patterns for tools, storage, and LLMs
+- **Observability**: Comprehensive event streaming for monitoring and debugging
+- **Human-in-the-Loop**: Designed for real-time human oversight and intervention
+- **Security**: Built-in authentication, authorization, and auditing
+- **Resilience**: Stateful recovery for long-running workflows
+
+## 3. High-Level Architecture
+
+The framework comprises:
 
 ```mermaid
 %%{init: {"theme": "default", "themeVariables": {
@@ -48,38 +53,22 @@ graph TD
     subgraph "Core Subsystems"
         MS[Memory System]
         TS[Tool System]
-        SS[Storage System]
         ES[Event System]
     end
 
     CFS -- "Defines" --> T & A1 & A2 & AN
-
-        A1 --> MS & TS
+    A1 --> MS & TS
     A2 --> MS & TS
     AN --> MS & TS
-
-    MS --> SS
-
     T -- "Events" --> ES
     A1 -- "Events" --> ES
     A2 -- "Events" --> ES
     AN -- "Events" --> ES
     MS -- "Events" --> ES
     TS -- "Events" --> ES
-
-    style UPA fill:#e8f4f8,stroke:#2c3e50,stroke-width:2px
-    style T fill:#e8f4f8,stroke:#2c3e50,stroke-width:2px
-    style A1 fill:#f0f2f5,stroke:#34495e,stroke-width:1px
-    style A2 fill:#f0f2f5,stroke:#34495e,stroke-width:1px
-    style AN fill:#f0f2f5,stroke:#34495e,stroke-width:1px
-    style MS fill:#f8f9fa,stroke:#6c757d,stroke-width:1px
-    style TS fill:#f8f9fa,stroke:#6c757d,stroke-width:1px
-    style SS fill:#f8f9fa,stroke:#6c757d,stroke-width:1px
-    style ES fill:#f8f9fa,stroke:#6c757d,stroke-width:1px
-    style CFS fill:#e9ecef,stroke:#495057,stroke-width:1px
 ```
 
-### 2.1. Execution Core
+### 3.1 Execution Core
 
 The Execution Core is responsible for orchestrating agent collaboration based on a given configuration.
 
@@ -87,7 +76,7 @@ The Execution Core is responsible for orchestrating agent collaboration based on
 - **Team**: An orchestrator, defined by the **Config System**, that manages the interaction between a group of specialized agents to achieve a goal.
 - **Agents (`Agent 1`, `Agent 2`, ...)**: Individual, specialized agents that perform specific tasks. Each agent independently consumes capabilities from the **Tool** and **Memory** systems.
 
-### 2.2. Core Subsystems
+### 3.2 Core Subsystems
 
 **Config System**
 The Config System is the foundation of the framework's "config-based design" philosophy. It provides the schemas and tools to define the structure and behavior of the agent system, including the composition of teams, the roles of individual agents, and the tools they are permitted to use.
@@ -102,7 +91,7 @@ The Memory System provides persistent information storage for the agent framewor
 **Tool System**
 The Tool System enables agents to interact with the outside world. It provides a secure and observable framework for discovering, executing, and monitoring tools like web search, code interpreters, and other APIs.
 
-### 2.3 Extensibility
+### 3.3 Extensibility
 
 The framework supports tool extensibility through multiple approaches:
 
@@ -114,29 +103,10 @@ The MCP approach provides standardized tool integration where agents act as MCP 
 
 > For a detailed design, see: [Tool System Architecture](./tool-system.md)
 
-**Storage System**
-The Storage System provides an abstraction layer for persistent data storage, enabling the framework to support multiple storage backends. It decouples memory management from specific storage implementations, allowing seamless transitions between local filesystems, cloud object storage (AWS S3, Azure Blob), and other storage solutions.
-
 **Event System**
 The Event System is the central nervous system of the framework. It operates on a publish-subscribe model, where all other components emit events about their state and actions. This provides a unified stream for observability, debugging, and control.
 
 > For a detailed design, see: [Event System Architecture](./event-system.md)
-
-## 3. Agent Collaboration
-
-Roboco provides a framework for orchestrating multi-agent collaboration through its Team Management system.
-
-- **Config-based Agents**: Each agent in Roboco is defined through configuration that specifies their role, capabilities, and behavior patterns. This configuration-driven approach, detailed in [Config-based Design](./config_based_design.md), allows for flexible customization and easy definition of new agent types.
-- **Team Orchestration**: Roboco's TeamManager coordinates multi-agent collaboration by:
-  - Receiving initial tasks and managing the overall collaboration lifecycle
-  - Determining collaboration strategy and agent interaction patterns
-  - Routing messages and coordinating task execution across specialized agents
-  - Managing conversation flow and ensuring task completion
-- **Event System Integration**: The interruption system is tightly integrated with the Event System (see [Event System Architecture](./event-system.md)) to enable sophisticated human intervention:
-  - **Real-time Observability**: Human supervisors observe collaboration progress through live event streams showing agent activities, content generation, and quality metrics
-  - **Quality Assessment Events**: The system emits `content.quality.assessed` events that can trigger human review workflows
-  - **Bidirectional Control**: Control events like `control.requirements.updated` and `control.collaboration.pause` flow from human interfaces back into the collaboration
-  - **Event Correlation**: All intervention actions are correlated with specific collaboration sessions and workflow states through event tracing
 
 ## 4. Memory System
 
@@ -176,15 +146,19 @@ Standard memory tools are available to all agents in the framework:
 
 > **Implementation Details**: For specific implementation strategy, configuration options, and integration examples, see [Memory System Documentation](./memory-system.md).
 
-## 5. Storage System
+## 5. Tool System
 
-The Storage System provides an abstraction layer for persistent data storage, enabling the framework to support multiple storage backends. It decouples memory management from specific storage implementations, allowing seamless transitions between local filesystems, cloud object storage (AWS S3, Azure Blob), and other storage solutions.
+The Tool System provides a secure and observable framework for discovering, executing, and monitoring tools like web search, code interpreters, and other APIs.
 
-## 6. Framework Extensibility
+## 6. Event System
+
+The Event System is the central nervous system of the framework. It operates on a publish-subscribe model, where all other components emit events about their state and actions. This provides a unified stream for observability, debugging, and control.
+
+## 7. Framework Extensibility
 
 The framework is designed with extensibility as a core principle, enabling seamless integration of new capabilities across multiple dimensions. This extensible architecture ensures the framework can adapt to evolving requirements and integrate with diverse technology stacks.
 
-### 6.1 Tool Extensibility
+### 7.1 Tool Extensibility
 
 The Tool System provides multiple pathways for extending agent capabilities with new tools and integrations:
 
@@ -215,7 +189,7 @@ The Tool System provides multiple pathways for extending agent capabilities with
 - Version management and dependency resolution
 - Example: Domain-specific tool packages, community contributions
 
-### 6.2 Storage Backend Extensibility
+### 7.2 Storage Backend Extensibility
 
 The Storage System's provider pattern enables support for diverse storage solutions:
 
@@ -240,7 +214,7 @@ The Storage System's provider pattern enables support for diverse storage soluti
 - Replication and backup strategies
 - Cross-provider data migration and synchronization
 
-### 6.3 LLM Provider Extensibility
+### 7.3 LLM Provider Extensibility
 
 The framework supports multiple LLM providers through a unified interface:
 
@@ -285,7 +259,7 @@ llm_providers:
     endpoint: "http://localhost:11434"
 ```
 
-### 6.4 Observability Platform Integration
+### 7.4 Observability Platform Integration
 
 The Event System enables integration with diverse monitoring and observability platforms:
 
@@ -339,7 +313,7 @@ observability:
     topic: "roboco-events"
 ```
 
-### 6.5 Integration Patterns
+### 7.5 Integration Patterns
 
 **Configuration-Driven Extension**
 
@@ -371,66 +345,7 @@ observability:
 
 This extensible architecture ensures the framework can evolve with changing technological landscapes while maintaining backward compatibility and operational stability.
 
-## 7. Core Interaction Workflow
-
-A typical task execution in Roboco follows this general pattern, emphasizing the event-driven nature and interruption handling:
-
-1.  **Initiation**:
-    - A user sends a request (e.g., "Write a research paper on AI ethics") via a user interface.
-    - The Roboco backend receives this request and passes it to the TeamManager.
-    - The TeamManager initializes the collaboration with the appropriate agent team configuration.
-    - The collaboration begins with the TeamManager coordinating agent interactions.
-2.  **Event-Driven Processing**:
-    - The backend processes collaboration events as they are generated by agent interactions.
-    - **Observability**: For each event, relevant information (agent activities, tool usage, progress status) is extracted and published to the Event Bus for monitoring and logging.
-    - **State Update**: The internal collaboration state is updated based on processed events.
-    - **Interruption Check**: The system continuously monitors for control events from the Event Bus to enable human intervention.
-3.  **Handling Interruptions**:
-
-    - If a control event is received from the Event Bus, the backend processes two types of intervention:
-
-      **Basic Control Commands** (Structured Events):
-
-      - `control.collaboration.pause` - Stops current event iteration, preserves workflow state
-      - `control.collaboration.resume` - Continues from last checkpoint
-      - `control.collaboration.terminate` - Cleanly shuts down collaboration
-      - `control.configuration.reload` - Reloads agent configurations from updated config files
-
-      **User Intervention Messages** (Natural Language):
-
-      - `control.user.message` - Contains human feedback as natural language text
-        - Example: "This section is not long enough, should be at least 4000 words"
-        - Example: "The sources are not rich enough, need more technical diagrams"
-        - The message is injected into the collaboration as if coming from the UserProxyAgent
-        - Agents interpret and respond to the feedback naturally through conversation
-
-      **Configuration Management**:
-
-      - **Agent Configuration Updates**: Changes to agent behavior are made by updating configuration files directly
-      - **Configuration Reload**: Agents either check for config updates before each execution, or respond to `control.configuration.reload` events
-      - **No Complex Structured Updates**: Agent reconfiguration happens through the config system, not through control events
-
-4.  **Team Collaboration Dynamics**:
-    - The TeamManager orchestrates the flow of collaboration between specialized agents.
-    - It determines which agent should act next based on the overall plan, current collaboration state, and agent capabilities.
-    - Agents perform their tasks using registered tools (via MCP) and contribute their results back to the shared collaboration memory.
-    - When human input is required, the system can pause and request user feedback through the interface.
-5.  **Task Completion**:
-    - The collaboration continues with event processing and potential human interventions until completion criteria are met.
-    - The final results are compiled and delivered to the user through the interface.
-
-## 8. Design Principles
-
-The system design is guided by several key design principles:
-
-- **Modularity**: Each distinct resource, tool, or capability is encapsulated within its own service component. This promotes separation of concerns and makes the system easier to manage and update.
-- **Extensibility**: The framework is designed to accommodate new tools, data sources, storage backends, LLM providers, and observability platforms through multiple integration approaches. See [Framework Extensibility](#6-framework-extensibility) for comprehensive coverage of extension mechanisms.
-- **Human-in-the-Loop**: The architecture is designed for seamless human collaboration, enabling real-time observation, intervention, and guidance throughout agent workflows. Humans can provide feedback, adjust requirements, pause/resume operations, and steer collaboration direction through natural language input and control events.
-- **Security & Observability**: All external access is mediated through the Tool System, providing natural points for implementing security policies and comprehensive auditing of resource access.
-- **Uniformity**: The Tool System provides consistent interfaces for agents to interact with diverse resources, simplifying agent reasoning and reducing integration complexity.
-- **Event-Driven Architecture**: All system activities generate events that flow through the Event Bus, enabling comprehensive observability and dynamic control capabilities.
-
-## 9. Example Scenario: Data Analysis Task
+## 8. Example Scenario: Data Analysis Task
 
 The Roboco architecture is particularly well-suited for building sophisticated, multi-step analysis workflows. Here's how the components align in such a scenario:
 
@@ -517,7 +432,7 @@ sequenceDiagram
 
 This workflow is iterative. For instance, the `ValidatorAgent` might request revisions, leading the `TeamManager` to re-engage the `AnalystAgent`. Users can also provide feedback at any stage through control events.
 
-## 10. Deployment and Maintenance
+## 9. Deployment and Maintenance
 
 In a typical Roboco deployment:
 
@@ -529,7 +444,7 @@ In a typical Roboco deployment:
 
 Maintenance involves updating tool services as needed, updating the Roboco backend with new agent logic or orchestration strategies, and managing the LLM configurations and dependencies.
 
-## 11. Conclusion
+## 10. Conclusion
 
 The framework provides a powerful and flexible platform for developing sophisticated multi-agent applications. Its core emphasis on modularity, extensibility, observability, interruptibility, and scalable memory handling makes it particularly suitable for complex, iterative tasks such as automated document generation, research synthesis, and other knowledge-intensive workflows.
 
