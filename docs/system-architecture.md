@@ -23,51 +23,54 @@ The system design is guided by several key architectural principles. Each princi
 
 ## 3. High-Level Architecture
 
-The Roboco framework is composed of an **Execution Core** and four primary subsystems: the **Config System**, **Memory System**, **Tool System**, and **Event System**.
+The Roboco framework is composed of an **Execution Core** and the **Core Subsystems** that support it.
 
 ```mermaid
-graph TD
-    subgraph "Configuration"
-        CFS[Config System]
+%%{init: {
+  "theme": "default",
+  "themeVariables": {
+    "fontFamily": "Arial",
+    "fontSize": "14px",
+    "primaryColor": "#f5f9ff",
+    "primaryTextColor": "#1a1a1a",
+    "primaryBorderColor": "#444",
+    "lineColor": "#444",
+    "borderRadius": "6"
+  }
+}}%%
+
+flowchart TB
+    User["User"] --> Proxy
+
+    subgraph EC["Execution Core"]
+        direction LR
+        Proxy["User Proxy Agent"] --> Team["Team"]
+        Team --> Agents
+        subgraph Agents["Agents"]
+            direction TB
+            A1["Agent1"]:::agent
+            A2["Agent2"]:::agent
+            A3["Agent3"]:::agent
+            A4["..."]:::agent
+        end
     end
 
-    subgraph "Execution Core"
-        U[User] --> UPA[User Proxy Agent]
-        UPA --> T[Team]
-        T --> A1[Agent 1]
-        T --> A2[Agent 2]
-        T --> AN[...]
+    EC -.-> CS
+
+    subgraph CS["Core Subsystems"]
+        direction TB
+        Config["Config System"]:::sub
+        Memory["Memory System"]:::sub
+        Tool["Tool System"]:::sub
+        Event["Event System"]:::sub
     end
 
-    subgraph "Core Subsystems"
-        MS[Memory System]
-        TS[Tool System]
-        ES[Event System]
-    end
-
-    CFS -- "Defines" --> T & A1 & A2 & AN
-
-    A1 --> MS & TS
-    A2 --> MS & TS
-    AN --> MS & TS
-
-    T -- "Events" --> ES
-    A1 -- "Events" --> ES
-    A2 -- "Events" --> ES
-    AN -- "Events" --> ES
-    MS -- "Events" --> ES
-    TS -- "Events" --> ES
-
-    style UPA fill:#e8f4f8,stroke:#2c3e50,stroke-width:2px
-    style T fill:#e8f4f8,stroke:#2c3e50,stroke-width:2px
-    style A1 fill:#f0f2f5,stroke:#34495e,stroke-width:1px
-    style A2 fill:#f0f2f5,stroke:#34495e,stroke-width:1px
-    style AN fill:#f0f2f5,stroke:#34495e,stroke-width:1px
-    style MS fill:#f8f9fa,stroke:#6c757d,stroke-width:1px
-    style TS fill:#f8f9fa,stroke:#6c757d,stroke-width:1px
-    style ES fill:#f8f9fa,stroke:#6c757d,stroke-width:1px
-    style CFS fill:#e9ecef,stroke:#495057,stroke-width:1px
+    classDef agent fill:#e6f7ff,stroke:#0366d6,color:#000;
+    classDef sub fill:#fff,stroke:#444,color:#000;
+    classDef default fill:#f9f9f9,stroke:#333,color:#000;
 ```
+
+The diagram illustrates the primary relationship: the `Execution Core` is defined by and utilizes the `Core Subsystems`. Specifically, the `Config System` defines the team, which in turn uses the `Memory`, `Tool`, and `Event` Systems to orchestrate its agents.
 
 ### 3.1 Execution Core
 
@@ -85,9 +88,29 @@ The Config System is the foundation of the framework's "config-as-code" philosop
 > For a detailed design, see: [Config-Based Design](./config-based-design.md)
 
 **Memory System**
-The Memory System provides short-term and long-term information storage for agents. It allows agents to maintain state, learn from interactions, and handle information that exceeds LLM context windows. It provides an abstraction layer over various storage backends, including vector stores and traditional databases.
+The Memory System provides agents with a robust capacity for learning and context retention across complex, long-running tasks. Its architecture is designed to manage information of varying types and sizes, ensuring that agents have access to relevant context without exceeding LLM token limits.
 
-> For a detailed design, see: [Memory System Documentation](./memory-system.md)
+### Architecture Overview
+
+- **Hybrid Storage Model**: The system integrates multiple storage strategies to optimize for different data types. It combines a **Vector Store** for fast semantic search on unstructured data with a **Key-Value Store** for structured metadata, enabling rich, filterable queries.
+- **Chunking and Retrieval Engine**: To handle large documents and long conversations, all incoming content is passed through an intelligent chunking engine. This engine segments data into semantically meaningful pieces. The retrieval process then reassembles these chunks based on relevance, ensuring the most pertinent information is provided to the agent within its context window.
+
+### Memory Tools
+
+Standard memory tools are available to all agents in the framework:
+
+| Tool Name       | Description                                               |
+| --------------- | --------------------------------------------------------- |
+| `add_memory`    | Adds content with automatic chunking for large items      |
+| `query_memory`  | Retrieves relevant information with token limit awareness |
+| `list_memory`   | Lists memories with metadata filtering and pagination     |
+| `get_memory`    | Retrieves specific memory by ID with chunk information    |
+| `update_memory` | Updates existing memory while preserving structure        |
+| `delete_memory` | Removes memory and associated chunks/metadata             |
+| `clear_memory`  | Clears session memories with backup options               |
+| `search_memory` | Performs semantic search with relevance ranking           |
+
+> **Implementation Details**: For a comprehensive discussion of the memory architecture, including the storage provider pattern, chunking strategies, and data models, see the [Memory System Design](./memory-system.md) document.
 
 **Tool System**
 The Tool System enables agents to interact with external systems and capabilities. It provides a secure and observable framework for discovering, executing, and monitoring tools.
@@ -109,15 +132,12 @@ The MCP approach provides standardized tool integration where agents act as MCP 
 
 ## 4. Memory System
 
-To provide agents with robust short-term and long-term memory capabilities for complex workflows, the framework integrates a persistent memory system that implements AG2's standard memory protocol. This ensures ecosystem compatibility while providing the advanced features needed for document generation, code projects, and other content-intensive tasks.
+The Memory System provides agents with a robust capacity for learning and context retention across complex, long-running tasks. Its architecture is designed to manage information of varying types and sizes, ensuring that agents have access to relevant context without exceeding LLM token limits.
 
-### Key Capabilities
+### Architecture Overview
 
-- **Persistent State**: Memory survives restarts and sessions, enabling long-running workflows
-- **Intelligent Chunking**: Automatically handles large documents and datasets with token-aware retrieval
-- **AG2 Compatibility**: Implements the standard AG2 Memory interface for seamless integration
-- **Multi-modal Support**: Handles text, images, PDFs, and various document formats
-- **Semantic Search**: Goes beyond keyword matching with vector-based similarity search
+- **Hybrid Storage Model**: The system integrates multiple storage strategies to optimize for different data types. It combines a **Vector Store** for fast semantic search on unstructured data with a **Key-Value Store** for structured metadata, enabling rich, filterable queries.
+- **Chunking and Retrieval Engine**: To handle large documents and long conversations, all incoming content is passed through an intelligent chunking engine. This engine segments data into semantically meaningful pieces. The retrieval process then reassembles these chunks based on relevance, ensuring the most pertinent information is provided to the agent within its context window.
 
 ### Memory Tools
 
@@ -400,7 +420,34 @@ observability:
 
 This extensible architecture ensures the framework can evolve with changing technological landscapes while maintaining backward compatibility and operational stability.
 
-## 8. Example Scenario: Data Analysis Task
+## 8. Cross-Cutting Concerns
+
+Several concerns are fundamental to the entire framework and are addressed systematically across multiple subsystems.
+
+### Security
+
+Security is a first-class citizen in the Roboco framework, not an afterthought. It is implemented through a defense-in-depth strategy:
+
+- **Authentication**: All external interactions, particularly with tools via the **MCP**, require authenticated agents and services (via OAuth 2.0 or API keys).
+- **Authorization**: The **Config System** defines fine-grained permissions, specifying which agents can access which tools. These policies are enforced by the **Tool System's** execution engine.
+- **Auditing**: The **Event System** provides a comprehensive and immutable audit log of all actions, including every tool call and configuration change.
+
+### Observability
+
+System-wide observability is achieved through the **Event-First Architecture**.
+
+- **Centralized Event Bus**: The **Event System** acts as the single source of truth for system state and activity, capturing everything from agent messages to tool performance.
+- **Structured Events**: The use of a unified event schema allows for consistent processing, monitoring, and alerting by external platforms.
+- **Real-time Control**: The bidirectional nature of the event bus allows monitoring systems to inject control events, enabling dynamic, human-in-the-loop oversight.
+
+### Configuration Management
+
+The framework's behavior is driven by declarative configuration, managed as code.
+
+- **Declarative Definitions**: The **Config System** allows the entire agent team structure, including roles, tools, and workflows, to be defined in version-controllable files.
+- **Dynamic Reloading**: The system can dynamically reload configurations in response to `control.configuration.reload` events from the **Event System**, allowing for updates without requiring a full system restart.
+
+## 9. Example Scenario: Data Analysis Task
 
 The Roboco architecture is particularly well-suited for building sophisticated, multi-step analysis workflows. Here's how the components align in such a scenario:
 
@@ -487,7 +534,7 @@ sequenceDiagram
 
 This workflow is iterative. For instance, the `ValidatorAgent` might request revisions, leading the `TeamManager` to re-engage the `AnalystAgent`. Users can also provide feedback at any stage through control events.
 
-## 9. Deployment and Maintenance
+## 10. Deployment and Maintenance
 
 In a typical Roboco deployment:
 
@@ -499,7 +546,7 @@ In a typical Roboco deployment:
 
 Maintenance involves updating tool services as needed, updating the Roboco backend with new agent logic or orchestration strategies, and managing the LLM configurations and dependencies.
 
-## 10. Conclusion
+## 11. Conclusion
 
 The framework provides a powerful and flexible platform for developing sophisticated multi-agent applications. Its core emphasis on modularity, extensibility, observability, and human-in-the-loop collaboration makes it particularly suitable for complex, iterative tasks.
 
