@@ -26,19 +26,6 @@ The system design is guided by several key architectural principles. Each princi
 The Roboco framework is composed of an **Execution Core** and the **Core Subsystems** that support it.
 
 ```mermaid
-%%{init: {
-  "theme": "default",
-  "themeVariables": {
-    "fontFamily": "Arial",
-    "fontSize": "14px",
-    "primaryColor": "#f5f9ff",
-    "primaryTextColor": "#1a1a1a",
-    "primaryBorderColor": "#444",
-    "lineColor": "#444",
-    "borderRadius": "6"
-  }
-}}%%
-
 flowchart TB
     User["User"] --> Proxy
 
@@ -64,10 +51,6 @@ flowchart TB
         Tool["Tool System"]:::sub
         Event["Event System"]:::sub
     end
-
-    classDef agent fill:#e6f7ff,stroke:#0366d6,color:#000;
-    classDef sub fill:#fff,stroke:#444,color:#000;
-    classDef default fill:#f9f9f9,stroke:#333,color:#000;
 ```
 
 The diagram illustrates the primary relationship: the `Execution Core` is defined by and utilizes the `Core Subsystems`. Specifically, the `Config System` defines the team, which in turn uses the `Memory`, `Tool`, and `Event` Systems to orchestrate its agents.
