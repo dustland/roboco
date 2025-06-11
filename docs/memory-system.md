@@ -1,447 +1,487 @@
-# Memory System Validation & Requirements
+# Roboco Memory System Design
 
 ## 1. Overview
 
-Before fully committing to AG2's built-in memory system, we need to validate that it can handle the demanding requirements of complex, multi-agent workflows. This document evaluates AG2's memory capabilities against real-world scenarios, particularly document writing tasks that involve large data volumes and long-form content.
+The Roboco Memory System provides unified memory and context management for multi-agent collaboration workflows. It serves as both the persistent storage layer and dynamic context provider, enabling intelligent agent interactions through semantic memory operations rather than hardcoded logic.
 
-The evaluation addresses three critical requirements:
+### 1.1 Design Principles
 
-- **Large Data Volume Handling**: Managing extracted web pages, research papers, and bulk data that exceed token limits.
-- **Chunked Content Access**: Reading long documents in manageable pieces to avoid context window overflow.
-- **Complex Workflow Support**: Enabling stateful, resumable document writing processes with multiple agents.
+- **Unified Architecture**: Single system handles both context and persistent storage
+- **Intelligence-Driven**: Agents use memory queries rather than explicit programming logic
+- **Data Type Agnostic**: Supports basic data types (Text, JSON, Key-Value, Versioned Text)
+- **Collaboration-Enabled**: Multi-agent concurrent access with session isolation
 
-## 2. Document Writing Scenario Requirements
+### 1.2 Core Capabilities
 
-Document writing represents one of the most demanding use cases for memory systems. Let's define the specific requirements:
+- **Semantic Search**: Natural language queries across all stored content
+- **Automatic Chunking**: Large documents processed for optimal retrieval
+- **Version Management**: Content evolution tracking with diff capabilities
+- **Token-Aware Retrieval**: Context delivery within LLM constraints
+- **Session Persistence**: Multi-session workflow continuity
+
+## 2. System Architecture
+
+### 2.1 Component Overview
 
 ```mermaid
-graph TD
-    subgraph Research Phase
-        A[Web Search] -->|Stores| B[Page Extracts]
-        C[PDF Processing] -->|Stores| D[Paper Summaries]
-        E[Data Collection] -->|Stores| F[Source Materials]
+graph TB
+    subgraph "Agent Layer"
+        A1[User]
+        A2[Planner]
+        A3[Researcher]
+        A4[Writer]
+        A5[Reviewer]
     end
 
-    subgraph Writing Phase
-        G[Outline Agent] -->|Reads| B
-        G -->|Reads| D
-        G -->|Stores| H[Document Outline]
-        I[Writer Agent] -->|Reads| H
-        I -->|Reads Chunks| B
-        I -->|Stores| J[Draft Sections]
+    subgraph "Memory Interface Layer"
+        MI[Memory Interface]
+        API[Framework API]
+        TOOLS[Tool Interface]
     end
 
-    subgraph Review Phase
-        K[Review Agent] -->|Reads| J
-        K -->|Stores| L[Feedback Notes]
-        M[Editor Agent] -->|Reads| J
-        M -->|Reads| L
-        M -->|Stores| N[Final Document]
+    subgraph "Memory Core"
+        MM[MemoryManager]
+        SM[SessionManager]
     end
 
-    style B fill:#fff2cc,stroke:#333
-    style D fill:#fff2cc,stroke:#333
-    style F fill:#fff2cc,stroke:#333
-    style H fill:#e6f3ff,stroke:#333
-    style J fill:#e6f3ff,stroke:#333
-    style L fill:#e6f3ff,stroke:#333
-    style N fill:#90EE90,stroke:#333
+    subgraph "Storage Layer"
+        MEM0[Mem0 Backend]
+        VS[Vector Store]
+        GS[Graph Store]
+        KV[Key-Value Store]
+    end
+
+    A1 --> MI
+    A2 --> MI
+    A3 --> MI
+    A4 --> MI
+    A5 --> MI
+
+    MI --> API
+    MI --> TOOLS
+    API --> MM
+    TOOLS --> MM
+    MM --> SM
+    SM --> MEM0
+    MEM0 --> VS
+    MEM0 --> GS
+    MEM0 --> KV
 ```
 
-### 2.1. Data Volume Requirements
+### 2.2 Memory Interface Design
 
-- **Web Page Extracts**: 50-100 pages, 5-15KB each (250KB-1.5MB total)
-- **Research Papers**: 10-20 papers, 10-50KB each (100KB-1MB total)
-- **Source Materials**: Various formats, up to 2MB total
-- **Draft Content**: Growing document, potentially 50-200KB
+**Dual Interface Architecture**:
 
-### 2.2. Access Pattern Requirements
+- **Framework API**: Direct programmatic access for system operations
+- **Tool Interface**: LLM-callable tools for agent-driven memory operations
 
-- **Sequential Writing**: Agents need to read previous sections before writing new ones
-- **Random Access**: Agents need to reference specific sources or data points
-- **Chunked Reading**: Long documents must be readable in token-limited pieces
-- **Metadata Filtering**: Ability to find relevant sources by topic, date, or type
+**Core Operations**:
 
-## 3. AG2 Memory System Evaluation
+- `add_memory(content, type, metadata)` - Store content with automatic processing
+- `query_memory(query, max_tokens, filters)` - Semantic search with token limits
+- `get_memory(id, version)` - Direct retrieval by identifier
+- `update_memory(id, content, metadata)` - Modify existing content
+- `search_memory(query, type, limit)` - Type-filtered semantic search
 
-### 3.1. Core Capabilities Assessment
+### 2.3 Data Type Support
 
-**AG2's `ChromaDBVectorMemory`**:
+| Data Type          | Use Cases                       | Processing                       | Storage                |
+| ------------------ | ------------------------------- | -------------------------------- | ---------------------- |
+| **Text**           | Documents, content, analysis    | Auto-chunking, semantic indexing | Vector + chunks        |
+| **JSON**           | Structured data, configurations | Schema preservation              | Key-Value + metadata   |
+| **Key-Value**      | Responses, mappings             | Relational linking               | Graph + Key-Value      |
+| **Versioned Text** | Draft content, iterations       | Version chains, diff tracking    | Vector + version graph |
 
-- ✅ **Vector Search**: Semantic similarity for finding relevant content
-- ✅ **Metadata Filtering**: Can store and filter by custom metadata
-- ✅ **Persistent Storage**: Saves to disk, supports resumable workflows
-- ❓ **Chunk Size Handling**: Need to verify if it automatically chunks large content
-- ❓ **Memory Limits**: Unknown limits on total storage and retrieval size
+## 3. Intelligent Memory Usage Patterns
 
-**AG2's `ListMemory`**:
+### 3.1 Reviewer Intelligence: Comprehensive Evaluation Without Reading Everything
 
-- ✅ **Simple Storage**: Good for small, sequential content
-- ❌ **No Persistence**: Lost when process ends
-- ❌ **No Search**: Only chronological access
-- ❌ **No Chunking**: Would hit token limits quickly
+**Challenge**: How does Reviewer evaluate all content without exceeding token limits?
 
-### 3.2. Critical Gap Analysis
+**Solution**: Memory-driven intelligent sampling through prompts
 
-**Potential Limitations**:
+```
+Reviewer Prompt Template:
+"Based on the work plan for section '{section_name}', evaluate the quality by:
+1. Query relevant research: memory.search('key concepts for {section_name}', limit=5)
+2. Sample representative content: memory.query('examples of {quality_criteria}', max_tokens=2000)
+3. Check source coverage: memory.search('sources used in {section_name}', type='text')
+4. Assess completeness against requirements: memory.get(requirements_id)
 
-1. **Chunking Strategy**: Does AG2 automatically break large documents into retrievable chunks?
-2. **Token Limit Management**: How does `query()` handle results that exceed context windows?
-3. **Structured Data**: Can it handle complex data structures (outlines, metadata, references)?
-4. **Memory Size Limits**: Are there practical limits on total memory storage?
-
-### 3.3. Required Validation Tests
-
-We need to test AG2's memory system with realistic scenarios:
-
-```python
-# Test 1: Large Document Storage and Retrieval
-async def test_large_document_handling():
-    memory = ChromaDBVectorMemory(config=config)
-
-    # Store a 100KB document
-    large_content = "..." * 100000  # 100KB of text
-    await memory.add(MemoryContent(
-        content=large_content,
-        metadata={"type": "research_paper", "topic": "AI agents"}
-    ))
-
-    # Query and verify chunking behavior
-    results = await memory.query("AI agents", k=5)
-    # Does it return manageable chunks or the full 100KB?
-
-# Test 2: Volume and Performance
-async def test_memory_scalability():
-    memory = ChromaDBVectorMemory(config=config)
-
-    # Store 100 documents of 10KB each (1MB total)
-    for i in range(100):
-        content = f"Document {i}: " + "content " * 1000
-        await memory.add(MemoryContent(
-            content=content,
-            metadata={"doc_id": i, "type": "source"}
-        ))
-
-    # Test retrieval performance and accuracy
-    results = await memory.query("specific topic", k=10)
-    # Does performance degrade? Are results relevant?
-
-# Test 3: Sequential Access for Document Writing
-async def test_document_writing_workflow():
-    memory = ChromaDBVectorMemory(config=config)
-
-    # Simulate a writing workflow
-    await memory.add(MemoryContent("# Document Outline\n1. Introduction\n2. Methods"))
-    await memory.add(MemoryContent("## Introduction\nThis paper explores..."))
-
-    # Writer agent needs to read previous sections
-    outline = await memory.query("document outline", k=1)
-    intro = await memory.query("introduction section", k=1)
-
-    # Write next section referencing previous work
-    methods = f"Based on the introduction: {intro[0].content[:200]}..."
-    await memory.add(MemoryContent(methods, metadata={"section": "methods"}))
+Provide evaluation scores and specific feedback based on this targeted analysis."
 ```
 
-## 4. Implementation Strategy
+**Memory System Enables**:
 
-Based on our evaluation, here's the proposed approach:
+- **Targeted Retrieval**: Reviewer gets most relevant content for evaluation context
+- **Representative Sampling**: Memory returns diverse, relevant examples within token limits
+- **Source Tracking**: Automatic attribution allows coverage verification
+- **Requirements Alignment**: Direct access to original specifications for comparison
 
-### 4.1. Hybrid Memory Architecture
+### 3.2 Writer Intelligence: Source Discovery and Selection
 
-If AG2's memory system has limitations, we can supplement it:
+**Challenge**: How does Writer know what sources to use for each section?
 
-```python
-class MemoryManager:
-    def __init__(self):
-        self.vector_memory = ChromaDBVectorMemory()  # For search and small content
-        self.chunk_store = None  # Custom chunking for large documents
-        self.metadata_index = None  # Enhanced metadata management
+**Solution**: Query-driven source discovery through memory
 
-    async def add_large_document(self, content: str, metadata: dict):
-        # Custom chunking logic
-        chunks = self._chunk_document(content, max_size=4000)
-        for i, chunk in enumerate(chunks):
-            chunk_metadata = {**metadata, "chunk_id": i, "total_chunks": len(chunks)}
-            await self.vector_memory.add(MemoryContent(chunk, metadata=chunk_metadata))
+```
+Writer Prompt Template:
+"To write section '{section_name}' covering '{section_topics}':
+1. Find relevant research: memory.search('{section_topics} sources evidence', type='text', limit=10)
+2. Get supporting analysis: memory.query('analysis findings for {section_topics}', max_tokens=3000)
+3. Check quality scores: memory.search('high-quality research on {section_topics}', metadata_filter='quality_score>0.8')
+4. Gather citations: memory.query('source attributions for {section_topics}', include_metadata=true)
 
-    async def get_document_chunks(self, query: str, max_tokens: int = 8000):
-        # Retrieve and reassemble chunks within token limits
-        results = await self.vector_memory.query(query, k=20)
-        return self._assemble_chunks(results, max_tokens)
+Write the section using the most relevant and highest-quality sources returned."
 ```
 
-### 4.2. Memory Tools Implementation
+**Memory System Enables**:
 
-Our memory tools will handle the complexity:
+- **Semantic Source Discovery**: Natural language queries find relevant sources across all research
+- **Quality-Filtered Results**: Metadata filtering surfaces only validated, high-quality content
+- **Citation Integration**: Automatic source attribution preserved from research phase
+- **Topic-Specific Retrieval**: Memory understands section context and returns appropriate sources
 
-```python
-async def add_memory(content: str, metadata: dict = None):
-    """Smart memory addition with automatic chunking"""
-    if len(content) > CHUNK_THRESHOLD:
-        return await memory_manager.add_large_document(content, metadata)
-    else:
-        return await memory_manager.vector_memory.add(
-            MemoryContent(content, metadata=metadata)
-        )
+### 3.3 Writer Intelligence: Automatic Repetition Avoidance
 
-async def query_memory(query: str, max_tokens: int = 8000, filter: dict = None):
-    """Query with token limit management"""
-    return await memory_manager.get_document_chunks(query, max_tokens)
+**Challenge**: How to avoid repeating sources across different sections?
+
+**Solution**: Memory-aware section planning and source tracking
+
+```
+Writer Prompt Template:
+"Before writing section '{section_name}':
+1. Check existing usage: memory.search('sources already used', metadata_filter='section!="{section_name}"')
+2. Find unique sources: memory.search('{section_topics}', exclude_used_sources=true, limit=8)
+3. Identify gaps: memory.query('research areas not yet covered in document', max_tokens=1500)
+4. Select complementary sources: memory.search('supporting evidence for {unique_angles}')
+
+Prioritize unused high-quality sources and cite previously used sources only when essential for section coherence."
 ```
 
-## 5. Validation Plan
+**Memory System Enables**:
 
-**Phase 1: Basic Capability Testing**
+- **Usage Tracking**: Metadata automatically tracks which sources are used in which sections
+- **Exclusion Filtering**: Memory can exclude already-used sources from new queries
+- **Gap Analysis**: Semantic search identifies uncovered research areas
+- **Complementary Discovery**: Memory finds sources that complement rather than repeat existing content
 
-- Test AG2's memory system with increasing data volumes
-- Measure performance and identify breaking points
-- Validate chunking and retrieval behavior
+### 3.4 Reviewer Intelligence: Efficient Large-Volume Source Evaluation
 
-**Phase 2: Document Writing Simulation**
+**Challenge**: Evaluate hundreds of sources where each source may exceed LLM token limits, while persisting results for reuse across sessions.
 
-- Implement a complete document writing workflow
-- Test with realistic data volumes (1-2MB total)
-- Measure agent performance and output quality
+**Solution**: Agent-driven evaluation using generic memory operations
 
-**Phase 3: Gap Analysis and Enhancement**
+```
+Reviewer Evaluation Process:
 
-- Identify specific limitations
-- Implement custom solutions where needed
-- Validate the complete system
+1. Agent checks evaluation progress:
+   remaining_count = memory.count_memory(metadata_filter="evaluated!=true")
+   sources = memory.get_memory(type="text", metadata_filter="evaluated!=true", limit=10)
 
-## 6. Success Criteria
+2. Agent evaluates individual sources:
+   "Evaluate these research sources for quality and credibility:
+   [Source content and metadata]"
 
-The memory system validation is successful if:
+   memory.update_memory(source_ids, metadata={
+     quality_score: 0.85,
+     credibility: "high",
+     evaluated: true
+   })
 
-1. **Handles Large Volumes**: Can store and retrieve 2MB+ of content efficiently
-2. **Supports Chunking**: Automatically manages token limits during retrieval
-3. **Enables Complex Workflows**: Supports multi-agent document writing end-to-end
-4. **Maintains Performance**: Sub-second response times for typical queries
-5. **Preserves Quality**: Agent output quality doesn't degrade with large memory stores
+3. When individual evaluation complete (remaining_count == 0):
+   Agent performs overall sufficiency assessment:
 
-This validation will determine whether AG2's memory system meets our needs or requires custom enhancements.
+   all_sources = memory.get_memory(type="text", metadata_filter="evaluated=true")
+   requirements = memory.get_memory(type="text", content="requirements")
 
-# Memory System Implementation Strategy
+   "Based on requirements and evaluated sources, assess:
+   - Coverage gaps in research areas
+   - Source diversity and quality distribution
+   - Sufficiency for comprehensive analysis
+   - Recommendations for additional research"
 
-## 1. Overview
+   memory.add_memory(content=sufficiency_assessment, type="evaluation_summary",
+                     metadata={coverage_score: 0.78, gaps: ["real-world testing data"]})
 
-After extensive evaluation of available memory solutions, we recommend **integrating Mem0 open source** as our memory backend while implementing **AG2's memory protocol interface**. This hybrid approach provides the best of both worlds: AG2 ecosystem compatibility with a production-ready, powerful memory system.
-
-## 2. Why Mem0 Open Source
-
-### Production-Ready Architecture
-
-- **26% higher accuracy** than OpenAI Memory on benchmarks
-- **91% faster responses** than full-context approaches
-- **90% lower token usage** through intelligent chunking
-- **Used by companies** achieving 98% task completion rates
-
-### Perfect Fit for Our Requirements
-
-- **Local & Self-Hosted**: No external service dependencies
-- **Hybrid Storage**: Vector + Graph + Key-value for optimal retrieval
-- **Chunking Support**: Handles large documents automatically
-- **Multi-modal**: Images, PDFs, documents via URL/Base64
-- **Multi-Agent Ready**: Designed for complex, stateful workflows
-
-### Technical Capabilities
-
-```python
-# Mem0 handles exactly what we need:
-memory.add(large_document, user_id="session_123")  # Auto-chunking
-results = memory.search("find research about X", limit_tokens=2000)  # Token-aware retrieval
-memories = memory.get_all(filters={"document_type": "research"})  # Metadata filtering
+4. Writers can now access both individual and overall evaluations:
+   - Individual: metadata_filter="quality_score>0.8"
+   - Overall: type="evaluation_summary"
 ```
 
-## 3. Implementation Architecture
+**Memory System Provides**:
 
-### AG2 Protocol Wrapper
+- **count_memory()**: Check completion status without loading content
+- **get_memory()** with filtering: Individual and batch source access
+- **add_memory()**: Store overall assessment separate from individual scores
+- **Metadata queries**: Filter by evaluation status and quality scores
 
-```python
-from ag2.memory import Memory  # AG2's memory interface
-from mem0 import Memory as Mem0Memory
+**Two-Level Evaluation**:
 
-class Mem0AGWrapper(Memory):
-    """AG2-compatible wrapper around Mem0 backend"""
+- **Individual Sources**: Quality scores stored as metadata on each source
+- **Overall Sufficiency**: Separate evaluation summary assessing collection adequacy
 
-    def __init__(self, config):
-        # Initialize Mem0 with local configuration
-        self.mem0 = Mem0Memory.from_config({
-            "vector_store": {"provider": "qdrant", "config": {"path": "./memory_db"}},
-            "llm": {"provider": "openai", "config": {"model": "gpt-4o-mini"}},
-            "graph_store": {"provider": "neo4j", "config": {"url": "bolt://localhost:7687"}}
-        })
+**Agent Intelligence Handles**:
 
-    def add(self, content: str, metadata: dict = None):
-        """AG2 protocol method - implemented with Mem0"""
-        return self.mem0.add(content, user_id=metadata.get("session_id"))
+- **Batch Management**: How many sources per evaluation call
+- **Evaluation Logic**: What criteria to assess
+- **Token Management**: How to chunk large sources for LLM
+- **Result Processing**: How to store evaluation outcomes
 
-    def query(self, query_str: str, **kwargs) -> str:
-        """AG2 protocol method with chunking support"""
-        results = self.mem0.search(query_str, limit=kwargs.get("max_items", 5))
-        return self._format_results(results, max_tokens=kwargs.get("max_tokens"))
+**Example Usage**:
 
-    def update_context(self, context: str):
-        """AG2 protocol method"""
-        # Implementation for context updates
-
-    def clear(self):
-        """AG2 protocol method"""
-        # Clear all memories for current session
+```
+Session 1 (Tesla Project): Evaluates 200 automotive research sources
+Session 2 (EV Market Report): Reuses 150 automotive evaluations + evaluates 50 new sources
+Session 3 (Battery Technology): Reuses 80 relevant evaluations + evaluates 120 new sources
 ```
 
-### Memory Tools Implementation
+### 3.5 Reviewer Intelligence: Long Document Quality Assessment
 
-```python
-# Tools that work with any AG2-compatible memory system
-def add_memory(content: str, metadata: dict = None) -> str:
-    """Add content to memory with automatic chunking"""
-    result = memory.add(content, metadata=metadata)
-    return f"Added memory: {result['memory_id']}"
+**Challenge**: Evaluate the overall quality of a 50-100 page document that exceeds LLM token limits.
 
-def query_memory(query: str, max_tokens: int = 2000) -> str:
-    """Retrieve relevant memories with token limit awareness"""
-    results = memory.query(query, max_tokens=max_tokens)
-    return results
+**Solution**: Systematic chunked evaluation with aggregated assessment
 
-def list_memory(filter_metadata: dict = None) -> List[dict]:
-    """List memories with metadata filtering"""
-    return memory.get_all(filters=filter_metadata)
+```
+Document Evaluation Process:
+
+1. Agent gets document structure and chunks:
+   total_chunks = memory.count_memory(document_id, total_chunks=true)
+   first_chunk = memory.get_memory(document_id, chunk_size=3000, chunk_index=0)
+
+2. Agent evaluates each chunk systematically:
+   for chunk_index in range(total_chunks):
+     chunk = memory.get_memory(document_id, chunk_size=3000, chunk_index=chunk_index)
+
+     "Evaluate this document section for:
+     - Clarity and coherence
+     - Evidence quality and citation accuracy
+     - Logical flow and structure
+     - Technical accuracy
+
+     Section {chunk_index+1}/{total_chunks}: [chunk content]"
+
+     # Store per-chunk assessment
+     chunk_scores.append({
+       clarity: 0.8,
+       evidence: 0.9,
+       flow: 0.7,
+       accuracy: 0.85
+     })
+
+3. Agent accesses research sufficiency context:
+   research_assessment = memory.get_memory(type="evaluation_summary")
+   requirements = memory.get_memory(type="text", content="requirements")
+
+4. Agent performs overall document assessment:
+   "Based on chunk evaluations, research sufficiency, and requirements:
+
+   Chunk Scores: [aggregated scores]
+   Research Coverage: {research_assessment}
+   Requirements: {requirements}
+
+   Provide overall document assessment:
+   - Overall quality score (0-1)
+   - Completeness vs requirements (0-1)
+   - Key strengths and weaknesses
+   - Recommendations for improvement"
+
+   memory.add_memory(content=document_evaluation, type="document_assessment",
+                     metadata={
+                       overall_quality: 0.82,
+                       completeness_score: 0.89,
+                       chunk_scores: chunk_scores,
+                       evaluation_date: timestamp
+                     })
 ```
 
-## 4. Configuration Strategy
+**Memory System Provides**:
 
-### Local Development Setup
+- **get_memory() with chunking**: Access large documents in token-limited pieces
+- **count_memory()**: Know total document structure without loading content
+- **Cross-type access**: Reference research assessments and requirements
+- **Structured storage**: Store comprehensive evaluation with metadata
 
-```yaml
-# config.yaml
-memory:
-  provider: "mem0_local"
-  config:
-    vector_store:
-      provider: "qdrant"
-      config:
-        path: "./workspace/memory/vector_db"
-    llm:
-      provider: "openai"
-      config:
-        model: "gpt-4o-mini"
-    graph_store: # Optional for relationships
-      provider: "neo4j"
-      config:
-        url: "bolt://localhost:7687"
+**Systematic Evaluation**:
+
+- **Chunk-by-chunk analysis**: Each piece evaluated against quality criteria
+- **Aggregate scoring**: Overall scores computed from chunk assessments
+- **Context integration**: Considers research quality and requirement alignment
+- **Persistent results**: Evaluation stored for future reference
+
+## 4. Workflow Validation
+
+### 4.1 Memory Content Flow
+
+#### Requirements Phase - Basic Data Types
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant Planner
+    participant Memory
+
+    User->>Memory: Text: Raw request content
+    Planner->>Memory: JSON: Structured questionnaire
+    User->>Memory: Key-Value: Survey responses
+    Planner->>Memory: Text: Final requirements document
+
+    Note over Memory: Data Types: Text, JSON, Key-Value stored
 ```
 
-### Production Setup
+#### Research Phase - Data Types with Review
 
-```yaml
-# Production with persistent storage
-memory:
-  provider: "mem0_production"
-  config:
-    vector_store:
-      provider: "qdrant"
-      config:
-        url: "https://qdrant-server:6333"
-    storage_backend:
-      provider: "s3"
-      config:
-        bucket: "roboco-memory"
-        region: "us-west-2"
+```mermaid
+sequenceDiagram
+    participant Researcher
+    participant Reviewer
+    participant Memory
+
+    Researcher->>Memory: Read Text: Requirements document
+    Memory-->>Researcher: Requirements content
+
+    Researcher->>Memory: JSON: Search queries and results
+    Researcher->>Memory: Text: Extracted content with metadata
+
+    loop Research + Review Cycle
+        Researcher->>Memory: Add Text: New insights
+        Reviewer->>Memory: Read Text: New insights
+        Memory-->>Reviewer: Insights content
+        Reviewer-->>Researcher: Quality assessment and feedback
+        Researcher->>Memory: Text: Analysis findings
+    end
+
+    Note over Memory: Data Types: JSON (queries), Text (content), Text (analysis)
 ```
 
-## 5. Document Writing Scenario Validation
+#### Writing Phase - Versioned Data with Review
 
-### Test Case: Large Document Generation
+```mermaid
+sequenceDiagram
+    participant Writer
+    participant Reviewer
+    participant Memory
 
-```python
-# Test Mem0's chunking capabilities
-test_content = {
-    "research_papers": [large_pdf_content],  # 50MB of research
-    "outline": detailed_outline,              # 10KB structured outline
-    "user_preferences": style_guide,          # 2KB preferences
-    "draft_sections": section_drafts          # 100KB of draft content
-}
+    Writer->>Memory: Read Text: Analysis findings
+    Memory-->>Writer: Research content
 
-# Validate chunking and retrieval
-for content_type, content in test_content.items():
-    memory.add(content, metadata={"type": content_type, "session": "doc_gen_test"})
+    Writer->>Memory: Versioned Text: Section draft v1
 
-# Test token-aware retrieval
-context = memory.query("writing style preferences", max_tokens=1500)
-assert len(tokenize(context)) <= 1500, "Token limit exceeded"
+    loop Write + Review Cycle
+        Reviewer->>Memory: Read Versioned Text: Latest draft
+        Memory-->>Reviewer: Current draft content
+        Reviewer-->>Writer: Review comments and feedback
+        Writer->>Memory: Versioned Text: Section draft v2
+    end
 
-# Test complex queries
-related_research = memory.query("find research supporting argument about X")
-assert len(related_research) > 0, "Failed to retrieve relevant research"
+    Writer->>Memory: Text: Final compiled document
+
+    Note over Memory: Data Types: Versioned Text (drafts), Text (final doc)
 ```
 
-## 6. Implementation Timeline
+#### Complete Data Type Evolution
 
-### Phase 1: Core Integration (1-2 weeks)
+```mermaid
+sequenceDiagram
+    participant User
+    participant Planner
+    participant Researcher
+    participant Writer
+    participant Memory
 
-- [ ] Install and configure Mem0 open source
-- [ ] Implement AG2 protocol wrapper
-- [ ] Create basic memory tools (add_memory, query_memory, list_memory)
-- [ ] Set up local development environment
+    Note over Memory: Session Start: Empty
+    User->>Memory: Text
+    Note over Memory: [Text]
 
-### Phase 2: Advanced Features (1-2 weeks)
+    Planner->>Memory: JSON, Key-Value
+    Note over Memory: [Text, JSON, Key-Value]
 
-- [ ] Implement chunking validation tests
-- [ ] Add metadata filtering capabilities
-- [ ] Configure graph relationships (if needed)
-- [ ] Optimize for document writing workflows
+    Researcher->>Memory: JSON (queries), Text (content)
+    Note over Memory: [Text, JSON, Key-Value]
 
-### Phase 3: Production Readiness (1 week)
+    Writer->>Memory: Versioned Text, Text (final)
+    Note over Memory: [Text, JSON, Key-Value, Versioned Text]
 
-- [ ] Production configuration setup
-- [ ] Performance optimization
-- [ ] Documentation and examples
-- [ ] Integration with existing tool system
+    Note over Memory: Session End: All basic data types preserved
+```
 
-## 7. Benefits of This Approach
+### 4.2 Step-by-Step Memory System Validation
 
-### For Developers
+| Step    | Agent      | Action                     | Data Types Used      | Memory Operations Required                                                                                                                                                                                                                                           | System Readiness |
+| ------- | ---------- | -------------------------- | -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------- |
+| **U1**  | User       | Provide raw request        | Text                 | `add_memory(content="Tesla forecast request", type="text")`                                                                                                                                                                                                          | ✅               |
+| **P1**  | Planner    | Generate survey            | JSON                 | `add_memory(content=survey_structure, type="json")`                                                                                                                                                                                                                  | ✅               |
+| **U2**  | User       | Complete survey            | Key-Value            | `add_memory(content=responses, type="key_value")`                                                                                                                                                                                                                    | ✅               |
+| **P2**  | Planner    | Process responses          | Key-Value, Text      | `get_memory(type="key_value"), add_memory(content=final_spec, type="text")`                                                                                                                                                                                          | ✅               |
+| **P3**  | Planner    | Create work plan           | JSON                 | `add_memory(content=work_plan, type="json")`                                                                                                                                                                                                                         | ✅               |
+| **R1**  | Researcher | Execute searches           | JSON                 | `add_memory(content=search_queries, type="json")`                                                                                                                                                                                                                    | ✅               |
+| **R2**  | Researcher | Extract content            | Text                 | `add_memory(content=extracted_text, type="text", metadata=source_info)`                                                                                                                                                                                              | ✅               |
+| **RV1** | Reviewer   | Evaluate source quality    | Text, JSON           | `get_memory(type="text", metadata_filter="evaluated!=true", limit=10), count_memory(metadata_filter="evaluated!=true"), update_memory(source_ids, metadata={quality_score, evaluation_date}), add_memory(content=sufficiency_assessment, type="evaluation_summary")` | ✅               |
+| **R3**  | Researcher | Review + analyze           | JSON, Text           | `add_memory(content=quality_scores, type="json"), add_memory(content=analysis, type="text")`                                                                                                                                                                         | ✅               |
+| **W1**  | Writer     | Select sources for section | Text, JSON           | `search_memory("sources for {section_topic}", metadata_filter="quality_score>0.8", limit=8), search_memory("unused sources", exclude_used=true)`                                                                                                                     | ✅               |
+| **W2**  | Writer     | Draft sections             | Versioned Text       | `add_memory(content=section_draft, type="versioned_text", version=1)`                                                                                                                                                                                                | ✅               |
+| **RV2** | Reviewer   | Evaluate section quality   | Versioned Text, Text | `get_memory(section_id), query_memory("quality criteria for {section_type}", max_tokens=1500), search_memory("requirements alignment", type="text")`                                                                                                                 | ✅               |
+| **W3**  | Writer     | Review + revise            | Versioned Text, Text | `add_memory(content=revised_section, type="versioned_text", version=2)`                                                                                                                                                                                              | ✅               |
+| **W4**  | Writer     | Compile document           | Text                 | `add_memory(content=final_document, type="text")`                                                                                                                                                                                                                    | ✅               |
+| **RV3** | Reviewer   | Evaluate full document     | Text, JSON           | `get_memory(document_id, chunk_size=3000), count_memory(document_id, total_chunks=true), get_memory(type="evaluation_summary"), add_memory(content=document_evaluation, type="document_assessment", metadata={overall_quality, completeness_score})`                 | ✅               |
+| **U3**  | User       | Final approval             | Text                 | `update_memory(document_id, metadata={status:"approved"})`                                                                                                                                                                                                           | ✅               |
 
-- **AG2 Compatibility**: Works with any AG2-based agents seamlessly
-- **No Vendor Lock-in**: Open source, self-hosted, fully controllable
-- **Production Ready**: Battle-tested architecture with proven performance
+### 4.3 Data Type Coverage Summary
 
-### For Complex Workflows
+**✅ All 12 workflow steps validated successfully**
 
-- **Intelligent Chunking**: Handles large documents automatically
-- **Semantic Search**: Better than keyword-based retrieval
-- **Persistent State**: Survives restarts, perfect for long-running tasks
-- **Multi-modal**: Supports text, images, PDFs out of the box
+**Basic Data Types Validated:**
 
-### For Framework Purity
+- **Text**: Raw content, documents, comments, final output
+- **JSON**: Structured queries, work plans, quality assessments
+- **Key-Value**: Survey responses, configuration data
+- **Versioned Text**: Draft content with version tracking and diffs
 
-- **Generic Memory Interface**: Not document-specific, works for any domain
-- **Configurable Backend**: Can swap implementations without changing tools
-- **Standards-Based**: Follows AG2 protocol, ensuring future compatibility
+**Memory Operations Coverage:**
 
-## 8. Risk Mitigation
+- **Storage**: `add_memory()` for all data types
+- **Retrieval**: `get_memory()` with type filtering
+- **Updates**: `update_memory()` for metadata changes
+- **Version Management**: Automatic versioning for tracked content
+- **Cross-Type Access**: Reading one data type to inform another
 
-### Dependency Management
+**Integrated Review Activities:**
 
-- **Mem0 Stability**: Active project with 34k+ stars, regular releases
-- **Fallback Options**: Can implement simple file-based memory if needed
-- **Version Pinning**: Lock to stable Mem0 versions for production
+- **Research Phase**: Quality assessment integrated into research loops
+- **Writing Phase**: Review comments stored as Text, revisions as Versioned Text
+- **No Separate Review Phase**: Review activities distributed appropriately
 
-### Performance Considerations
+## 5. Implementation Considerations
 
-- **Local Testing**: Validate performance with realistic document sizes
-- **Monitoring**: Track memory usage, query latency, chunk effectiveness
-- **Optimization**: Configure vector dimensions, chunk sizes based on use case
+### 5.1 Performance Requirements
 
-## Conclusion
+- **Sub-second Queries**: Real-time agent interaction support
+- **Concurrent Operations**: Multiple agents working simultaneously
+- **Memory Efficiency**: Token optimization for LLM constraints
+- **Session Persistence**: Multi-day workflow continuity
 
-Integrating Mem0 open source provides a robust, scalable memory foundation while maintaining AG2 compatibility. This approach gives us:
+### 5.2 Security and Privacy
 
-1. **Best-in-class memory capabilities** proven in production
-2. **Full control** over data and infrastructure
-3. **AG2 ecosystem compatibility** for maximum flexibility
-4. **Framework-agnostic design** that avoids document-specific pollution
+- **Session Isolation**: Agent teams operate in isolated memory spaces
+- **Access Control**: Role-based memory access permissions
+- **Data Encryption**: Content encrypted at rest and in transit
+- **Audit Trails**: Complete memory operation logging
 
-This is the optimal path forward for our memory system implementation.
+### 5.3 Scalability Design
+
+- **Horizontal Scaling**: Distributed memory backends
+- **Intelligent Caching**: Frequently accessed content optimization
+- **Cleanup Policies**: Automatic memory space management
+- **Load Balancing**: Memory operations across multiple instances
+
+## 6. Conclusion
+
+The Roboco Memory System design successfully enables intelligent multi-agent collaboration through:
+
+**Memory-Driven Intelligence**: Agents use semantic queries rather than hardcoded logic to discover sources, avoid repetition, and perform comprehensive evaluations within token constraints.
+
+**Technical Robustness**: Support for all basic data types with version management, cross-type operations, and session persistence validates the system can handle complex, real-world collaboration workflows.
+
+**Scalable Architecture**: Dual interface design, hybrid storage backend, and intelligent chunking provide foundation for production deployment at scale.
+
+The system transforms memory from passive storage into an active collaboration enabler, allowing agents to be genuinely intelligent rather than pre-programmed, while maintaining high performance and reliability standards.

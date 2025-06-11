@@ -1,4 +1,4 @@
-# Roboco System Architecture
+# System Architecture Design
 
 ## 1. Introduction
 
@@ -95,20 +95,26 @@ The Memory System provides agents with a robust capacity for learning and contex
 - **Hybrid Storage Model**: The system integrates multiple storage strategies to optimize for different data types. It combines a **Vector Store** for fast semantic search on unstructured data with a **Key-Value Store** for structured metadata, enabling rich, filterable queries.
 - **Chunking and Retrieval Engine**: To handle large documents and long conversations, all incoming content is passed through an intelligent chunking engine. This engine segments data into semantically meaningful pieces. The retrieval process then reassembles these chunks based on relevance, ensuring the most pertinent information is provided to the agent within its context window.
 
-### Memory Tools
+### Memory Interface
 
-Standard memory tools are available to all agents in the framework:
+The MemoryManager provides two levels of access:
 
-| Tool Name       | Description                                               |
-| --------------- | --------------------------------------------------------- |
-| `add_memory`    | Adds content with automatic chunking for large items      |
-| `query_memory`  | Retrieves relevant information with token limit awareness |
-| `list_memory`   | Lists memories with metadata filtering and pagination     |
-| `get_memory`    | Retrieves specific memory by ID with chunk information    |
-| `update_memory` | Updates existing memory while preserving structure        |
-| `delete_memory` | Removes memory and associated chunks/metadata             |
-| `clear_memory`  | Clears session memories with backup options               |
-| `search_memory` | Performs semantic search with relevance ranking           |
+1. **Tool Interface**: Memory operations are registered as tools that agents can call through LLM function calling
+2. **Framework API**: Direct programmatic access for framework-level operations
+
+| Tool Name       | MemoryManager Method | Description                                               |
+| --------------- | -------------------- | --------------------------------------------------------- |
+| `add_memory`    | `add_memory()`       | Adds content with automatic chunking for large items      |
+| `query_memory`  | `query_memory()`     | Retrieves relevant information with token limit awareness |
+| `list_memory`   | `list_memory()`      | Lists memories with metadata filtering and pagination     |
+| `get_memory`    | `get_memory()`       | Retrieves specific memory by ID with chunk information    |
+| `update_memory` | `update_memory()`    | Updates existing memory while preserving structure        |
+| `delete_memory` | `delete_memory()`    | Removes memory and associated chunks/metadata             |
+| `clear_memory`  | `clear_memory()`     | Clears session memories with backup options               |
+| `search_memory` | `search_memory()`    | Performs semantic search with relevance ranking           |
+
+**Agent Access (Tool Interface)**: LLMs can decide when and how to use memory through tool calls
+**Framework Access (Direct API)**: Framework code calls MemoryManager methods directly for system operations
 
 > **Implementation Details**: For a comprehensive discussion of the memory architecture, including the storage provider pattern, chunking strategies, and data models, see the [Memory System Design](./memory-system.md) document.
 
@@ -139,28 +145,63 @@ The Memory System provides agents with a robust capacity for learning and contex
 - **Hybrid Storage Model**: The system integrates multiple storage strategies to optimize for different data types. It combines a **Vector Store** for fast semantic search on unstructured data with a **Key-Value Store** for structured metadata, enabling rich, filterable queries.
 - **Chunking and Retrieval Engine**: To handle large documents and long conversations, all incoming content is passed through an intelligent chunking engine. This engine segments data into semantically meaningful pieces. The retrieval process then reassembles these chunks based on relevance, ensuring the most pertinent information is provided to the agent within its context window.
 
-### Memory Tools
+### MemoryManager Implementation
 
-Standard memory tools are available to all agents in the framework:
+The MemoryManager class implements all memory operations and provides both framework API access and tool interfaces:
 
-| Tool Name       | Description                                               |
-| --------------- | --------------------------------------------------------- |
-| `add_memory`    | Adds content with automatic chunking for large items      |
-| `query_memory`  | Retrieves relevant information with token limit awareness |
-| `list_memory`   | Lists memories with metadata filtering and pagination     |
-| `get_memory`    | Retrieves specific memory by ID with chunk information    |
-| `update_memory` | Updates existing memory while preserving structure        |
-| `delete_memory` | Removes memory and associated chunks/metadata             |
-| `clear_memory`  | Clears session memories with backup options               |
-| `search_memory` | Performs semantic search with relevance ranking           |
+```python
+class MemoryManager:
+    def __init__(self, config: MemoryConfig):
+        self.backend = Mem0Backend(config)
+        self.chunker = IntelligentChunker()
+        self.retriever = TokenAwareRetriever()
+
+    # Core memory operations
+    async def add_memory(self, content: str, metadata: dict = None) -> str:
+        """Adds content with automatic chunking for large items"""
+
+    async def query_memory(self, query: str, max_tokens: int = 2000) -> str:
+        """Retrieves relevant information with token limit awareness"""
+
+    async def list_memory(self, filters: dict = None) -> List[dict]:
+        """Lists memories with metadata filtering and pagination"""
+
+    async def get_memory(self, memory_id: str) -> Memory:
+        """Retrieves specific memory by ID with chunk information"""
+
+    async def update_memory(self, memory_id: str, content: str) -> str:
+        """Updates existing memory while preserving structure"""
+
+    async def delete_memory(self, memory_id: str) -> str:
+        """Removes memory and associated chunks/metadata"""
+
+    async def clear_memory(self, session_id: str) -> str:
+        """Clears session memories with backup options"""
+
+    async def search_memory(self, query: str, limit: int = 5) -> List[dict]:
+        """Performs semantic search with relevance ranking"""
+```
+
+### Memory Interface
+
+The MemoryManager methods are exposed to agents through the tool system:
+
+| Tool Name       | MemoryManager Method | Description                                               |
+| --------------- | -------------------- | --------------------------------------------------------- |
+| `add_memory`    | `add_memory()`       | Adds content with automatic chunking for large items      |
+| `query_memory`  | `query_memory()`     | Retrieves relevant information with token limit awareness |
+| `list_memory`   | `list_memory()`      | Lists memories with metadata filtering and pagination     |
+| `get_memory`    | `get_memory()`       | Retrieves specific memory by ID with chunk information    |
+| `update_memory` | `update_memory()`    | Updates existing memory while preserving structure        |
+| `delete_memory` | `delete_memory()`    | Removes memory and associated chunks/metadata             |
+| `clear_memory`  | `clear_memory()`     | Clears session memories with backup options               |
+| `search_memory` | `search_memory()`    | Performs semantic search with relevance ranking           |
 
 > **Implementation Details**: For a comprehensive discussion of the memory architecture, including the storage provider pattern, chunking strategies, and data models, see the [Memory System Design](./memory-system.md) document.
 
 ## 5. Tool System
 
 The Tool System is designed to provide agents with secure, reliable, and observable access to external capabilities. Its architecture is founded on the principles of protocol-based interaction and separation of concerns, ensuring that agent logic remains decoupled from tool implementation details.
-
-### Architecture Overview
 
 - **Multiple Integration Patterns**: The system supports multiple tool integration patterns. For **external tools**, the framework mandates the use of the **Model Context Protocol (MCP)** to ensure a uniform, secure, and discoverable interface. For **built-in tools**, a more direct and optimized internal API is used to maximize performance for core functionalities.
 
@@ -174,7 +215,7 @@ The Tool System is designed to provide agents with secure, reliable, and observa
 
 - **Separation of Concerns**: The system distinguishes between the **Tool Registry** for discovery, the **Execution Engine** for invocation, and the **Physical Tools** themselves. This allows each part of the system to be managed and scaled independently.
 
-### Key Capabilities
+**Key Capabilities**
 
 1.  **Execution Modes**: The Execution Engine supports multiple invocation patterns to suit different use cases:
 
@@ -192,8 +233,6 @@ The Tool System is designed to provide agents with secure, reliable, and observa
 ## 6. Event System
 
 The Event System is the observability and control backbone of the framework. It is designed for high throughput and low latency, enabling real-time monitoring and dynamic intervention in agent workflows.
-
-### Core Architecture
 
 The system is built around a central **Event Bus** that routes events between producers and consumers. This decouples components and allows for flexible integration with external monitoring and control systems.
 
@@ -216,8 +255,6 @@ The system is built around a central **Event Bus** that routes events between pr
 - **Bidirectional Communication**: The event bus is not just for observability; it's also a control plane.
   - **Outbound Events**: Components publish events about their state and actions (e.g., `agent.decision.made`).
   - **Inbound Events**: External systems (or human supervisors) can publish control events (e.g., `control.collaboration.pause`) to dynamically influence the workflow.
-
-### Operational Characteristics
 
 The Event System is designed to meet stringent performance and reliability targets suitable for production environments.
 
@@ -447,37 +484,37 @@ The framework's behavior is driven by declarative configuration, managed as code
 - **Declarative Definitions**: The **Config System** allows the entire agent team structure, including roles, tools, and workflows, to be defined in version-controllable files.
 - **Dynamic Reloading**: The system can dynamically reload configurations in response to `control.configuration.reload` events from the **Event System**, allowing for updates without requiring a full system restart.
 
-## 9. Example Scenario: Data Analysis Task
+## 9. Scenario: Market Research Writing Task
 
-The Roboco architecture is particularly well-suited for building sophisticated, multi-step analysis workflows. Here's how the components align in such a scenario:
+The Roboco architecture is particularly well-suited for building sophisticated, multi-step content creation workflows. Here's how the components align in a market research writing scenario:
 
 ### Agents
 
 | Agent               | Role                  | Key Memory Tools Used                                      | Function                                                                     |
 | ------------------- | --------------------- | ---------------------------------------------------------- | ---------------------------------------------------------------------------- |
-| **PlannerAgent**    | Task structuring      | `add_memory`, `update_memory`                              | Creates analysis plan and methodology, stores in structured memory           |
-| **ResearcherAgent** | Information gathering | `add_memory`, `search_memory`, `query_memory`              | Gathers external data and existing knowledge; saves findings to memory       |
-| **AnalystAgent**    | Data processing       | `get_memory`, `add_memory`, `update_memory`, `list_memory` | Processes data, performs analysis, stores intermediate and final results     |
-| **ValidatorAgent**  | Quality control       | `get_memory`, `search_memory`, `list_memory`               | Reviews analysis methodology and results; validates findings and conclusions |
-| **TeamManager**     | Workflow management   | N/A (coordinates other agents)                             | Sequences tasks between agents; ensures dependencies are met                 |
+| **PlannerAgent**    | Content structuring   | `add_memory`, `update_memory`                              | Creates research outline and writing plan, stores content strategy in memory |
+| **ResearcherAgent** | Information gathering | `add_memory`, `search_memory`, `query_memory`              | Gathers market data, industry reports, and competitive intelligence          |
+| **ReviewerAgent**   | Quality assurance     | `get_memory`, `search_memory`, `list_memory`               | Reviews research quality, validates sources, and reviews content drafts      |
+| **WriterAgent**     | Content creation      | `get_memory`, `add_memory`, `update_memory`, `list_memory` | Drafts sections, creates content, stores drafts and revisions                |
+| **TeamManager**     | Workflow coordination | N/A (coordinates other agents)                             | Sequences tasks between agents; manages dependencies and deadlines           |
 
 ### Memory Tool Usage Examples
 
-| Tool            | Usage Context                       | Data Pattern                      |
-| --------------- | ----------------------------------- | --------------------------------- |
-| `add_memory`    | Save analysis findings              | Key-value with metadata           |
-| `get_memory`    | Retrieve specific data sets         | Chunked reading for large files   |
-| `search_memory` | Find related research               | Semantic and keyword matching     |
-| `query_memory`  | Discover relevant past analyses     | Vector-based semantic search      |
-| `update_memory` | Optimize historical data            | Update existing findings          |
-| `list_memory`   | Save working state for resumption   | Session memory management         |
-| `clear_memory`  | Backup before major processing step | Point-in-time memory preservation |
+| Tool            | Usage Context                      | Data Pattern                       |
+| --------------- | ---------------------------------- | ---------------------------------- |
+| `add_memory`    | Save research findings & drafts    | Structured content with metadata   |
+| `get_memory`    | Retrieve specific data or sections | Chunked reading for large reports  |
+| `search_memory` | Find related research or sources   | Semantic and keyword matching      |
+| `query_memory`  | Discover relevant past reports     | Vector-based semantic search       |
+| `update_memory` | Revise drafts and content versions | Update existing content blocks     |
+| `list_memory`   | Track writing progress and status  | Session memory management          |
+| `clear_memory`  | Backup before major revisions      | Point-in-time content preservation |
 
-### Key Workflow: Analysis Task Example
+### Key Workflow: Market Research Report Creation
 
-The analysis workflow demonstrates memory-driven collaboration between specialized agents:
+The content creation workflow demonstrates memory-driven collaboration between specialized writing agents:
 
-#### Part 1: Planning and Data Gathering
+#### Part 1: Planning
 
 ```mermaid
 sequenceDiagram
@@ -485,54 +522,85 @@ sequenceDiagram
     actor User
     participant TM as TeamManager
     participant PA as PlannerAgent
-    participant ResA as ResearcherAgent
     participant MemSys as Memory System
 
-    User->>TM: Analyze market trends for Q3
+    User->>TM: Create market research report on "AI Tools Market"
 
     Note over TM,PA: PLANNING PHASE
-    TM->>PA: Create analysis plan
-    PA->>MemSys: add_memory("plan", methodology)
-    PA-->>TM: Plan stored
-
-    Note over TM,ResA: RESEARCH PHASE
-    TM->>ResA: Gather market data
-    ResA->>MemSys: search_memory("historical_trends")
-    ResA->>MemSys: add_memory("q3_data", new_findings)
-    ResA-->>TM: Data collection complete
+    TM->>PA: Dispatch for planning
+    PA->>PA: Draft initial requirements
+    PA->>MemSys: add_memory("draft_requirements", initial_analysis)
+    PA->>User: Send targeted requirements survey<br/>(based on draft requirements)
+    User->>PA: Return completed survey
+    PA->>MemSys: add_memory("user_requirements", survey_responses)
+    PA->>MemSys: add_memory("outline", content_structure)
+    PA->>MemSys: add_memory("specifications", target_audience_specs)
+    PA-->>TM: Content plan finalized
 ```
 
-#### Part 2: Analysis and Validation
+#### Part 2: Research & Validation
 
 ```mermaid
 sequenceDiagram
     autonumber
     participant TM as TeamManager
-    participant AA as AnalystAgent
-    participant VA as ValidatorAgent
+    participant ResA as ResearcherAgent
+    participant RevA as ReviewerAgent
+    participant MemSys as Memory System
+
+    Note over TM,ResA: RESEARCH PHASE
+    TM->>ResA: Dispatch for research
+    ResA->>MemSys: get_memory("user_requirements")
+    ResA->>MemSys: search_memory("ai_tools_previous_research")
+    ResA->>MemSys: add_memory("market_data", industry_reports)
+    ResA->>MemSys: add_memory("competitor_analysis", competitive_landscape)
+    ResA->>MemSys: add_memory("research_sources", source_documentation)
+    ResA-->>TM: Initial research complete
+
+    Note over TM,RevA: VALIDATION PHASE
+    TM->>RevA: Dispatch for research review
+    RevA->>MemSys: get_memory("market_data")
+    RevA->>MemSys: get_memory("competitor_analysis")
+    RevA->>MemSys: get_memory("research_sources")
+    RevA->>MemSys: query_memory("source_credibility_checks")
+    RevA->>MemSys: update_memory("market_data", validated_data)
+    RevA-->>TM: Research validation complete
+```
+
+#### Part 3: Writing & Review
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant TM as TeamManager
+    participant WA as WriterAgent
+    participant RevA as ReviewerAgent
     participant MemSys as Memory System
     actor User
 
-    Note over TM,AA: ANALYSIS PHASE
-    TM->>AA: Process market data
-    AA->>MemSys: get_memory("q3_data")
-    AA->>MemSys: get_memory("plan")
-    AA->>MemSys: add_memory("analysis_results", findings)
-    AA->>MemSys: update_memory("plan", progress_update)
-    AA-->>TM: Analysis complete
+    Note over TM,WA: WRITING PHASE
+    TM->>WA: Dispatch for writing
+    WA->>MemSys: get_memory("outline")
+    WA->>MemSys: get_memory("market_data")
+    WA->>MemSys: add_memory("executive_summary", draft_content)
+    WA->>MemSys: get_memory("competitor_analysis")
+    WA->>MemSys: add_memory("market_analysis", detailed_analysis)
+    WA-->>TM: Content draft complete
 
-    Note over TM,VA: VALIDATION PHASE
-    TM->>VA: Validate findings
-    VA->>MemSys: get_memory("analysis_results")
-    VA->>MemSys: query_memory("similar past analyses")
-    VA-->>TM: Validation complete
+    Note over TM,RevA: REVIEW PHASE
+    TM->>RevA: Dispatch for content review
+    RevA->>MemSys: get_memory("executive_summary")
+    RevA->>MemSys: get_memory("market_analysis")
+    RevA->>MemSys: query_memory("fact_check_sources")
+    RevA->>MemSys: update_memory("executive_summary", revised_content)
+    RevA-->>TM: Content review complete
 
-    Note right of TM: Memory persists across<br/>sessions for future reference
+    Note right of TM: Final report combines<br/>all memory components<br/>into deliverable
 
-    TM-->>User: Analysis delivered
+    TM-->>User: Market research report delivered
 ```
 
-This workflow is iterative. For instance, the `ValidatorAgent` might request revisions, leading the `TeamManager` to re-engage the `AnalystAgent`. Users can also provide feedback at any stage through control events.
+This workflow is collaborative and iterative. The `ReviewerAgent` might request revisions, leading the `TeamManager` to re-engage the `WriterAgent` with specific feedback. Users can also provide feedback or content direction at any stage through control events, and the memory system ensures all research, drafts, and revisions are preserved for future reference or similar projects.
 
 ## 10. Deployment and Maintenance
 
