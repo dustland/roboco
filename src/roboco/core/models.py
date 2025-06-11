@@ -1,4 +1,4 @@
-from typing import Optional, Dict, Any, Union
+from typing import Optional, Dict, Any, Union, List
 from datetime import datetime
 import uuid
 from pydantic import BaseModel, Field
@@ -18,3 +18,19 @@ class Message(BaseModel):
     class Config:
         frozen = True # Enforce immutability
         arbitrary_types_allowed = True # To allow BaseModel in content
+
+class CollaborationResult:
+    """Result of a collaboration session."""
+    def __init__(
+        self, 
+        summary: str,
+        chat_history: List[Dict[str, Any]],
+        participants: List[str],
+        success: bool = True,
+        error_message: Optional[str] = None
+    ):
+        self.summary = summary
+        self.chat_history = chat_history
+        self.participants = participants
+        self.success = success
+        self.error_message = error_message

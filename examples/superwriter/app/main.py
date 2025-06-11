@@ -4,7 +4,7 @@ from pathlib import Path
 from contextlib import asynccontextmanager
 
 from .models import TaskRequest, TaskResponse
-from roboco.orchestration.team_manager import TeamManager
+from roboco.core.team_manager import TeamManager
 from roboco.core.exceptions import ConfigurationError
 
 # Determine the project root directory to locate the config file
@@ -56,7 +56,7 @@ async def run_task(request: TaskRequest):
 
     try:
         print(f"Starting collaboration for task: {request.task}")
-        result = team_manager.start_collaboration(request.task)
+        result = team_manager.run(request.task)
         
         if not result.success:
              raise HTTPException(status_code=500, detail=f"Collaboration failed: {result.error_message}")

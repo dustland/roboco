@@ -1,0 +1,79 @@
+name: "DefaultTeam"
+description: "A collaborative team for general tasks"
+output_dir: "workspace/default"
+
+# Global template variables available to all agents
+variables:
+  project_name: "Roboco Framework"
+  workspace_path: "./workspace"
+  team_mission: "Collaborative AI assistance"
+
+agents:
+  - name: planner
+    class: "roboco.core.agents.Agent"
+    system_message: "You are a planning specialist who helps break down complex tasks into manageable steps. Focus on creating clear, actionable plans with timelines and resource requirements."
+    llm_config:
+      config_list:
+        - model: "gpt-4o-mini"
+          api_key: null # Will be set from environment
+
+  - name: writer
+    class: "roboco.core.agents.Agent"
+    system_message: "You are a professional writer who creates clear, well-structured content. Focus on clarity, accuracy, and engaging presentation of information."
+    llm_config:
+      config_list:
+        - model: "gpt-4o-mini"
+          api_key: null
+
+  - name: executor
+    class: "roboco.core.agents.ToolExecutorAgent"
+    system_message: "You are a task executor who can use tools to accomplish specific actions. Focus on methodical execution and providing clear status updates."
+    llm_config:
+      config_list:
+        - model: "gpt-4o-mini"
+          api_key: null
+
+# Tool configuration
+tools:
+  - name: web_search
+    class: "roboco.builtin_tools.search_tools.WebSearchTool"
+    config:
+      api_key: null # Will use environment variable
+    allowed_agents:
+      - planner
+      - writer
+
+  - name: filesystem
+    class: "roboco.builtin_tools.basic_tools.FileSystemTool"
+    config: {}
+    allowed_agents:
+      - executor
+      - writer
+
+# Context/memory configuration
+context:
+  base_path: "./workspace/context"
+
+# Event configuration
+events:
+  bus_type: "memory"
+  persistence: false
+
+# Memory configuration - Updated for Mem0
+memory:
+  vector_store:
+    provider: "chroma"
+    config:
+      collection_name: "roboco_team"
+      path: "./workspace/memory_db"
+  llm:
+    provider: "openai"
+    config:
+      model: "gpt-4o-mini"
+      temperature: 0.1
+      max_tokens: 2048
+  embedder:
+    provider: "openai"
+    config:
+      model: "text-embedding-3-small"
+  version: "v1.1"

@@ -1,0 +1,129 @@
+# Roboco Robotics Corporation Configuration
+# This file contains all configuration settings for the Roboco system
+
+# Company Information
+company:
+  name: "Roboco Robotics Corporation"
+  vision: "To be the greatest robotics company in the world"
+
+# Core Settings
+core:
+  workspace_base: "./workspace"
+  debug: true
+  cache_dir: "./cache"
+  research_output_dir: "./research_output"
+  workspace_root: "workspace"
+
+# LLM Settings
+llm:
+  # Default model to use when none is specified
+  default_model: "gpt-4o"
+
+  # Global defaults that apply when not specified in model configurations
+  defaults:
+    api_key: "${OPENAI_API_KEY}" # Set in environment or .env file
+    max_tokens: 8192
+    temperature: 0.2
+    terminate_msg: "TERMINATE"
+
+  # Model configurations
+  models:
+    "gpt-4o":
+      api_type: "openai"
+      model: "gpt-4o"
+      api_key: "${OPENAI_API_KEY}"
+      base_url: "https://api.openai.com/v1"
+      max_tokens: 8192
+      temperature: 0.7
+
+    "deepseek-chat":
+      api_type: "deepseek"
+      model: "deepseek-chat"
+      api_key: "${DEEPSEEK_API_KEY}"
+      base_url: "https://api.deepseek.com/v1"
+      max_tokens: 8192
+      temperature: 0.7
+
+    "claude-3-5-sonnet-20241022":
+      api_type: "anthropic"
+      model: "claude-3-5-sonnet-20241022"
+      api_key: "${ANTHROPIC_API_KEY}"
+      base_url: "https://api.gptsapi.net"
+      max_tokens: 8192
+      temperature: 0.7
+
+    # Local models via Ollama (commented out by default)
+    # llama3:
+    #   api_type: "openai"  # Ollama uses OpenAI-compatible API
+    #   model: "llama3"
+    #   base_url: "http://localhost:11434/v1"
+    #   api_key: "ollama"
+    #   max_tokens: 4096
+    #   temperature: 0.7
+
+# Agent Settings
+agents:
+  research_team:
+    enabled: true
+    llm: "llm" # Uses the default LLM configuration
+    max_conversation_turns: 5
+
+  robot_brain_team:
+    enabled: true
+    llm: "llm"
+    max_iterations: 3
+    design_output_dir: "./design_output"
+
+  embodied_app_team:
+    enabled: true
+    llm: "llm"
+    max_iterations: 3
+    design_output_dir: "./design_output"
+
+# Tool Settings
+tools:
+  embodied:
+    enabled: true
+    visualize: true
+    default_noise_level: 0.05
+
+  web_research:
+    enabled: true
+    max_results: 5
+    search_engine: "google"
+    user_agent: "Roboco Research Agent/1.0"
+
+  terminal:
+    enabled: true
+    allow_destructive_commands: false
+    max_execution_time: 30
+
+  arxiv:
+    enabled: true
+    max_results: 10
+    timeout: 30
+    rate_limit_delay: 3
+    cache_dir: "./cache/arxiv"
+    temp_dir: "./tmp/arxiv_papers"
+
+  github:
+    enabled: true
+    token: "${GITHUB_TOKEN}" # Set in environment or .env file
+    max_results: 10
+    timeout: 30
+    rate_limit_delay: 1
+    cache_dir: "./cache/github"
+
+# Server Settings
+server:
+  host: "127.0.0.1"
+  port: 5004
+  log_level: "info"
+  reload: true
+
+# UI Settings
+ui:
+  enabled: false
+  port: 8000
+  host: "127.0.0.1"
+  theme: "system"

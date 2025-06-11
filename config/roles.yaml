@@ -1,0 +1,35 @@
+roles:
+  planner:
+    temperature: 0.7
+    max_tokens: 4000
+    template_variables:
+      expertise_level: "expert"
+      planning_style: "strategic"
+      focus_areas:
+        - "resource allocation"
+        - "timeline management"
+        - "risk assessment"
+
+  writer:
+    temperature: 0.8
+    max_tokens: 4000
+    template_variables:
+      writing_style: "professional"
+      expertise_level: "expert"
+      target_audience: "technical professionals"
+
+  executor:
+    temperature: 0.3
+    max_tokens: 2000
+    template_variables:
+      execution_style: "methodical"
+      expertise_level: "expert"
+      safety_priority: "high"
+
+  agent:
+    temperature: 0.5
+    max_tokens: 3000
+    template_variables:
+      role_type: "general assistant"
+      expertise_level: "intermediate"
+      interaction_style: "helpful"

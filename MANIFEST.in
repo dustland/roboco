@@ -1,0 +1,17 @@
+include README.md
+include LICENSE
+include CONTRIBUTING.md
+include CODE_OF_CONDUCT.md
+recursive-include config *.yaml *.yml *.md
+recursive-include docs *.md *.png *.jpg *.gif
+recursive-include examples *.py *.yaml *.yml *.md *.txt
+recursive-include src/roboco *.py *.pyi
+exclude tests/*
+exclude .github/*
+exclude .vscode/*
+exclude *.log
+exclude .env*
+exclude workspace/*
+global-exclude __pycache__/*
+global-exclude *.pyc
+global-exclude *.pyo 

@@ -35,7 +35,7 @@ variables:
 # Professional writing team with specialized roles
 agents:
   - name: "PlannerAgent"
-    class: "roboco.agents.Agent"
+    class: "roboco.core.agents.Agent"
     prompt_file: "planner_agent.md"
     prompt_variables:
       agent_name: "PlannerAgent"
@@ -44,7 +44,7 @@ agents:
         - model: "gpt-4o"
 
   - name: "ResearcherAgent"
-    class: "roboco.agents.Agent"
+    class: "roboco.core.agents.Agent"
     prompt_file: "researcher_agent.md"
     prompt_variables:
       agent_name: "ResearcherAgent"
@@ -53,7 +53,7 @@ agents:
         - model: "gpt-4o"
 
   - name: "WriterAgent"
-    class: "roboco.agents.Agent"
+    class: "roboco.core.agents.Agent"
     prompt_file: "writer_agent.md"
     prompt_variables:
       agent_name: "WriterAgent"
@@ -62,7 +62,7 @@ agents:
         - model: "gpt-4o"
 
   - name: "ReviewerAgent"
-    class: "roboco.agents.Agent"
+    class: "roboco.core.agents.Agent"
     prompt_file: "reviewer_agent.md"
     prompt_variables:
       agent_name: "ReviewerAgent"
@@ -71,7 +71,7 @@ agents:
         - model: "gpt-4o"
 
   - name: "ToolExecutorAgent"
-    class: "roboco.agents.ToolExecutorAgent"
+    class: "roboco.core.agents.ToolExecutorAgent"
     prompt_file: "tool_executor.md"
     prompt_variables:
       agent_name: "ToolExecutorAgent"

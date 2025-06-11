@@ -25,8 +25,8 @@ This approach offers several advantages:
 roboco/
 ├── config/
 │   ├── roles/                  # Role-specific template files
-│   │   ├── executive.jinja2
-│   │   ├── product_manager.jinja2
+│   │   ├── executive.md
+│   │   ├── product_manager.md
 │   │   └── ...
 │   ├── config.yaml             # System-level configurations
 │   ├── roles.yaml              # Role configuration mapping
@@ -53,13 +53,13 @@ Example directory structure:
 
 ```
 roles/
-  programmer.jinja2
-  product_manager.jinja2
-  reviewer.jinja2
+  programmer.md
+  product_manager.md
+  reviewer.md
   ...
 ```
 
-Example template file (programmer.jinja2):
+Example template file (programmer.md):
 
 ```jinja
 You are a {{ programming_language }} programmer with {{ experience_level }} experience.
@@ -99,7 +99,7 @@ templates_dir = os.path.join(os.environ.get("ROBOCO_DATA_PATH", "."), "roles")
 env = Environment(loader=FileSystemLoader(templates_dir))
 
 # Load a template
-template = env.get_template("programmer.jinja2")
+template = env.get_template("programmer.md")
 
 # Render with context variables
 system_prompt = template.render(
@@ -125,9 +125,9 @@ The configuration in `config/team.yaml` defines the team structure and its basic
 
 ```yaml
 # config/team.yaml
-name: "PlanningTeam"
-description: "A team that collaborates to create project planning documents"
-output_dir: "workspace/plan"
+name: "ResearchWritingTeam"
+description: "A team that collaborates to research topics and write documentation."
+output_dir: "workspace/research_writing"
 roles:
   - executive
   - product_manager
@@ -142,8 +142,6 @@ workflow:
     to: report_writer
     condition: "{{ message.content | contains_keyword('documentation') }}"
   - from: report_writer
-    to: executive
-  - from: executive
     to: product_manager
 tools:
   - name: filesystem
@@ -175,7 +173,7 @@ Role configurations are defined in `config/roles.yaml` and specify the templates
 # config/roles.yaml
 roles:
   executive:
-    template_file: "executive.jinja2"
+    template_file: "executive.md"
     temperature: 0.3
     max_tokens: 2000
     template_variables:
@@ -183,7 +181,7 @@ roles:
       management_style: "strategic"
       reporting_format: "executive summary"
   product_manager:
-    template_file: "product_manager.jinja2"
+    template_file: "product_manager.md"
     temperature: 0.7
     max_tokens: 4000
     template_variables:
@@ -195,7 +193,7 @@ roles:
         - name: "Nurse"
           needs: ["patient care support", "reduced workload"]
   software_engineer:
-    template_file: "software_engineer.jinja2"
+    template_file: "software_engineer.md"
     temperature: 0.5
     max_tokens: 4000
     template_variables:
@@ -218,8 +216,8 @@ from roboco.core import TeamBuilder
 # Create a team from the default configuration
 team = TeamBuilder.create_team()
 
-# Create a team from a preset configuration
-planning_team = TeamBuilder.create_team_from_preset("planning")
+# Create a team from a preset configuration for a specific business purpose
+research_writing_team = TeamBuilder.create_team_from_preset("research_writing")
 
 # Create a team with custom template variables
 custom_team = TeamBuilder.create_team(
@@ -231,7 +229,7 @@ custom_team = TeamBuilder.create_team(
 )
 
 # Use the team
-result = await planning_team.run(
+result = await research_writing_team.run(
     initial_agent_name="product_manager",
     query="Create a project plan for a humanoid robot control system"
 )
@@ -393,11 +391,11 @@ When creating a team with tool capabilities, you need to register tools with the
 from roboco.core import TeamBuilder
 from roboco.tools import FileSystemTool, WebSearchTool
 
-# Create a team
-planning_team = TeamBuilder.create_team("planning")
+# Create a team from a preset
+team = TeamBuilder.create_team_from_preset("research_writing")
 
 # Get the executor agent (typically HumanProxy)
-executor = planning_team.get_agent("human_proxy")
+executor = team.get_agent("human_proxy")
 
 # Create and register tools
 fs_tool = FileSystemTool()
@@ -421,17 +419,17 @@ The Roboco framework provides built-in tools to visualize team configurations:
 ```python
 from roboco.core import TeamBuilder, TeamVisualizer
 
-# Create a team
-planning_team = TeamBuilder.create_team("planning")
+# Create a team from a preset
+team = TeamBuilder.create_team_from_preset("research_writing")
 
 # Generate a visualization of the team structure
-TeamVisualizer.generate_team_diagram(planning_team, output_path="team_diagram.png")
+TeamVisualizer.generate_team_diagram(team, output_path="team_diagram.png")
 
 # Generate a visualization of the workflow
-TeamVisualizer.generate_workflow_diagram(planning_team, output_path="workflow_diagram.png")
+TeamVisualizer.generate_workflow_diagram(team, output_path="workflow_diagram.png")
 
 # Generate a visualization of tool assignments
-TeamVisualizer.generate_tool_diagram(planning_team, output_path="tool_diagram.png")
+TeamVisualizer.generate_tool_diagram(team, output_path="tool_diagram.png")
 ```
 
 ### Status Monitoring
@@ -442,17 +440,17 @@ Roboco integrates with monitoring tools to provide real-time insights into agent
 from roboco.core import TeamBuilder
 from roboco.monitoring import AgentMonitor
 
-# Create a team
-planning_team = TeamBuilder.create_team("planning")
+# Create a team from a preset
+team = TeamBuilder.create_team_from_preset("research_writing")
 
 # Create a monitor
-monitor = AgentMonitor(planning_team)
+monitor = AgentMonitor(team)
 
 # Start monitoring
 monitor.start()
 
 # Run the team
-await planning_team.run(
+await team.run(
     initial_agent_name="product_manager",
     query="Create a project plan for a humanoid robot that can assist in hospitals"
 )
@@ -474,17 +472,17 @@ from roboco.core import TeamBuilder
 from roboco.integrations import AgentOKIntegration
 
 # Create a team
-planning_team = TeamBuilder.create_team("planning")
+team = TeamBuilder.create_team_from_preset("research_writing")
 
 # Connect to AgentOK
 agentok = AgentOKIntegration()
-agentok.connect_team(planning_team)
+agentok.connect_team(team)
 
 # Start UI server (accessible at http://localhost:3000)
 agentok.start_ui_server()
 
 # Run the team (status will be visible in the AgentOK UI)
-await planning_team.run_swarm(
+await team.run_swarm(
     initial_agent_name="product_manager",
     query="Create a project plan for a humanoid robot that can assist in hospitals"
 )
@@ -502,69 +500,9 @@ await planning_team.run_swarm(
 8. **Leverage visualization tools**: Use diagrams to understand team structure and workflow
 9. **Monitor agent performance**: Track metrics to identify bottlenecks and improve efficiency
 
-## Combining with Custom Agent Implementations
+## Example: Using a Research Writing Preset
 
-While the configuration-based approach is recommended for most use cases, there are situations where you may need to create custom Agent subclasses for specialized behavior that can't be expressed through configuration alone.
-
-### When to Use Custom Agent Implementations
-
-Consider creating custom Agent classes when:
-
-1. You need specialized processing logic that goes beyond what prompts can express
-2. You want to integrate with external systems or APIs in a way specific to an agent role
-3. You need to implement complex state management within an agent
-4. You're extending the Agent functionality with new capabilities
-
-### Registering Custom Agent Classes
-
-Custom Agent classes can be registered with the AgentFactory and used in your configuration-based teams:
-
-```python
-from roboco.core.agent import Agent
-from roboco.core.agent_factory import AgentFactory
-
-# Create a custom Agent subclass
-class MySpecializedAgent(Agent):
-    def __init__(self, name, **kwargs):
-        super().__init__(name, **kwargs)
-        # Custom initialization
-
-    async def generate_response(self, messages):
-        # Custom response generation logic
-        return await super().generate_response(messages)
-
-# Register with the AgentFactory
-AgentFactory.register_agent_class("my_specialized_role", MySpecializedAgent)
-
-# Now you can use "my_specialized_role" in your team configurations
-```
-
-### Mixed Approaches
-
-It's perfectly valid to mix configuration-based agents with custom Agent subclasses in the same team:
-
-```yaml
-# In config/teams.yaml
-teams:
-  mixed_team:
-    name: "MixedTeam"
-    description: "Team with both config-based and custom agents"
-    roles:
-      - product_manager # Uses configuration
-      - software_engineer # Uses configuration
-      - my_specialized_role # Uses custom Agent subclass
-    workflow:
-      - from: product_manager
-        to: software_engineer
-      - from: software_engineer
-        to: my_specialized_role
-      - from: my_specialized_role
-        to: product_manager
-```
-
-## Example: Using a Planning Team Preset
-
-Here's a complete example of creating and using a planning team from a preset configuration:
+Here's a complete example of creating and using a research and writing team from a preset configuration:
 
 ```python
 import asyncio
@@ -572,18 +510,18 @@ from roboco.core import TeamBuilder
 from roboco.tools import FileSystemTool
 
 async def main():
-    # Create a planning team from preset
-    planning_team = TeamBuilder.create_team_from_preset("planning")
+    # Create a team from a preset
+    team = TeamBuilder.create_team_from_preset("research_writing")
 
     # Get the human proxy agent
-    human_proxy = planning_team.get_agent("human_proxy")
+    human_proxy = team.get_agent("human_proxy")
 
     # Register tools
     fs_tool = FileSystemTool()
     human_proxy.register_tool(fs_tool)
 
     # Run the team
-    result = await planning_team.run(
+    result = await team.run(
         initial_agent_name="product_manager",
         query="Create a project plan for a humanoid robot that can assist in hospitals"
     )
@@ -591,8 +529,12 @@ async def main():
     print(f"Team finished with result: {result}")
 
     # Results are typically saved to the team's output directory
-    print(f"Check results in: {planning_team.output_dir}")
+    print(f"Check results in: {team.output_dir}")
 
 if __name__ == "__main__":
     asyncio.run(main())
+```
+
+```
+
 ```

@@ -12,9 +12,9 @@ from uuid import uuid4
 import logging
 from contextlib import asynccontextmanager
 
-from roboco.context.stores import InMemoryContextStore
+from roboco.memory.stores import InMemoryContextStore
 from roboco.event.bus import InMemoryEventBus
-from roboco.orchestration.team_manager import TeamManager
+from roboco.core.team_manager import TeamManager
 from roboco.config.loaders import ConfigLoader
 from .models import SessionInfo, SessionConfig, SessionStatus
 
@@ -64,7 +64,7 @@ class Session:
             
         return False
     
-    async def start_collaboration(self, team_config_path: str, task: str, context: Optional[Dict[str, Any]] = None) -> str:
+    async def run(self, team_config_path: str, task: str, context: Optional[Dict[str, Any]] = None) -> str:
         """Start a new collaboration in this session"""
         collaboration_id = str(uuid4())
         

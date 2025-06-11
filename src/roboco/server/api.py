@@ -185,10 +185,10 @@ def add_routes(app: FastAPI):
         """Start a new collaboration"""
         try:
             async with sm.session_context(request.session_id) as session:
-                collaboration_id = await session.start_collaboration(
-                    request.team_config_path,
-                    request.task,
-                    request.context
+                collaboration_id = await session.run(
+                    team_config_path=request.team_config_path,
+                    task=request.task,
+                    context=request.context
                 )
                 
                 # Start collaboration in background
@@ -255,10 +255,10 @@ def add_routes(app: FastAPI):
         """Start a streaming collaboration"""
         try:
             async with sm.session_context(request.session_id) as session:
-                collaboration_id = await session.start_collaboration(
-                    request.team_config_path,
-                    request.task,
-                    request.context
+                collaboration_id = await session.run(
+                    team_config_path=request.team_config_path,
+                    task=request.task,
+                    context=request.context
                 )
                 
                 async def generate_stream():

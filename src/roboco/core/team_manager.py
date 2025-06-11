@@ -6,12 +6,12 @@ from pathlib import Path
 
 from autogen import GroupChat, GroupChatManager, ConversableAgent
 
-from roboco.agents import Agent, ToolExecutorAgent
+from .agents import Agent, ToolExecutorAgent
 from roboco.tool import create_tool_function_for_ag2
 from roboco.config import create_prompt_loader
 from roboco.core.exceptions import ConfigurationError
 from roboco.event import InMemoryEventBus, Event
-from roboco.builtin_tools.context_tools import ContextSaveTool, ContextLoadTool, ContextListTool
+# Context tools have been replaced by memory tools using Mem0
 from .models import CollaborationResult
 
 from dotenv import load_dotenv
@@ -64,8 +64,11 @@ class TeamManager:
         # Initialize event system
         self.event_bus = event_bus or InMemoryEventBus()
         
-        # Initialize prompt loader
-        self.prompt_loader = create_prompt_loader(str(self.config_dir))
+        # Initialize prompt loader (optional)
+        try:
+            self.prompt_loader = create_prompt_loader(str(self.config_dir))
+        except ConfigurationError:
+            self.prompt_loader = None
         
         # Initialize components
         self.agents = {}
@@ -123,11 +126,14 @@ class TeamManager:
         # Get merged variables for this agent
         variables = self._get_merged_variables(agent_config)
         
-        # Load and process the prompt
-        try:
-            return self.prompt_loader.load_prompt(prompt_file, variables)
-        except Exception as e:
-            raise ConfigurationError(f"Error loading prompt for agent {agent_config.get('name', 'unknown')}: {e}")
+        # Load and process the prompt if prompt loader is available
+        if self.prompt_loader:
+            try:
+                return self.prompt_loader.load_prompt(prompt_file, variables)
+            except Exception as e:
+                raise ConfigurationError(f"Error loading prompt for agent {agent_config.get('name', 'unknown')}: {e}")
+        else:
+            raise ConfigurationError(f"Cannot load prompt file {prompt_file}: no prompts directory found")
 
     def _initialize_team(self):
         """Initialize all team components from configuration."""
@@ -137,13 +143,10 @@ class TeamManager:
 
     def _initialize_tools(self):
         """Initialize tools from configuration."""
-        # First, register builtin context tools
-        workspace_dir = self.config.get("context", {}).get("base_path", "./workspace/context")
-        self.tools["context_save"] = ContextSaveTool(workspace_dir)
-        self.tools["context_load"] = ContextLoadTool(workspace_dir) 
-        self.tools["context_list"] = ContextListTool(workspace_dir)
+        # Context tools have been replaced by memory tools using Mem0
+        # Memory tools are initialized separately by agents that need them
         
-        # Then load configured tools
+        # Load configured tools
         tools_config = self.config.get("tools", [])
         
         for tool_config in tools_config:
@@ -267,10 +270,10 @@ class TeamManager:
             "collaboration_settings": self.config.get("collaboration", {}),
         }
 
-    async def start_collaboration(self, task: str) -> CollaborationResult:
+    async def run(self, task: str) -> CollaborationResult:
         """
         Start a collaborative session with the team.
-
+        
         Args:
             task: The initial task or request to be processed by the team.
         
@@ -381,7 +384,7 @@ class TeamManager:
         temp_manager._initialize_team()
         
         # Start collaboration
-        result = await temp_manager.start_collaboration(task)
+        result = await temp_manager.run(task)
         
         return {
             "success": result.success,
