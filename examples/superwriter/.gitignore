@@ -1,0 +1,54 @@
+# Memory database folders
+memory_db/
+workspace/memory_db/
+
+# Workspace folders that contain runtime data
+workspace/
+*.db
+*.sqlite
+*.sqlite3
+
+# Generated documents and outputs
+*.md
+*.pdf
+*.docx
+!README.md
+!ITERATIVE_WORKFLOW.md
+
+# Temporary configuration files
+temp_*.yaml
+temp_*.json
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# ChromaDB specific
+chroma.sqlite3
+chroma/
+
+# Server runtime files
+*.pid
+*.sock 

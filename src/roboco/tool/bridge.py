@@ -132,7 +132,7 @@ def create_tool_function_for_ag2(
     async def dynamic_tool_func(**kwargs):
         # This is where arguments passed by AG2 will arrive.
         # They should match the parameters defined in the signature.
-        return await tool_instance.run(**kwargs)
+        return await tool_instance.run(input_data=kwargs)
 
     # Set the dynamic signature and docstring
     # Note: The name of the function is also important for AG2.

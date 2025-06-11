@@ -203,7 +203,17 @@ class TeamManager:
                 # Create agent
                 agent = agent_class(**agent_args)
                 
-                # Register tools with the agent if it's a ToolExecutorAgent
+                # Register memory tools with all agents that have LLM config
+                if hasattr(agent, 'llm_config') and agent.llm_config and hasattr(self, 'memory_manager'):
+                    from roboco.builtin_tools.memory_tools import create_memory_tools
+                    memory_tools = create_memory_tools(self.memory_manager)
+                    
+                    for memory_tool in memory_tools:
+                        tool_function = create_tool_function_for_ag2(memory_tool)
+                        agent.register_for_execution(name=memory_tool.name)(tool_function)
+                        agent.register_for_llm(name=memory_tool.name, description=memory_tool.description)(tool_function)
+                
+                # Register configured tools with the agent if it's a ToolExecutorAgent
                 if isinstance(agent, ToolExecutorAgent):
                     for tool_name, tool_instance in self.tools.items():
                         tool_function = create_tool_function_for_ag2(tool_instance)
