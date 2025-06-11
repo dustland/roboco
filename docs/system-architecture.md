@@ -2,41 +2,30 @@
 
 ## 1. Introduction
 
-Roboco is a multi-agent framework designed for building, orchestrating, and operating sophisticated AI systems. It provides a robust, modular, and observable environment for collaborative agents to perform complex tasks. This document outlines the high-level architecture of the framework and its core subsystems.
+Roboco is a multi-agent framework designed for building, orchestrating, and operating sophisticated AI systems. It provides a robust, modular, and observable environment for collaborative agents to perform complex tasks. This document outlines the high-level architecture, its core components, and the design principles that govern its evolution.
+
+The architecture is designed to meet the following key non-functional requirements:
+
+- **Scalability**: Support for teams of 100+ specialized agents operating concurrently.
+- **Resilience**: High availability with stateful recovery from agent and component failures.
+- **Extensibility**: A pluggable architecture for integrating new tools, models, and storage backends.
+- **Performance**: Sub-second latency for core message passing and event processing.
 
 ## 2. Design Principles
 
-The system design is guided by several key principles:
+The system design is guided by several key architectural principles. Each principle is a strategic choice made to satisfy the non-functional requirements outlined in the introduction.
 
-- **Modularity**: Components are loosely coupled with clear interfaces
-- **Extensibility**: Supports multiple integration patterns for tools, storage, and LLMs
-- **Observability**: Comprehensive event streaming for monitoring and debugging
-- **Human-in-the-Loop**: Designed for real-time human oversight and intervention
-- **Security**: Built-in authentication, authorization, and auditing
-- **Resilience**: Stateful recovery for long-running workflows
+- **Modular by Design**: Components are designed with high cohesion and low coupling, communicating through well-defined, versioned APIs. This principle is critical for achieving our **Scalability** and **Extensibility** requirements, allowing subsystems to be developed, deployed, and scaled independently.
+- **Event-First Architecture**: All significant state changes and actions within the system are communicated via a central event bus. This approach is fundamental to meeting our **Performance** and **Resilience** goals while enabling system-wide observability.
+- **Secure by Default**: The architecture incorporates security at every layer, from agent authentication to fine-grained tool authorization and comprehensive audit trails. This directly supports the core requirement of a secure and resilient system.
+- **Human-in-the-Loop by Design**: The system is built to facilitate human oversight and intervention. Control points are intentionally designed into workflows, ensuring the system is not only automated but also governable. This is crucial for complex, high-stakes tasks.
+- **Configuration as Code**: The structure, behavior, and permissions of agent teams are defined in declarative configuration files. This enables version control, automated deployment, and repeatable collaboration patterns, directly contributing to the **Resilience** and **Extensibility** of the framework.
 
 ## 3. High-Level Architecture
 
-The framework comprises:
+The Roboco framework is composed of an **Execution Core** and four primary subsystems: the **Config System**, **Memory System**, **Tool System**, and **Event System**.
 
 ```mermaid
-%%{init: {"theme": "default", "themeVariables": {
-  "fontFamily": "Arial, sans-serif",
-  "fontSize": "14px",
-  "fontWeight": "400",
-  "primaryColor": "#f9f9f9",
-  "primaryTextColor": "#2c3e50",
-  "primaryBorderColor": "#34495e",
-  "lineColor": "#34495e",
-  "secondaryColor": "#ecf0f1",
-  "tertiaryColor": "#ffffff",
-  "background": "#ffffff",
-  "mainBkg": "#f8f9fa",
-  "secondBkg": "#e9ecef",
-  "tertiaryBkg": "#dee2e6",
-  "nodeBorderRadius": "8px",
-  "clusterBorderRadius": "10px"
-}}}%%
 graph TD
     subgraph "Configuration"
         CFS[Config System]
@@ -57,15 +46,27 @@ graph TD
     end
 
     CFS -- "Defines" --> T & A1 & A2 & AN
+
     A1 --> MS & TS
     A2 --> MS & TS
     AN --> MS & TS
+
     T -- "Events" --> ES
     A1 -- "Events" --> ES
     A2 -- "Events" --> ES
     AN -- "Events" --> ES
     MS -- "Events" --> ES
     TS -- "Events" --> ES
+
+    style UPA fill:#e8f4f8,stroke:#2c3e50,stroke-width:2px
+    style T fill:#e8f4f8,stroke:#2c3e50,stroke-width:2px
+    style A1 fill:#f0f2f5,stroke:#34495e,stroke-width:1px
+    style A2 fill:#f0f2f5,stroke:#34495e,stroke-width:1px
+    style AN fill:#f0f2f5,stroke:#34495e,stroke-width:1px
+    style MS fill:#f8f9fa,stroke:#6c757d,stroke-width:1px
+    style TS fill:#f8f9fa,stroke:#6c757d,stroke-width:1px
+    style ES fill:#f8f9fa,stroke:#6c757d,stroke-width:1px
+    style CFS fill:#e9ecef,stroke:#495057,stroke-width:1px
 ```
 
 ### 3.1 Execution Core
@@ -79,17 +80,20 @@ The Execution Core is responsible for orchestrating agent collaboration based on
 ### 3.2 Core Subsystems
 
 **Config System**
-The Config System is the foundation of the framework's "config-based design" philosophy. It provides the schemas and tools to define the structure and behavior of the agent system, including the composition of teams, the roles of individual agents, and the tools they are permitted to use.
+The Config System is the foundation of the framework's "config-as-code" philosophy. It provides the schemas and tools to define the structure and behavior of the agent system, including the composition of teams, the roles of individual agents, and the tools they are permitted to use.
 
 > For a detailed design, see: [Config-Based Design](./config-based-design.md)
 
 **Memory System**
-The Memory System provides persistent information storage for the agent framework. It allows agents to store and retrieve state, ensuring that workflows are resilient and can handle information that exceeds LLM context windows.
+The Memory System provides short-term and long-term information storage for agents. It allows agents to maintain state, learn from interactions, and handle information that exceeds LLM context windows. It provides an abstraction layer over various storage backends, including vector stores and traditional databases.
 
-> For a detailed design, see: [Memory Management Architecture](./memory-management.md)
+> For a detailed design, see: [Memory System Documentation](./memory-system.md)
 
 **Tool System**
-The Tool System enables agents to interact with the outside world. It provides a secure and observable framework for discovering, executing, and monitoring tools like web search, code interpreters, and other APIs.
+The Tool System enables agents to interact with external systems and capabilities. It provides a secure and observable framework for discovering, executing, and monitoring tools.
+
+**Event System**
+The Event System is the central nervous system of the framework. It operates on a publish-subscribe model, where all other components emit events about their state and actions. This provides a unified stream for observability, debugging, and control.
 
 ### 3.3 Extensibility
 
@@ -103,11 +107,6 @@ The MCP approach provides standardized tool integration where agents act as MCP 
 
 > For a detailed design, see: [Tool System Architecture](./tool-system.md)
 
-**Event System**
-The Event System is the central nervous system of the framework. It operates on a publish-subscribe model, where all other components emit events about their state and actions. This provides a unified stream for observability, debugging, and control.
-
-> For a detailed design, see: [Event System Architecture](./event-system.md)
-
 ## 4. Memory System
 
 To provide agents with robust short-term and long-term memory capabilities for complex workflows, the framework integrates a persistent memory system that implements AG2's standard memory protocol. This ensures ecosystem compatibility while providing the advanced features needed for document generation, code projects, and other content-intensive tasks.
@@ -119,15 +118,6 @@ To provide agents with robust short-term and long-term memory capabilities for c
 - **AG2 Compatibility**: Implements the standard AG2 Memory interface for seamless integration
 - **Multi-modal Support**: Handles text, images, PDFs, and various document formats
 - **Semantic Search**: Goes beyond keyword matching with vector-based similarity search
-
-### Architecture Integration
-
-The Memory System integrates seamlessly with other framework components:
-
-- **Storage System**: Leverages configurable storage backends (local filesystem, S3, Azure)
-- **Event System**: Emits memory events for observability and monitoring
-- **Config System**: Memory provider and parameters managed through standard configuration
-- **Tool System**: Exposes memory operations as standard tools available to all agents
 
 ### Memory Tools
 
@@ -144,15 +134,80 @@ Standard memory tools are available to all agents in the framework:
 | `clear_memory`  | Clears session memories with backup options               |
 | `search_memory` | Performs semantic search with relevance ranking           |
 
-> **Implementation Details**: For specific implementation strategy, configuration options, and integration examples, see [Memory System Documentation](./memory-system.md).
+> **Implementation Details**: For a comprehensive discussion of the memory architecture, including the storage provider pattern, chunking strategies, and data models, see the [Memory System Design](./memory-system.md) document.
 
 ## 5. Tool System
 
-The Tool System provides a secure and observable framework for discovering, executing, and monitoring tools like web search, code interpreters, and other APIs.
+The Tool System is designed to provide agents with secure, reliable, and observable access to external capabilities. Its architecture is founded on the principles of protocol-based interaction and separation of concerns, ensuring that agent logic remains decoupled from tool implementation details.
+
+### Architecture Overview
+
+- **Multiple Integration Patterns**: The system supports multiple tool integration patterns. For **external tools**, the framework mandates the use of the **Model Context Protocol (MCP)** to ensure a uniform, secure, and discoverable interface. For **built-in tools**, a more direct and optimized internal API is used to maximize performance for core functionalities.
+
+  ```python
+  # Example of an MCP-compliant tool endpoint
+  @tool_protocol.mcp_endpoint("web_search")
+  async def search(query: str, filters: dict):
+      # Implementation logic for the search tool
+      return await brave_search_api.call(query, **filters)
+  ```
+
+- **Separation of Concerns**: The system distinguishes between the **Tool Registry** for discovery, the **Execution Engine** for invocation, and the **Physical Tools** themselves. This allows each part of the system to be managed and scaled independently.
+
+### Key Capabilities
+
+1.  **Execution Modes**: The Execution Engine supports multiple invocation patterns to suit different use cases:
+
+    - **Synchronous**: For fast, blocking operations (<500ms).
+    - **Asynchronous**: For long-running tasks, providing progress updates via callbacks.
+    - **Streaming**: For tools that produce continuous output, such as LLM responses.
+
+2.  **Security Model**: A multi-layered security model governs tool access:
+    - **Authentication**: All agents and tools must authenticate using OAuth 2.0 or managed API keys.
+    - **Authorization**: Access is controlled by per-agent or per-team capability matrices defined in the configuration. These policies specify which agents can execute which tools and enforce rate limits.
+    - **Auditing**: Every tool call generates a `tool.call.initiated` event and a corresponding `completed` or `failed` event, creating a comprehensive and immutable audit trail.
+
+> For the full specification, including the MCP definition, security policy schema, and monitoring integration, see the [Tool System Design](./tool-system.md) document.
 
 ## 6. Event System
 
-The Event System is the central nervous system of the framework. It operates on a publish-subscribe model, where all other components emit events about their state and actions. This provides a unified stream for observability, debugging, and control.
+The Event System is the observability and control backbone of the framework. It is designed for high throughput and low latency, enabling real-time monitoring and dynamic intervention in agent workflows.
+
+### Core Architecture
+
+The system is built around a central **Event Bus** that routes events between producers and consumers. This decouples components and allows for flexible integration with external monitoring and control systems.
+
+- **Unified Event Schema**: All events adhere to a standardized, versioned JSON schema. This ensures consistency and simplifies the development of consumers.
+
+  ```typescript
+  // Example of a standardized RobocoEvent
+  interface RobocoEvent {
+    eventId: string; // UUID for the event
+    timestamp: ISO8601; // UTC timestamp
+    eventType: string; // e.g., "agent.message.sent", "tool.call.failed"
+    payload: Record<string, unknown>; // Event-specific data
+    metadata: {
+      sessionId: string; // Correlates all events in a single workflow
+      source: string; // e.g., "Agent/Planner", "Tool/WebSearch"
+    };
+  }
+  ```
+
+- **Bidirectional Communication**: The event bus is not just for observability; it's also a control plane.
+  - **Outbound Events**: Components publish events about their state and actions (e.g., `agent.decision.made`).
+  - **Inbound Events**: External systems (or human supervisors) can publish control events (e.g., `control.collaboration.pause`) to dynamically influence the workflow.
+
+### Operational Characteristics
+
+The Event System is designed to meet stringent performance and reliability targets suitable for production environments.
+
+| Metric         | Target                 | Description                                                               |
+| -------------- | ---------------------- | ------------------------------------------------------------------------- |
+| **Throughput** | >10,000 events/sec     | The number of events the bus can process per second.                      |
+| **Latency**    | <50ms (p99)            | The time from when an event is published to when it is delivered.         |
+| **Durability** | At-least-once delivery | Ensures that critical events are not lost, with configurable persistence. |
+
+> For a detailed exploration of the event-driven architecture, including the bridge pattern for framework integration and the control plane design, see the [Event System Design](./event-sytem.md) document.
 
 ## 7. Framework Extensibility
 
@@ -446,6 +501,6 @@ Maintenance involves updating tool services as needed, updating the Roboco backe
 
 ## 10. Conclusion
 
-The framework provides a powerful and flexible platform for developing sophisticated multi-agent applications. Its core emphasis on modularity, extensibility, observability, interruptibility, and scalable memory handling makes it particularly suitable for complex, iterative tasks such as automated document generation, research synthesis, and other knowledge-intensive workflows.
+The framework provides a powerful and flexible platform for developing sophisticated multi-agent applications. Its core emphasis on modularity, extensibility, observability, and human-in-the-loop collaboration makes it particularly suitable for complex, iterative tasks.
 
-By clearly defining agent roles, providing them with standardized access to tools and memory through the Tool System, and orchestrating their collaboration effectively through the TeamManager and event-driven architecture, the framework enables the creation of advanced AI-driven solutions that can tackle challenges beyond the scope of single-agent systems.
+By clearly defining component responsibilities and their interactions through a robust, event-driven architecture, the framework enables the creation of advanced AI-driven solutions that can tackle challenges beyond the scope of single-agent systems.
