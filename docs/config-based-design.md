@@ -1,6 +1,6 @@
 # Configuration-Based Design
 
-The RoboCo framework provides a flexible, configuration-based approach to defining and creating a team of AI agents. This document explains how to use this system to create a custom agent team without writing specialized agent classes. All agent system prompts, tool selections, and workflows (including handoff rules) are fully defined in configuration files (YAML and Jinja2 templates), enabling visualization and monitoring of agent configurations and status.
+The Roboco framework provides a flexible, configuration-based approach to defining and creating a team of AI agents. This document explains how to use this system to create a custom agent team without writing specialized agent classes. All agent system prompts, tool selections, and workflows (including handoff rules) are fully defined in configuration files (YAML and Jinja2 templates), enabling visualization and monitoring of agent configurations and status.
 
 ## Overview
 
@@ -81,7 +81,7 @@ Follow these coding standards:
 
 ### Jinja2 Template Rendering
 
-The RoboCo framework uses Jinja2 for dynamic prompt template rendering. This allows for:
+The Roboco framework uses Jinja2 for dynamic prompt template rendering. This allows for:
 
 1. **Variable Injection**: Insert runtime values like workspace paths, project details, and tool information
 2. **Conditional Logic**: Include or exclude sections based on runtime conditions
@@ -105,7 +105,7 @@ template = env.get_template("programmer.jinja2")
 system_prompt = template.render(
     programming_language="Python",
     experience_level="expert",
-    project_name="RoboCo",
+    project_name="Roboco",
     workspace_path="/Users/username/projects/roboco",
     tools_available=[
         {"name": "filesystem", "description": "Access and modify files"},
@@ -369,17 +369,17 @@ llm:
   max_tokens: 8000
   temperature: 0.7
   base_url: "https://api.openai.com/v1"
-  
+
 # Visualization settings
 visualization:
   enabled: true
   output_dir: "${ROBOCO_DATA_PATH}/visualizations"
   format: "png"
-  
+
 # Monitoring settings
 monitoring:
   enabled: true
-  metrics_collection_interval: 5  # seconds
+  metrics_collection_interval: 5 # seconds
   log_level: "info"
   agentok_integration: true
   agentok_url: "http://localhost:3000"
@@ -416,7 +416,7 @@ The configuration-based design system supports visualization and monitoring of a
 
 ### Configuration Visualization
 
-The RoboCo framework provides built-in tools to visualize team configurations:
+The Roboco framework provides built-in tools to visualize team configurations:
 
 ```python
 from roboco.core import TeamBuilder, TeamVisualizer
@@ -436,7 +436,7 @@ TeamVisualizer.generate_tool_diagram(planning_team, output_path="tool_diagram.pn
 
 ### Status Monitoring
 
-RoboCo integrates with monitoring tools to provide real-time insights into agent status and performance:
+Roboco integrates with monitoring tools to provide real-time insights into agent status and performance:
 
 ```python
 from roboco.core import TeamBuilder
@@ -467,7 +467,7 @@ monitor.stop()
 
 ### Integration with AgentOK
 
-RoboCo can integrate with AgentOK for real-time UI-based configuration and monitoring:
+Roboco can integrate with AgentOK for real-time UI-based configuration and monitoring:
 
 ```python
 from roboco.core import TeamBuilder

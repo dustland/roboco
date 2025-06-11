@@ -1,90 +1,221 @@
-<p align="center">
-  <img src="./assets/logo.png" alt="roboco-logo" width="100"/>
-</p>
+# Roboco: AI Agent Collaboration Framework
 
-<h1 align="center">RoboCo: A Robot-driven Company powered by Multi-agent System</h1>
+[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-<p align="center">
-  <strong>Build, orchestrate, and operate sophisticated AI agent teams.</strong>
-</p>
+Roboco is a modern AI agent collaboration framework built on top of AG2 (AutoGen). Unlike traditional workflow-based systems, Roboco focuses on **dynamic team collaboration** where AI agents work together naturally through conversation and shared context.
 
-<p align="center">
-    <a href="https://github.com/dustland/roboco/blob/main/LICENSE"><img src="https://img.shields.io/github/license/dustland/roboco.svg" alt="License"></a>
-    <a href="https://github.com/dustland/roboco/pulls"><img src="https://img.shields.io/badge/PRs-welcome-brightgreen.svg" alt="PRs Welcome"></a>
-    <a href="https://docs.roboco.dev"><img src="https://img.shields.io/badge/documentation-latest-blue.svg" alt="Documentation"></a>
-</p>
+## 🌟 Key Features
 
----
+### 🤝 Collaboration over Workflows
 
-**RoboCo** is a powerful, config-driven framework for creating and managing multi-agent systems. It provides a robust abstraction layer over foundational agent frameworks like [AutoGen](https://github.com/microsoft/autogen), enabling developers to define complex agent teams and workflows through simple configuration files.
+- **Dynamic Team Formation**: Agents collaborate naturally rather than following predefined workflows
+- **GroupChat Orchestration**: Flexible multi-agent conversations with intelligent speaker selection
+- **Context-Driven Interactions**: Agents adapt based on conversation context and expertise
 
-Whether you're building a collaborative writing team, a software development crew, or a complex data analysis pipeline, RoboCo provides the tools to make your agents work together seamlessly.
+### 🔧 Easy Configuration
 
-## Key Features
+- **YAML-Based Setup**: Define teams, agents, and tools through simple configuration files
+- **Hot-Reloadable**: Update configurations without restarting your application
+- **Modular Architecture**: Mix and match components as needed
 
-- **Config-Based Design**: Define your entire agent team—their roles, tools, and collaboration patterns—in a single, easy-to-read YAML file.
-- **Extensible Tool System**: Integrate any capability into your agent's toolkit, from simple functions to remote enterprise APIs, all within a secure and observable framework.
-- **Advanced Context Management**: Overcome LLM context window limitations with a powerful system that provides persistent memory and state management for your agents.
-- **Full Observability**: A built-in event system provides real-time visibility into every action, message, and tool call within your system, making debugging and monitoring effortless.
-- **Framework Agnostic**: While built on AutoGen, RoboCo is designed to be an abstraction layer, allowing for future integration with other agent backends.
+### 🛠️ Powerful Tooling
 
-## Getting Started
+- **Universal Tool Bridge**: Seamlessly integrate any Python function as an agent tool
+- **Type-Safe**: Automatic schema generation from function signatures
+- **Tool Sharing**: Tools can be shared across multiple agents in a team
 
-### Prerequisites
+### 🎯 Production Ready
 
-- Python 3.10+
+- **FastAPI Integration**: Built-in web API for team collaboration
+- **Event System**: Comprehensive event handling and logging
+- **Context Management**: Persistent state across agent interactions
+
+## 🚀 Quick Start
 
 ### Installation
 
-Clone the repository and install the required dependencies:
-
 ```bash
-git clone https://github.com/dustland/roboco.git
+git clone https://github.com/your-org/roboco.git
 cd roboco
-pip install -e .
+pip install -r requirements.txt
 ```
 
-## Quick Start: Writing a Blog Post
+### Basic Usage
 
-This example demonstrates a multi-agent team collaborating to write a blog post. A `Planner` agent creates an outline, a `Writer` agent drafts the content, and a `Reviewer` agent polishes the final text.
+1. **Define Your Team** (`config/team.yaml`):
 
-Run the scenario from the root of the project:
+```yaml
+agents:
+  - name: WriterAgent
+    class: roboco.agents.Agent
+    system_message: "You are a creative writer who collaborates with others to create excellent content."
+    llm_config:
+      config_list:
+        - model: "gpt-4o-mini"
+
+  - name: ToolExecutorAgent
+    class: roboco.agents.ToolExecutorAgent
+
+tools:
+  - class: roboco.tools.basic_tools.EchoTool
+    name: "echo_tool"
+    description: "Echoes back messages with confirmation"
+
+team:
+  chat_config:
+    max_rounds: 15
+    speaker_selection: "auto"
+```
+
+2. **Start Collaboration**:
+
+```python
+from roboco.orchestration import TeamManager
+
+# Initialize team
+team = TeamManager("config/team.yaml")
+
+# Start collaboration
+result = team.collaborate("Write a short story about AI collaboration")
+print(result.summary)
+```
+
+3. **Run SuperWriter Example**:
 
 ```bash
-python examples/scenarios/writing_a_blog_post.py
+cd examples/superwriter
+python -m uvicorn app.main:app --reload
 ```
 
-You will see the team in action as they collaborate to produce the final article.
+## 🏗️ Architecture
 
-## Documentation
+### Core Components
 
-For a deeper dive into the architecture and design of the framework, please refer to our detailed documentation:
+```mermaid
+graph TD
+    A[TeamManager] --> B[Agent Team]
+    A --> C[Tool Registry]
+    A --> D[GroupChat]
 
-- [**System Architecture**](docs/system-architecture.md): A high-level overview of the entire framework.
-- [**Config-Based Design**](docs/config-based-design.md): Learn how to define agent teams using YAML.
-- [**Context Management**](docs/context-management.md): Understand how agents manage state and memory.
-- [**Tool System**](docs/tool-system.md): See how to extend agent capabilities with custom tools.
-- [**Event System**](docs/event-system.md): Explore the observability and control plane of the framework.
+    B --> E[WriterAgent]
+    B --> F[ToolExecutorAgent]
+    B --> G[Custom Agents]
 
-## Contributing
+    C --> H[EchoTool]
+    C --> I[Custom Tools]
 
-We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) for details on how to get started.
-
-## Acknowledgments
-
-- Built on top of [AG2](https://github.com/ag2ai/ag2)
-- Inspired by [Manus](https://manus.im/) and [OpenManus](https://github.com/mannaandpoem/OpenManus/)
-- Thanks to Anthropic for the MCP (Model Context Protocol) design.
-
-## Citation
-
-```bibtex
-@misc{roboco2025,
-  author = {Dustland Team},
-  title = {RoboCo: A Robot-driven Company powered by Multi-agent System},
-  year = {2025},
-  publisher = {GitHub},
-  journal = {GitHub repository},
-  howpublished = {\url{https://github.com/dustland/roboco}},
-}
+    D --> J[Conversation Flow]
+    D --> K[Speaker Selection]
+    D --> L[Context Management]
 ```
+
+### Collaboration vs Workflow
+
+| Aspect              | Traditional Workflow       | Roboco Collaboration |
+| ------------------- | -------------------------- | -------------------- |
+| **Flow**            | Predefined steps A → B → C | Dynamic conversation |
+| **Adaptability**    | Fixed sequence             | Context-driven       |
+| **Interaction**     | Sequential handoffs        | Natural discussion   |
+| **Problem Solving** | Linear progression         | Emergent solutions   |
+| **Scalability**     | Hard to modify             | Easy to extend       |
+
+## 📖 Documentation
+
+- [System Architecture](docs/system-architecture.md) - Core design principles
+- [Configuration Guide](docs/config-based-design.md) - Detailed configuration options
+- [Tool System](docs/tool-system.md) - Creating and using tools
+- [Event System](docs/event-system.md) - Event handling and logging
+- [Context Management](docs/context-management.md) - State management
+
+## 🔄 Migration from v0
+
+If you're migrating from the previous workflow-based system:
+
+1. **Update Orchestration**:
+
+   ```python
+   # Old workflow approach
+   from roboco.orchestration import WorkflowManager
+   manager = WorkflowManager("workflow.yaml")
+   result = manager.run(task)
+
+   # New collaboration approach
+   from roboco.orchestration import TeamManager
+   team = TeamManager("team.yaml")
+   result = team.collaborate(task)
+   ```
+
+2. **Update Configuration**:
+
+   - Rename `workflow.yaml` to `team.yaml`
+   - Replace `workflow:` section with `team:`
+   - Use `collaborate()` instead of `run()`
+
+3. **Benefits of Migration**:
+   - More natural agent interactions
+   - Better problem-solving through discussion
+   - Flexible and adaptive to different tasks
+   - Closer to human team dynamics
+
+## 🎯 Examples
+
+### SuperWriter - Collaborative Writing
+
+A complete example demonstrating team-based content creation:
+
+```bash
+cd examples/superwriter
+python test_collaboration.py  # Test the system
+python -m uvicorn app.main:app --reload  # Start API server
+```
+
+**API Endpoints**:
+
+- `POST /run-task` - Start a writing collaboration
+- `GET /team-info` - Get team information
+- `GET /` - Health check
+
+## 🛠️ Development
+
+### Project Structure
+
+```
+roboco/
+├── src/roboco/           # Core framework
+│   ├── agents/           # Agent implementations
+│   ├── orchestration/    # Team management
+│   ├── tools/            # Built-in tools
+│   ├── config/           # Configuration system
+│   ├── context/          # Context management
+│   └── event/            # Event system
+├── examples/             # Example applications
+│   └── superwriter/      # Collaborative writing app
+├── docs/                 # Documentation
+└── tests/                # Test suite
+```
+
+### Running Tests
+
+```bash
+python test_collaboration.py  # Basic collaboration test
+# More comprehensive tests coming soon
+```
+
+## 🤝 Contributing
+
+We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+
+## 📄 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## 🙏 Acknowledgments
+
+- Built on [AG2 (AutoGen)](https://github.com/ag2ai/ag2) framework
+- Inspired by human team collaboration patterns
+- Community feedback and contributions
+
+---
+
+**Ready to build collaborative AI teams?** Start with the [SuperWriter example](examples/superwriter/) and explore the power of agent collaboration!

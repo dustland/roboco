@@ -5,10 +5,8 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "roboco"
 version = "0.4.0"
-description = "RoboCo - A Multi-agents Platform"
-authors = [
-    {name = "Dustland Team", email = "hi@dustland.ai"}
-]
+description = "Roboco - A Multi-agents Platform"
+authors = [{ name = "Dustland Team", email = "hi@dustland.ai" }]
 readme = "README.md"
 requires-python = ">=3.11"
 classifiers = [
@@ -26,49 +24,43 @@ dependencies = [
     "rich>=13.6.0",
     "loguru",
     "tavily-python",
-    "PyGithub", # GitHub API client
-    "arxiv", # ArXiv API client
+    "PyGithub",                     # GitHub API client
+    "arxiv",                        # ArXiv API client
     "autogen",
     "mcp>=1.4.1",
-    "markdown>=3.4.0", # For markdown processing
-    "sqlmodel>=0.0.8", # SQL ORM
-    "sqlalchemy>=2.0.0", # SQL toolkit
-    "requests>=2.31.0", # HTTP library
-    "beautifulsoup4>=4.12.0", # For HTML parsing
+    "markdown>=3.4.0",              # For markdown processing
+    "sqlmodel>=0.0.8",              # SQL ORM
+    "sqlalchemy>=2.0.0",            # SQL toolkit
+    "requests>=2.31.0",             # HTTP library
+    "beautifulsoup4>=4.12.0",       # For HTML parsing
     "streamlit>=1.44.1",
     "pyarrow>=19.0.1",
-    "ag2>=0.9.2",
+    "ag2[openai]>=0.9.2",
+    "jinja2>=3.1.6",
+    "google-search-results>=2.4.2", # SerpAPI package
+    "aiohttp>=3.8.0",               # HTTP client for server demos
 ]
 
 [project.optional-dependencies]
-dev = [
-    "black",
-    "mypy",
-    "isort",
-    "pytest",
-    "pytest-cov",
-    "flake8",
-]
-ui = [
-    "streamlit>=1.32.0",
-]
-all = [
-    "streamlit>=1.32.0",
-]
+dev = ["black", "mypy", "isort", "pytest", "pytest-cov", "flake8"]
+ui = ["streamlit>=1.32.0"]
+all = ["streamlit>=1.32.0"]
 
 [project.urls]
 "Homepage" = "https://github.com/dustland/roboco"
 "Bug Tracker" = "https://github.com/dustland/roboco/issues"
 
 [project.scripts]
-roboco = "roboco.cli:cli"
-roboco-api = "roboco.api.server:run_api_server"
-roboco-api-dev = "roboco.api.server:run_dev_server"
-roboco-ui = "roboco.cli.ui:launch_ui"
+# Development scripts
+dev = "roboco.run:dev"
+test = "roboco.run:test"
+start = "roboco.run:start"
+server = "roboco.run:run_server"
+
 
 [tool.setuptools]
-package-dir = {"" = "src"}
-package-data = {"roboco" = ["py.typed"]}
+package-dir = { "" = "src" }
+package-data = { "roboco" = ["py.typed"] }
 
 [tool.setuptools.packages.find]
 where = ["src"]
@@ -119,14 +111,7 @@ ignore_missing_imports = true
 packages = ["src/roboco"]
 
 [tool.hatch.build.targets.sdist]
-include = [
-    "src/roboco",
-    "config",
-    "examples",
-    "tests",
-    "README.md",
-    "LICENSE",
-]
+include = ["src/roboco", "config", "examples", "tests", "README.md", "LICENSE"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

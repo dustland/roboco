@@ -1,0 +1,150 @@
+# SuperWriter Professional Team Configuration
+# Realistic collaborative writing system with specialized agents
+
+project:
+  name: "SuperWriter Professional"
+  description: "Advanced collaborative AI writing system with research, planning, writing, and review capabilities"
+  version: "2.0.0"
+  domain: "content_creation"
+
+# Global variables available to all prompts
+variables:
+  company_name: "Roboco AI Systems"
+  project_name: "SuperWriter Professional"
+  team_size: 4
+
+  # Agent names for cross-references
+  planner_name: "PlannerAgent"
+  researcher_name: "ResearcherAgent"
+  writer_name: "WriterAgent"
+  reviewer_name: "ReviewerAgent"
+
+  # Tool and API endpoints
+  context_api_url: "http://localhost:5004/api/context"
+  task_api_url: "http://localhost:5004/api/tasks"
+  serp_api_tool: "serp_search"
+  jina_api_tool: "jina_extract"
+  context_storage_tool: "context_storage"
+
+  # Configuration URLs
+  quality_standards_url: "http://localhost:5004/api/standards"
+  style_guide_url: "http://localhost:5004/api/style-guide"
+  document_tools_available: "context_storage, document_compiler, citation_manager"
+  review_tools_available: "fact_checker, grammar_checker, readability_analyzer"
+
+# Professional writing team with specialized roles
+agents:
+  - name: "PlannerAgent"
+    class: "roboco.agents.Agent"
+    prompt_file: "planner_agent.md"
+    prompt_variables:
+      agent_name: "PlannerAgent"
+    llm_config:
+      config_list:
+        - model: "gpt-4o"
+
+  - name: "ResearcherAgent"
+    class: "roboco.agents.Agent"
+    prompt_file: "researcher_agent.md"
+    prompt_variables:
+      agent_name: "ResearcherAgent"
+    llm_config:
+      config_list:
+        - model: "gpt-4o"
+
+  - name: "WriterAgent"
+    class: "roboco.agents.Agent"
+    prompt_file: "writer_agent.md"
+    prompt_variables:
+      agent_name: "WriterAgent"
+    llm_config:
+      config_list:
+        - model: "gpt-4o"
+
+  - name: "ReviewerAgent"
+    class: "roboco.agents.Agent"
+    prompt_file: "reviewer_agent.md"
+    prompt_variables:
+      agent_name: "ReviewerAgent"
+    llm_config:
+      config_list:
+        - model: "gpt-4o"
+
+  - name: "ToolExecutorAgent"
+    class: "roboco.agents.ToolExecutorAgent"
+    prompt_file: "tool_executor.md"
+    prompt_variables:
+      agent_name: "ToolExecutorAgent"
+    # No LLM config - pure tool executor
+
+# Enhanced tool suite for context sharing and research
+tools:
+  # Context management tools (automatically registered by TeamManager)
+  # - context_save, context_load, context_list are built-in
+
+  # Communication and research tools
+  - class: "roboco.builtin_tools.basic_tools.EchoTool"
+    name: "echo_tool"
+    description: "Communication tool for agent coordination"
+    config:
+      default_prefix: "[SuperWriter] "
+
+  # Search tools for research (simplified config)
+  - class: "roboco.builtin_tools.search_tools.SerpSearchTool"
+    name: "web_search"
+    description: "Web search tool for gathering research sources"
+    config: {}
+
+# Collaboration workflow configuration
+collaboration:
+  max_rounds: 10 # Simplified for testing
+  speaker_selection_method: "auto"
+  allow_repeat_speaker: true # Allow back-and-forth between agents
+
+# Context and persistence configuration
+context:
+  storage_backend: "file_system" # Can be upgraded to database
+  base_path: "./workspace/context"
+
+# MCP (Model Context Protocol) tool registration
+mcp:
+  enabled: true
+  config_file: "config/mcp.toml" # Use dedicated MCP configuration file
+  auto_discovery: true
+
+  # Key MCP tools for this project (defined in config/mcp.toml)
+  priority_tools:
+    research: ["web_searcher", "webpage_reader", "arxiv_search"]
+    documents: ["file_operations", "markdown_processor", "citation_manager"]
+    quality: ["content_analyzer", "grammar_checker", "knowledge_base"]
+
+  # Integration with custom tools
+  tool_integration:
+    # Custom research_coordinator can use these MCP tools
+    research_coordinator_mcp:
+      - "web_searcher"
+      - "webpage_reader"
+      - "arxiv_search"
+      - "web_scraper"
+
+    # Custom context_manager can use these MCP tools
+    context_manager_mcp:
+      - "file_operations"
+      - "knowledge_base"
+
+# GroupChat settings for team coordination
+group_chat:
+  admin_name: "SystemCoordinator"
+  messages: []
+  max_round: 50
+  speaker_selection_method: "auto"
+  allow_repeat_speaker: true
+  enable_function_calls: true
+
+  # Custom speaker selection logic
+  speaker_transitions:
+    "PlannerAgent": ["ResearcherAgent", "WriterAgent", "ReviewerAgent"]
+    "ResearcherAgent": ["PlannerAgent", "WriterAgent", "ToolExecutorAgent"]
+    "WriterAgent": ["ResearcherAgent", "ReviewerAgent", "ToolExecutorAgent"]
+    "ReviewerAgent": ["WriterAgent", "PlannerAgent", "ResearcherAgent"]
+    "ToolExecutorAgent": ["ResearcherAgent", "WriterAgent", "ReviewerAgent"]

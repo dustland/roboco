@@ -1,6 +1,6 @@
-# Contributing to RoboCo
+# Contributing to Roboco
 
-Thank you for your interest in contributing to RoboCo! This document provides guidelines and instructions for contributing to this project.
+Thank you for your interest in contributing to Roboco! This document provides guidelines and instructions for contributing to this project.
 
 ## Code of Conduct
 
@@ -90,7 +90,7 @@ Update documentation when you make changes:
 
 ## License
 
-By contributing to RoboCo, you agree that your contributions will be licensed under the project's [MIT License](LICENSE).
+By contributing to Roboco, you agree that your contributions will be licensed under the project's [MIT License](LICENSE).
 
 ## Recognition
 
