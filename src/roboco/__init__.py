@@ -12,9 +12,9 @@ Usage:
     result = await team.run("Your task here")
     
     # Or use convenience function
-    from roboco import create_team, collaborate
+    from roboco import create_team, run_team
     
-    result = await collaborate("path/to/team.yaml", "Your task here")
+    result = await run_team("path/to/team.yaml", "Your task here")
     
     # Configuration-based team creation
     from roboco import TeamBuilder
@@ -64,9 +64,9 @@ async def create_team(config_path: str, **kwargs) -> TeamManager:
     """
     return TeamBuilder.create_team(config_path, **kwargs)
 
-async def collaborate(config_path: str, task: str, **kwargs) -> CollaborationResult:
+async def run_team(config_path: str, task: str, **kwargs) -> CollaborationResult:
     """
-    One-shot collaboration function for simple usage.
+    One-shot team execution function for simple usage.
     
     Args:
         config_path: Path to team configuration YAML file
@@ -77,7 +77,7 @@ async def collaborate(config_path: str, task: str, **kwargs) -> CollaborationRes
         CollaborationResult with the team's output
         
     Example:
-        result = await collaborate("config/team.yaml", "Write a blog post about robots")
+        result = await run_team("config/team.yaml", "Write a blog post about robots")
         print(result.summary)
     """
     team = TeamBuilder.create_team(config_path, **kwargs)
@@ -120,7 +120,7 @@ __all__ = [
     
     # Convenience functions
     "create_team",
-    "collaborate",
+    "run_team",
     "create_planning_team",
     "create_research_writing_team",
     "create_software_development_team",
