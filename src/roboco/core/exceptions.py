@@ -18,9 +18,7 @@ class AgentError(RobocoException):
     """Raised for errors related to agent operations."""
     pass
 
-class ContextError(RobocoException):
-    """Raised for errors within the context management system."""
-    pass
+
 
 class EventError(RobocoException):
     """Raised for errors within the event system."""

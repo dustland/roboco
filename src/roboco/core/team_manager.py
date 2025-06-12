@@ -11,7 +11,7 @@ from roboco.tool import create_tool_function_for_ag2
 from roboco.config import create_prompt_loader
 from roboco.core.exceptions import ConfigurationError
 from roboco.event import InMemoryEventBus, Event
-# Context tools have been replaced by memory tools using Mem0
+
 from .models import CollaborationResult
 
 from dotenv import load_dotenv
@@ -143,7 +143,7 @@ class TeamManager:
 
     def _initialize_tools(self):
         """Initialize tools from configuration."""
-        # Context tools have been replaced by memory tools using Mem0
+
         # Memory tools are initialized separately by agents that need them
         
         # Load configured tools
@@ -280,18 +280,37 @@ class TeamManager:
             "collaboration_settings": self.config.get("collaboration", {}),
         }
 
-    async def run(self, task: str) -> CollaborationResult:
+    async def run(self, task: str, max_rounds: Optional[int] = None, 
+                  human_input_mode: Optional[str] = None) -> CollaborationResult:
         """
         Start a collaborative session with the team.
         
         Args:
             task: The initial task or request to be processed by the team.
+            max_rounds: Maximum number of collaboration rounds (overrides config if provided)
+            human_input_mode: Human-in-the-loop mode (overrides config if provided):
+                            - "ALWAYS": Request human input for every message
+                            - "TERMINATE": Only request human input for termination decisions  
+                            - "NEVER": Fully automated (good for demos)
         
         Returns:
             CollaborationResult: The result of the team collaboration.
         """
         if not self.group_chat_manager:
             raise ConfigurationError("Team not properly initialized")
+        
+        # Get collaboration config
+        collaboration_config = self.config.get("collaboration", {})
+        
+        # Use provided max_rounds or fall back to config, then default
+        if max_rounds is not None:
+            self.group_chat.max_round = max_rounds
+        elif "max_rounds" in collaboration_config:
+            self.group_chat.max_round = collaboration_config["max_rounds"]
+        
+        # Use provided human_input_mode or fall back to config, then default
+        if human_input_mode is None:
+            human_input_mode = collaboration_config.get("human_input_mode", "NEVER")
         
         # Get team info for events
         team_name = self.config.get("project", {}).get("name", "Unknown Team")
@@ -306,11 +325,12 @@ class TeamManager:
         await self.event_bus.publish(start_event)
         
         try:
-            # Start the collaboration
+            # Start the collaboration with human-in-the-loop mode
             result = self.group_chat_manager.initiate_chat(
                 self.group_chat_manager,
                 message=task,
-                clear_history=True
+                clear_history=True,
+                human_input_mode=human_input_mode
             )
             
             # Extract information from the result
@@ -383,7 +403,7 @@ class TeamManager:
         temp_manager.config = config
         temp_manager.config_path = team_config_path
         temp_manager.prompt_loader = self.prompt_loader
-        temp_manager.context_store = self.context_store
+
         temp_manager.event_bus = self.event_bus
         temp_manager.agents = {}
         temp_manager.tools = {}

@@ -61,7 +61,8 @@ class TeamBuilder:
     def create_team(config_path: Optional[str] = None, 
                    template_variables: Optional[Dict[str, Any]] = None,
                    memory_config: Optional[MemoryConfig] = None,
-                   event_config: Optional[EventConfig] = None) -> TeamManager:
+                   event_config: Optional[EventConfig] = None,
+                   event_bus=None) -> TeamManager:
         """
         Create a team from configuration files.
         
@@ -70,6 +71,7 @@ class TeamBuilder:
             template_variables: Variables to use in Jinja2 template rendering
             memory_config: Memory system configuration
             event_config: Event system configuration
+            event_bus: Optional event bus instance to use
             
         Returns:
             Configured TeamManager instance
@@ -84,7 +86,8 @@ class TeamBuilder:
             config_path=config_path,
             template_variables=template_variables,
             memory_config=memory_config,
-            event_config=event_config
+            event_config=event_config,
+            event_bus=event_bus
         )
     
     @staticmethod
@@ -129,7 +132,8 @@ class TeamBuilder:
     def build_team(self, config_path: str,
                    template_variables: Optional[Dict[str, Any]] = None,
                    memory_config: Optional[MemoryConfig] = None,
-                   event_config: Optional[EventConfig] = None) -> TeamManager:
+                   event_config: Optional[EventConfig] = None,
+                   event_bus=None) -> TeamManager:
         """
         Build a team from configuration with template rendering support.
         
@@ -138,6 +142,7 @@ class TeamBuilder:
             template_variables: Variables for template rendering
             memory_config: Memory system configuration
             event_config: Event system configuration
+            event_bus: Optional event bus instance to use
             
         Returns:
             Configured TeamManager instance
@@ -160,7 +165,10 @@ class TeamBuilder:
         
         # Initialize system components
         memory_manager = None
-        event_bus = None
+        
+        # Use provided event_bus or create from config
+        if event_bus is None:
+            event_bus = None  # Will be set below based on config
         
         # Handle memory configuration from team config or provided config
         if memory_config:
@@ -182,11 +190,13 @@ class TeamBuilder:
             except Exception as e:
                 print(f"Warning: Could not initialize memory system from team config: {e}")
         
-        if event_config:
-            if event_config.bus_type == "memory":
+        # Only create event_bus if not provided
+        if event_bus is None:
+            if event_config:
+                if event_config.bus_type == "memory":
+                    event_bus = InMemoryEventBus()
+            elif "events" in enhanced_config and enhanced_config["events"].get("bus_type") == "memory":
                 event_bus = InMemoryEventBus()
-        elif "events" in enhanced_config and enhanced_config["events"].get("bus_type") == "memory":
-            event_bus = InMemoryEventBus()
         
         # Create TeamManager with the enhanced configuration
         team_manager = TeamManager(

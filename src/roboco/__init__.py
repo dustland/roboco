@@ -23,6 +23,8 @@ Usage:
     result = await team.run("Your task here")
 """
 
+from typing import Optional
+
 # Core classes - the main API
 from .core import (
     TeamManager, Agent, ToolExecutorAgent, CollaborationResult,
@@ -35,16 +37,15 @@ from .config import create_prompt_loader
 from .core.exceptions import ConfigurationError
 
 # Event system
-from .event import Event, InMemoryEventBus
+from .event import Event, InMemoryEventBus, EventMonitor, CollaborationMetrics
 
 # Memory system
-from .memory import MemoryManager, ContextStore, InMemoryContextStore
+from .memory import MemoryManager
 
 # Tool system
 from .tool import AbstractTool, InMemoryToolRegistry
 
-# Server components (optional)
-from .server import SessionManager, Session, create_app, SessionConfig
+# Server components (optional - removed for simplicity)
 
 # Convenience functions for simple usage
 async def create_team(config_path: str, **kwargs) -> TeamManager:
@@ -64,24 +65,36 @@ async def create_team(config_path: str, **kwargs) -> TeamManager:
     """
     return TeamBuilder.create_team(config_path, **kwargs)
 
-async def run_team(config_path: str, task: str, **kwargs) -> CollaborationResult:
+async def run_team(config_path: str, task: str, 
+                   event_bus=None, max_rounds: Optional[int] = None, 
+                   human_input_mode: Optional[str] = None, **kwargs) -> CollaborationResult:
     """
     One-shot team execution function for simple usage.
     
     Args:
         config_path: Path to team configuration YAML file
-        task: Task description for the team to work on
+        task: Simple task description (planner will expand into complete requirements)
+        event_bus: Optional event bus for monitoring
+        max_rounds: Maximum number of collaboration rounds (overrides config if provided)
+        human_input_mode: Human-in-the-loop mode (overrides config if provided):
+                         - "ALWAYS": Request human input for every message
+                         - "TERMINATE": Only request human input for termination decisions
+                         - "NEVER": Fully automated (good for demos)
         **kwargs: Additional arguments passed to TeamManager
         
     Returns:
         CollaborationResult with the team's output
         
     Example:
+        # Use config defaults
         result = await run_team("config/team.yaml", "Write a blog post about robots")
-        print(result.summary)
+        
+        # Override config settings
+        result = await run_team("config/team.yaml", "Write a blog post about robots", 
+                               max_rounds=15, human_input_mode="TERMINATE")
     """
-    team = TeamBuilder.create_team(config_path, **kwargs)
-    return await team.run(task)
+    team = TeamBuilder.create_team(config_path, event_bus=event_bus, **kwargs)
+    return await team.run(task, max_rounds=max_rounds, human_input_mode=human_input_mode)
 
 # Version info - updated to match pyproject.toml
 __version__ = "0.7.0"
@@ -102,21 +115,17 @@ __all__ = [
     # Event system
     "Event",
     "InMemoryEventBus",
+    "EventMonitor",
+    "CollaborationMetrics",
     
     # Memory system
     "MemoryManager",
-    "ContextStore", 
-    "InMemoryContextStore",
     
     # Tool system
     "AbstractTool",
     "InMemoryToolRegistry",
     
-    # Server components
-    "SessionManager",
-    "Session",
-    "create_app",
-    "SessionConfig",
+
     
     # Convenience functions
     "create_team",

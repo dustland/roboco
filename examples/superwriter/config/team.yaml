@@ -214,10 +214,11 @@ collaboration:
   max_rounds: 25 # Allow for iterative research-write-review cycles
   speaker_selection_method: "auto"
   allow_repeat_speaker: true
-
-# Context and workspace configuration
-context:
-  base_path: "./workspace/context"
+  # Human-in-the-loop configuration:
+  # - "NEVER": Fully automated (good for demos and batch processing)
+  # - "TERMINATE": Request human input only for termination decisions (production default)
+  # - "ALWAYS": Request human input for every message (maximum oversight)
+  human_input_mode: "NEVER" # Demo mode - change to "TERMINATE" for production
 
 # Event configuration
 events:

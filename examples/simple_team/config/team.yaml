@@ -50,10 +50,6 @@ tools:
       - executor
       - writer
 
-# Context/memory configuration
-context:
-  base_path: "./workspace/context"
-
 # Event configuration
 events:
   bus_type: "memory"

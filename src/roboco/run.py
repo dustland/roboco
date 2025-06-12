@@ -68,17 +68,9 @@ def run_ui() -> int:
 
 def run_server(host: str = "0.0.0.0", port: int = 8000, reload: bool = True) -> int:
     """Run the RoboCo server."""
-    from roboco.server.api import run_server
-    try:
-        print(f"🚀 Starting RoboCo server on {host}:{port}")
-        run_server(host=host, port=port, reload=reload)
-        return 0
-    except KeyboardInterrupt:
-        print("\n⚠️  Server stopped by user")
-        return 0
-    except Exception as e:
-        print(f"❌ Error starting server: {e}")
-        return 1
+    print("❌ Server functionality has been removed for simplicity.")
+    print("💡 Use the core collaboration features directly with run_team() instead.")
+    return 1
 
 def dev():
     """Main development function for 'uv run dev'."""
