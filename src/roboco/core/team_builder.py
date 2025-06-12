@@ -120,33 +120,4 @@ class TeamBuilder:
             config_path=config_path,
             template_variables=template_variables,
             **kwargs
-        )
-
-
-# Convenience functions for preset teams
-def create_planning_team(template_variables: Optional[Dict[str, Any]] = None,
-                        **kwargs) -> TeamManager:
-    """Create a planning-focused team."""
-    return TeamBuilder.create_team_from_preset(
-        "simple_team",
-        template_variables=template_variables,
-        **kwargs
-    )
-
-def create_research_writing_team(template_variables: Optional[Dict[str, Any]] = None,
-                                **kwargs) -> TeamManager:
-    """Create a research and writing team."""
-    return TeamBuilder.create_team_from_preset(
-        "superwriter", 
-        template_variables=template_variables,
-        **kwargs
-    )
-
-def create_software_development_team(template_variables: Optional[Dict[str, Any]] = None,
-                                   **kwargs) -> TeamManager:
-    """Create a software development team."""
-    return TeamBuilder.create_team_from_preset(
-        "simple_team", 
-        template_variables=template_variables,
-        **kwargs
-    ) 
+        ) 

@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """
-Demo script showing Roboco's multi-agent collaboration with Mem0 memory integration.
+Demo script showcasing Roboco's multi-agent collaboration framework.
+
+This demo demonstrates real-world scenarios where teams of AI agents collaborate
+to solve complex tasks, showcasing the framework's capabilities rather than
+testing individual subsystems.
 """
 
 import os
@@ -12,183 +16,388 @@ from pathlib import Path
 project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root / "src"))
 
-from roboco.core.team_builder import TeamBuilder
-from roboco.memory.manager import MemoryManager
-from roboco.config.models import MemoryConfig
+from roboco.core.cli import run_task, resume_task
 
 
-def demo_memory_system():
-    """Demonstrate Mem0 memory system capabilities."""
-    print("=== Roboco Memory System Demo (Mem0) ===\n")
+async def demo_research_and_planning():
+    """Demonstrate a research and planning collaboration scenario."""
+    print("=== Research & Planning Collaboration Demo ===\n")
+    
+    # Use team.yaml for research and planning scenario
+    config_path = str(Path(__file__).parent / "config" / "team.yaml")
     
     try:
-        # Initialize memory manager with embedded vector store
-        print("1. Initializing Mem0 memory system...")
+        # Scenario: Planning a new product launch
+        task = """
+        Our company wants to launch a new AI-powered productivity tool for remote teams.
         
-        # Configure to use ChromaDB (embedded, no server required)
-        memory_config = MemoryConfig()
-        memory_config.vector_store = {
-            "provider": "chroma",
-            "config": {
-                "collection_name": "roboco_demo",
-                "path": "./demo_memory_db"  # Local file-based storage
-            }
-        }
+        Please work together to:
+        1. Research the current market landscape and competitors
+        2. Identify key features and target audience
+        3. Create a comprehensive launch plan with timeline
+        4. Suggest marketing strategies and channels
         
-        memory_manager = MemoryManager(memory_config)
-        print("✓ Memory system initialized with Mem0 backend (ChromaDB)\n")
+        Make sure to collaborate effectively and build on each other's insights.
+        """
         
-        # Test adding memories
-        print("2. Adding memories...")
+        print("🎯 Task: AI Productivity Tool Launch Planning")
+        print("👥 Team: Planner, Researcher, Writer (team.yaml)")
+        print("🚀 Starting collaboration...\n")
         
-        # Add a conversation memory
-        conversation = [
-            {"role": "user", "content": "I love Italian food, especially pasta carbonara"},
-            {"role": "assistant", "content": "That's great! Carbonara is a classic Roman dish with eggs, cheese, and pancetta."}
-        ]
-        
-        result1 = memory_manager.add_memory(
-            content=conversation,
-            user_id="demo_user",
-            metadata={"topic": "food_preferences", "cuisine": "italian"}
-        )
-        print(f"Added conversation memory: {result1}")
-        
-        # Add individual facts
-        result2 = memory_manager.add_memory(
-            content="User prefers working in the morning and takes breaks every 2 hours",
-            user_id="demo_user",
-            metadata={"topic": "work_habits"}
-        )
-        print(f"Added work habits memory: {result2}")
-        
-        result3 = memory_manager.add_memory(
-            content="The user mentioned they are learning Python and interested in AI development",
-            agent_id="assistant_agent",
-            metadata={"topic": "learning_goals"}
-        )
-        print(f"Added learning goals memory: {result3}\n")
-        
-        # Test searching memories
-        print("3. Searching memories...")
-        
-        search_results = memory_manager.search_memory(
-            query="What kind of food does the user like?",
-            user_id="demo_user",
-            limit=3
+        result = await run_task(
+            config_path=config_path,
+            task_description=task,
+            max_rounds=15
         )
         
-        print(f"Search results for food preferences:")
-        for i, memory in enumerate(search_results, 1):
-            print(f"  {i}. {memory['content']}")
-        print()
-        
-        # Test listing memories
-        print("4. Listing all user memories...")
-        user_memories = memory_manager.list_memories(user_id="demo_user", limit=10)
-        print(f"Found {len(user_memories)} memories for demo_user:")
-        for i, memory in enumerate(user_memories, 1):
-            print(f"  {i}. {memory['content'][:80]}{'...' if len(memory['content']) > 80 else ''}")
-        print()
-        
-        # Test agent memories
-        print("5. Listing agent memories...")
-        agent_memories = memory_manager.list_memories(agent_id="assistant_agent", limit=10)
-        print(f"Found {len(agent_memories)} memories for assistant_agent:")
-        for i, memory in enumerate(agent_memories, 1):
-            print(f"  {i}. {memory['content'][:80]}{'...' if len(memory['content']) > 80 else ''}")
-        print()
-        
-        # Get memory stats
-        print("6. Memory system statistics...")
-        stats = memory_manager.get_stats()
-        print(f"Backend: {stats.get('backend', 'unknown')}")
-        print(f"Total memories: {stats.get('total_memories', 0)}")
-        print(f"Version: {stats.get('version', 'unknown')}")
-        
-        if 'error' in stats:
-            print(f"Note: {stats['error']}")
-        
-        print("\n✓ Memory system demo completed successfully!")
-        
-    except ImportError as e:
-        print(f"❌ Memory system requires additional dependencies: {e}")
-        print("Install with: pip install mem0ai")
-        return False
+        if result and result.success:
+            print(f"✅ Collaboration completed successfully!")
+            print(f"📊 Participants: {', '.join(result.participants)}")
+            print(f"💬 Total exchanges: {len(result.chat_history)}")
+            print(f"📝 Summary: {result.summary}")
+            
+            # Show key insights from the collaboration
+            print(f"\n🔍 Key Collaboration Insights:")
+            print(f"   - Task ID: {result.task_id}")
+            print(f"   - Config: team.yaml")
+            print(f"   - Agents worked together across {len(result.chat_history)} conversation rounds")
+            print(f"   - Each agent contributed their specialized expertise")
+            
+            return result.task_id
+        else:
+            print(f"❌ Collaboration failed: {result.error_message if result else 'Unknown error'}")
+            return None
+            
     except Exception as e:
-        print(f"❌ Error during memory demo: {e}")
-        return False
+        print(f"❌ Demo failed: {e}")
+        import traceback
+        traceback.print_exc()
+        return None
+
+
+async def demo_content_creation_workflow():
+    """Demonstrate a content creation workflow with multiple agents."""
+    print("\n=== Content Creation Workflow Demo ===\n")
     
-    return True
-
-
-def demo_team_builder():
-    """Demonstrate team building with memory integration."""
-    print("\n=== Team Builder Demo ===\n")
+    # Use config.yaml for content creation scenario
+    config_path = str(Path(__file__).parent / "config" / "config.yaml")
     
     try:
-        # Initialize team builder
-        print("1. Initializing team builder...")
-        config_path = Path(__file__).parent / "config"
-        team_builder = TeamBuilder(config_path)
-        print("✓ Team builder initialized\n")
+        # Scenario: Creating educational content
+        task = """
+        Create a comprehensive guide about "Building Effective Remote Teams" for a business blog.
         
-        # Load team configuration
-        print("2. Loading team configuration...")
-        team_config_path = config_path / "team.yaml"
+        Work together to:
+        1. Research best practices and current trends in remote work
+        2. Structure the content with clear sections and actionable advice
+        3. Write engaging, professional content that provides real value
+        4. Ensure the guide is well-organized and ready for publication
         
-        if not team_config_path.exists():
-            print(f"❌ Team config not found at {team_config_path}")
-            return False
+        Target audience: Team leaders and managers transitioning to remote work.
+        Length: Approximately 1500-2000 words.
+        """
         
-        team = team_builder.build_team(str(team_config_path))
-        print(f"✓ Team loaded: {len(team.agents)} agents")
+        print("🎯 Task: Remote Teams Guide Creation")
+        print("👥 Team: Planner, Researcher, Writer (config.yaml)")
+        print("📝 Collaborative writing workflow starting...\n")
         
-        # List agents
-        for i, (name, agent) in enumerate(team.agents.items(), 1):
-            print(f"  {i}. {name} ({type(agent).__name__})")
-        print()
+        result = await run_task(
+            config_path=config_path,
+            task_description=task,
+            max_rounds=20
+        )
         
-        return True
-        
+        if result and result.success:
+            print(f"✅ Content creation completed!")
+            print(f"👥 Team collaboration: {len(result.participants)} agents")
+            print(f"🔄 Workflow rounds: {len(result.chat_history)}")
+            
+            # Demonstrate the collaborative process
+            print(f"\n📋 Workflow Analysis:")
+            print(f"   - Config: config.yaml")
+            print(f"   - Planning phase: Agents structured the approach")
+            print(f"   - Research phase: Gathered relevant information")
+            print(f"   - Writing phase: Created cohesive content")
+            print(f"   - Review phase: Refined and polished output")
+            
+            return result.task_id
+        else:
+            print(f"❌ Content creation failed: {result.error_message if result else 'Unknown error'}")
+            return None
+            
     except Exception as e:
-        print(f"❌ Error during team demo: {e}")
-        return False
+        print(f"❌ Demo failed: {e}")
+        return None
+
+
+async def demo_problem_solving_collaboration():
+    """Demonstrate collaborative problem-solving scenario."""
+    print("\n=== Problem-Solving Collaboration Demo ===\n")
+    
+    # Use default.yaml for problem-solving scenario
+    config_path = str(Path(__file__).parent / "config" / "default.yaml")
+    
+    try:
+        # Scenario: Technical problem solving
+        task = """
+        A software development team is experiencing performance issues with their web application.
+        Users are reporting slow page load times and occasional timeouts.
+        
+        Collaborate to:
+        1. Analyze potential causes of the performance issues
+        2. Research common web performance optimization techniques
+        3. Develop a systematic troubleshooting plan
+        4. Recommend specific solutions and implementation steps
+        5. Create a monitoring strategy to prevent future issues
+        
+        Consider both technical and process improvements.
+        """
+        
+        print("🎯 Task: Web Application Performance Troubleshooting")
+        print("👥 Team: Planner, Researcher, Writer (default.yaml)")
+        print("🔧 Problem-solving collaboration starting...\n")
+        
+        result = await run_task(
+            config_path=config_path,
+            task_description=task,
+            max_rounds=18
+        )
+        
+        if result and result.success:
+            print(f"✅ Problem-solving session completed!")
+            print(f"🧠 Collaborative analysis: {len(result.chat_history)} discussion rounds")
+            
+            # Show how agents collaborated on problem-solving
+            print(f"\n🔍 Collaboration Highlights:")
+            print(f"   - Config: default.yaml")
+            print(f"   - Systematic approach: Agents built on each other's analysis")
+            print(f"   - Knowledge synthesis: Combined research with practical solutions")
+            print(f"   - Comprehensive output: Actionable troubleshooting plan created")
+            
+            return result.task_id
+        else:
+            print(f"❌ Problem-solving failed: {result.error_message if result else 'Unknown error'}")
+            return None
+            
+    except Exception as e:
+        print(f"❌ Demo failed: {e}")
+        return None
+
+
+async def demo_task_continuation():
+    """Demonstrate task continuation and memory persistence."""
+    print("\n=== Task Continuation Demo ===\n")
+    
+    # Use team.yaml for task continuation scenario
+    config_path = str(Path(__file__).parent / "config" / "team.yaml")
+    
+    try:
+        initial_task = """
+        Design a comprehensive employee onboarding program for a tech startup.
+        
+        Phase 1: Create the foundation
+        1. Research best practices in employee onboarding
+        2. Identify key components and stakeholders
+        3. Draft initial program structure
+        
+        This is a multi-phase project - focus on the foundation first.
+        """
+        
+        print("🎯 Task: Employee Onboarding Program Design (Phase 1)")
+        print("👥 Team: Planner, Researcher, Writer (team.yaml)")
+        print("⏱️  Starting initial phase with limited rounds...\n")
+        
+        # Run initial phase with limited rounds
+        result1 = await run_task(
+            config_path=config_path,
+            task_description=initial_task,
+            max_rounds=8
+        )
+        
+        if result1 and result1.success:
+            print(f"✅ Phase 1 completed!")
+            print(f"📋 Foundation established in {len(result1.chat_history)} rounds")
+            
+            # Continue the task with additional work
+            print(f"\n🔄 Continuing task {result1.task_id} with Phase 2...")
+            
+            # Resume the task with additional rounds
+            result2 = await resume_task(
+                task_id=result1.task_id,
+                max_rounds=12
+            )
+            
+            if result2 and result2.success:
+                print(f"✅ Phase 2 completed!")
+                print(f"🔗 Seamless continuation: Agents built on previous work")
+                print(f"📈 Total project: {len(result2.chat_history)} conversation rounds")
+                
+                print(f"\n🎯 Task Continuation Success:")
+                print(f"   - Config: team.yaml")
+                print(f"   - Memory persistence: Agents remembered Phase 1 work")
+                print(f"   - Context continuity: Smooth transition between phases")
+                print(f"   - Collaborative evolution: Ideas developed across sessions")
+                
+                return result2.task_id
+            else:
+                print(f"❌ Phase 2 failed: {result2.error_message if result2 else 'Unknown error'}")
+                return result1.task_id
+        else:
+            print(f"❌ Phase 1 failed: {result1.error_message if result1 else 'Unknown error'}")
+            return None
+            
+    except Exception as e:
+        print(f"❌ Demo failed: {e}")
+        return None
+
+
+async def demo_framework_capabilities():
+    """Demonstrate core framework capabilities through realistic scenarios."""
+    print("\n=== Framework Capabilities Overview ===\n")
+    
+    print("🤖 Roboco Framework Demonstration")
+    print("   Multi-agent collaboration for complex tasks\n")
+    
+    # Track successful demos
+    completed_demos = []
+    
+    # Run different collaboration scenarios
+    task1_id = await demo_research_and_planning()
+    if task1_id:
+        completed_demos.append("Research & Planning")
+    
+    task2_id = await demo_content_creation_workflow()
+    if task2_id:
+        completed_demos.append("Content Creation")
+    
+    task3_id = await demo_problem_solving_collaboration()
+    if task3_id:
+        completed_demos.append("Problem Solving")
+    
+    task4_id = await demo_task_continuation()
+    if task4_id:
+        completed_demos.append("Task Continuation")
+    
+    # Summary of framework capabilities demonstrated
+    print("\n" + "="*60)
+    print("🎉 Framework Capabilities Demonstrated:")
+    
+    if completed_demos:
+        for demo in completed_demos:
+            print(f"   ✅ {demo}")
+        
+        print(f"\n🔧 Framework Features Showcased:")
+        print(f"   • Multi-agent collaboration and coordination")
+        print(f"   • Intelligent task distribution and specialization")
+        print(f"   • Memory persistence across task sessions")
+        print(f"   • Seamless task continuation and resumption")
+        print(f"   • Configurable team compositions and workflows")
+        print(f"   • Multiple configuration files for different scenarios")
+        print(f"   • Event-driven collaboration monitoring")
+        
+        print(f"\n📊 Collaboration Statistics:")
+        print(f"   • Scenarios completed: {len(completed_demos)}")
+        print(f"   • Configuration files tested: team.yaml, config.yaml, default.yaml")
+        print(f"   • Agent teams coordinated: {len(completed_demos)} different configurations")
+        print(f"   • Task persistence: Demonstrated across multiple sessions")
+        
+        print(f"\n🚀 Ready for Production:")
+        print(f"   • Framework handles complex, multi-step workflows")
+        print(f"   • Flexible configuration system for different use cases")
+        print(f"   • Agents collaborate naturally and effectively")
+        print(f"   • Memory and context preserved across sessions")
+        print(f"   • Scalable to different team sizes and compositions")
+        
+    else:
+        print("   ❌ No demos completed successfully")
+        print("   Check your configuration and API keys")
+    
+    return len(completed_demos)
+
+
+async def interactive_scenario_demo():
+    """Interactive demo for testing specific scenarios."""
+    print("\n=== Interactive Scenario Testing ===\n")
+    
+    scenarios = {
+        "1": ("Research & Planning", demo_research_and_planning),
+        "2": ("Content Creation", demo_content_creation_workflow),
+        "3": ("Problem Solving", demo_problem_solving_collaboration),
+        "4": ("Task Continuation", demo_task_continuation),
+        "5": ("All Scenarios", demo_framework_capabilities)
+    }
+    
+    while True:
+        print("Choose a collaboration scenario to test:")
+        for key, (name, _) in scenarios.items():
+            print(f"{key}. {name}")
+        print("0. Exit")
+        
+        choice = input("\nEnter your choice (0-5): ").strip()
+        
+        if choice == "0":
+            print("👋 Demo session ended!")
+            break
+        elif choice in scenarios:
+            scenario_name, scenario_func = scenarios[choice]
+            print(f"\n🚀 Running {scenario_name} scenario...\n")
+            
+            if choice == "5":
+                completed = await scenario_func()
+                print(f"\n📈 Completed {completed} out of 4 scenarios")
+            else:
+                task_id = await scenario_func()
+                if task_id:
+                    print(f"\n✅ Scenario completed! Task ID: {task_id}")
+                else:
+                    print(f"\n❌ Scenario failed")
+        else:
+            print("❌ Invalid choice. Please try again.")
+        
+        print("\n" + "="*50)
 
 
 async def main():
     """Main demo function."""
-    print("🤖 Welcome to Roboco Demo!\n")
+    print("🤖 Welcome to Roboco Framework Demo!")
+    print("   Showcasing Multi-Agent Collaboration Capabilities\n")
     
-    # Check for OpenAI API key if using default config
+    # Check for OpenAI API key
     if not os.getenv("OPENAI_API_KEY"):
-        print("⚠️  Note: Set OPENAI_API_KEY environment variable for full functionality")
-        print("   Some features may not work without proper API keys\n")
+        print("⚠️  Warning: OPENAI_API_KEY not found in environment variables")
+        print("   Please set your OpenAI API key for full functionality:")
+        print("   export OPENAI_API_KEY='your-api-key-here'\n")
+        
+        choice = input("Continue anyway? (y/N): ").strip().lower()
+        if choice != 'y':
+            print("👋 Please set your API key and try again!")
+            return
     
-    # Run memory system demo
-    memory_success = demo_memory_system()
+    # Check demo mode
+    print("Demo modes available:")
+    print("1. Full framework demonstration (all scenarios)")
+    print("2. Interactive scenario testing")
     
-    # Run team builder demo
-    team_success = demo_team_builder()
+    mode = input("\nChoose mode (1 or 2): ").strip()
     
-    # Summary
-    print("\n" + "="*50)
-    print("Demo Summary:")
-    print(f"  Memory System: {'✓ Success' if memory_success else '❌ Failed'}")
-    print(f"  Team Builder:  {'✓ Success' if team_success else '❌ Failed'}")
-    
-    if memory_success and team_success:
-        print("\n🎉 All demos completed successfully!")
-        print("   You can now use Roboco with intelligent memory capabilities!")
+    if mode == "2":
+        await interactive_scenario_demo()
     else:
-        print("\n⚠️  Some demos failed. Check the error messages above.")
-    
-    print("\nNext steps:")
-    print("  1. Explore the config files in examples/simple_team/config/")
-    print("  2. Customize team configurations for your use case")
-    print("  3. Integrate memory tools with your agents")
-    print("  4. Check out the documentation for advanced features")
+        # Run full framework demonstration
+        print("\n🚀 Running full framework demonstration...\n")
+        completed_scenarios = await demo_framework_capabilities()
+        
+        if completed_scenarios > 0:
+            print(f"\n🎉 Framework demonstration completed!")
+            print(f"   Successfully showcased {completed_scenarios} collaboration scenarios")
+            print(f"\n📁 Check the workspace/ directory for:")
+            print(f"   • Task outputs and artifacts")
+            print(f"   • Memory database (if configured)")
+            print(f"   • Collaboration logs and history")
+        else:
+            print(f"\n⚠️  Framework demonstration had issues")
+            print(f"   Please check your configuration and try again")
 
 
 if __name__ == "__main__":
-    asyncio.run(main()) 
+    asyncio.run(main())

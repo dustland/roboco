@@ -24,7 +24,7 @@ class MemoryEntry:
     content: str
     user_id: Optional[str] = None
     agent_id: Optional[str] = None
-    run_id: Optional[str] = None
+    task_id: Optional[str] = None
     metadata: Optional[Dict[str, Any]] = None
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
@@ -147,7 +147,7 @@ class MemoryManager:
         content: Union[str, List[Dict[str, str]]],
         user_id: Optional[str] = None,
         agent_id: Optional[str] = None,
-        run_id: Optional[str] = None,
+        task_id: Optional[str] = None,
         metadata: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """
@@ -157,7 +157,7 @@ class MemoryManager:
             content: Text content or conversation messages to store
             user_id: Optional user identifier
             agent_id: Optional agent identifier  
-            run_id: Optional session/run identifier
+            task_id: Optional task identifier
             metadata: Optional metadata to associate with the memory
             
         Returns:
@@ -170,8 +170,8 @@ class MemoryManager:
                 kwargs["user_id"] = user_id
             if agent_id:
                 kwargs["agent_id"] = agent_id
-            if run_id:
-                kwargs["run_id"] = run_id
+            if task_id:
+                kwargs["run_id"] = task_id  # Mem0 still uses run_id internally
             if metadata:
                 kwargs["metadata"] = metadata
 
@@ -187,7 +187,7 @@ class MemoryManager:
         query: str,
         user_id: Optional[str] = None,
         agent_id: Optional[str] = None,
-        run_id: Optional[str] = None,
+        task_id: Optional[str] = None,
         limit: int = 10
     ) -> List[Dict[str, Any]]:
         """
@@ -197,7 +197,7 @@ class MemoryManager:
             query: Search query
             user_id: Optional user identifier to filter by
             agent_id: Optional agent identifier to filter by
-            run_id: Optional session/run identifier to filter by
+            task_id: Optional task identifier to filter by
             limit: Maximum number of results to return
             
         Returns:
@@ -210,8 +210,8 @@ class MemoryManager:
                 kwargs["user_id"] = user_id
             if agent_id:
                 kwargs["agent_id"] = agent_id
-            if run_id:
-                kwargs["run_id"] = run_id
+            if task_id:
+                kwargs["run_id"] = task_id  # Mem0 still uses run_id internally
 
             # Search memories using Mem0
             results = self._client.search(query, **kwargs)
@@ -225,7 +225,7 @@ class MemoryManager:
                         content=item.get("memory", ""),
                         user_id=item.get("user_id"),
                         agent_id=item.get("agent_id"),
-                        run_id=item.get("run_id"),
+                        task_id=item.get("run_id"),  # Map run_id back to task_id
                         metadata=item.get("metadata", {}),
                         created_at=item.get("created_at"),
                         updated_at=item.get("updated_at")
@@ -261,7 +261,7 @@ class MemoryManager:
                             content=item.get("memory", ""),
                             user_id=item.get("user_id"),
                             agent_id=item.get("agent_id"),
-                            run_id=item.get("run_id"),
+                            task_id=item.get("run_id"),  # Map run_id back to task_id
                             metadata=item.get("metadata", {}),
                             created_at=item.get("created_at"),
                             updated_at=item.get("updated_at")
@@ -278,7 +278,7 @@ class MemoryManager:
         self,
         user_id: Optional[str] = None,
         agent_id: Optional[str] = None,
-        run_id: Optional[str] = None,
+        task_id: Optional[str] = None,
         limit: int = 100
     ) -> List[Dict[str, Any]]:
         """
@@ -287,7 +287,7 @@ class MemoryManager:
         Args:
             user_id: Optional user identifier to filter by
             agent_id: Optional agent identifier to filter by
-            run_id: Optional session/run identifier to filter by
+            task_id: Optional task identifier to filter by
             limit: Maximum number of results to return
             
         Returns:
@@ -300,8 +300,8 @@ class MemoryManager:
                 kwargs["user_id"] = user_id
             if agent_id:
                 kwargs["agent_id"] = agent_id
-            if run_id:
-                kwargs["run_id"] = run_id
+            if task_id:
+                kwargs["run_id"] = task_id  # Mem0 still uses run_id internally
 
             # Get memories using Mem0
             results = self._client.get_all(**kwargs)
@@ -315,7 +315,7 @@ class MemoryManager:
                         content=item.get("memory", ""),
                         user_id=item.get("user_id"),
                         agent_id=item.get("agent_id"),
-                        run_id=item.get("run_id"),
+                        task_id=item.get("run_id"),  # Map run_id back to task_id
                         metadata=item.get("metadata", {}),
                         created_at=item.get("created_at"),
                         updated_at=item.get("updated_at")
@@ -371,7 +371,7 @@ class MemoryManager:
         self,
         user_id: Optional[str] = None,
         agent_id: Optional[str] = None,
-        run_id: Optional[str] = None
+        task_id: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Clear memories with optional filtering.
@@ -379,10 +379,10 @@ class MemoryManager:
         Args:
             user_id: Optional user identifier to filter by
             agent_id: Optional agent identifier to filter by
-            run_id: Optional session/run identifier to filter by
+            task_id: Optional task identifier to filter by
             
         Returns:
-            Dict containing the result of the clearing operation
+            Dict containing the result of the operation
         """
         try:
             # Prepare keyword arguments
@@ -391,17 +391,12 @@ class MemoryManager:
                 kwargs["user_id"] = user_id
             if agent_id:
                 kwargs["agent_id"] = agent_id
-            if run_id:
-                kwargs["run_id"] = run_id
+            if task_id:
+                kwargs["run_id"] = task_id  # Mem0 still uses run_id internally
 
-            if kwargs:
-                # Delete specific memories
-                result = self._client.delete_all(**kwargs)
-            else:
-                # Reset all memories
-                result = self._client.reset()
-                
-            return {"success": True, "message": "Memories cleared"}
+            # Clear memories using Mem0
+            result = self._client.delete_all(**kwargs)
+            return {"success": True, "message": "Memories cleared successfully"}
 
         except Exception as e:
             return {"error": str(e), "success": False}

@@ -123,7 +123,7 @@ python main.py --resume <TASK_ID> --max-rounds 10
 
 The system uses a sophisticated memory system where:
 
-- Each task has isolated memory using the task ID as `run_id`
+- Each task has isolated memory using the task ID as `task_id`
 - Agents can store and retrieve context across rounds
 - Memory persists between task resumptions
 - Shared knowledge builds up throughout the collaboration

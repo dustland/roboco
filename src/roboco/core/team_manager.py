@@ -206,15 +206,14 @@ class TeamManager:
                 agent_functions = []
                 
                 # Add memory tools if memory manager is available
-                # TEMPORARILY DISABLED for testing
-                # if self.memory_manager:
-                #     from roboco.builtin_tools.memory_tools import create_memory_tools
-                #     memory_tools = create_memory_tools(self.memory_manager, run_id=self.task_id)
-                #     
-                #     for memory_tool in memory_tools:
-                #         tool_function = create_tool_function_for_ag2(memory_tool)
-                #         self.tools[memory_tool.name] = memory_tool
-                #         agent_functions.append(tool_function)
+                if self.memory_manager:
+                    from roboco.builtin_tools.memory_tools import create_memory_tools
+                    memory_tools = create_memory_tools(self.memory_manager, task_id=self.task_id)
+                    
+                    for memory_tool in memory_tools:
+                        tool_function = create_tool_function_for_ag2(memory_tool)
+                        self.tools[memory_tool.name] = memory_tool
+                        agent_functions.append(tool_function)
                 
                 # Add agent-specific tools
                 for tool_name in agent_tools:
@@ -339,6 +338,38 @@ class TeamManager:
         except Exception as e:
             raise ConfigurationError(f"Error initializing memory system: {e}")
 
+    def _reinitialize_memory_tools(self):
+        """Reinitialize memory tools with the correct task_id after task creation."""
+        if not self.memory_manager or not self.task_id:
+            return
+        
+        from roboco.builtin_tools.memory_tools import create_memory_tools
+        from roboco.tool.bridge import create_tool_function_for_ag2
+        
+        # Create memory tools with the correct task_id
+        memory_tools = create_memory_tools(self.memory_manager, task_id=self.task_id)
+        
+        # Add memory tools to each agent
+        for agent_name, agent in self.agents.items():
+            if hasattr(agent, '_function_map'):
+                # Add memory tools to the agent's function map
+                for memory_tool in memory_tools:
+                    tool_function = create_tool_function_for_ag2(memory_tool)
+                    self.tools[memory_tool.name] = memory_tool
+                    
+                    # Add to agent's function map
+                    if not hasattr(agent, '_function_map'):
+                        agent._function_map = {}
+                    agent._function_map[memory_tool.name] = tool_function
+                    
+                    # Also add to the agent's functions list if it exists
+                    if hasattr(agent, '_functions') and agent._functions:
+                        agent._functions.append(tool_function)
+                    elif hasattr(agent, '_functions'):
+                        agent._functions = [tool_function]
+        
+        print(f"🧠 Memory tools reinitialized with task_id: {self.task_id}")
+
     async def run(
         self, 
         task: str, 
@@ -382,6 +413,9 @@ class TeamManager:
             )
             print(f"🔄 Continuing task session: {self.task_id}")
         
+        # Reinitialize memory tools with the correct task_id
+        self._reinitialize_memory_tools()
+        
         # Get team configuration
         team_config = self.config.get("team", {})
         
@@ -409,18 +443,42 @@ class TeamManager:
                 if self.memory_manager:
                     previous_memories = self.memory_manager.search_memory(
                         query="requirements plan execution",
-                        run_id=self.task_id,
+                        task_id=self.task_id,
                         limit=5
                     )
                     if previous_memories:
                         task = f"Continue working on: {task}\n\nPrevious work found in memory. Please search memory to understand current progress and continue from where we left off."
             
-            # Start the collaboration using modern AG2 approach
-            result, context, last_agent = initiate_group_chat(
-                pattern=self.pattern,
-                messages=task,
-                max_rounds=max_rounds or team_config.get("max_rounds", 10)
-            )
+            # Start the collaboration using modern AG2 approach with defensive handling
+            try:
+                result, context, last_agent = initiate_group_chat(
+                    pattern=self.pattern,
+                    messages=task,
+                    max_rounds=max_rounds or team_config.get("max_rounds", 10)
+                )
+            except AttributeError as ae:
+                # Handle the specific AG2 bug where message content is None and .strip() fails
+                if "'NoneType' object has no attribute 'strip'" in str(ae):
+                    print(f"🐛 Detected AG2 bug with None message content. Attempting workaround...")
+                    
+                    # Try with a more explicit message format
+                    formatted_task = {
+                        "role": "user",
+                        "content": str(task) if task else "Please begin the task."
+                    }
+                    
+                    try:
+                        result, context, last_agent = initiate_group_chat(
+                            pattern=self.pattern,
+                            messages=[formatted_task],  # Pass as list
+                            max_rounds=max_rounds or team_config.get("max_rounds", 10)
+                        )
+                        print(f"✅ AG2 bug workaround successful")
+                    except Exception as retry_error:
+                        print(f"❌ AG2 bug workaround failed: {retry_error}")
+                        raise ae  # Re-raise original error
+                else:
+                    raise ae  # Re-raise if it's a different AttributeError
             
             # Debug: Check what result contains
             print(f"DEBUG: result type: {type(result)}")
@@ -452,15 +510,28 @@ class TeamManager:
             
             error_message = None
             
-            # Final save of conversation context and status
-            self.task_manager.update_task(
-                self.task_id,
-                status=final_status,
-                current_round=len(chat_history),
-                conversation_context=chat_history,
-                metadata=metadata_update
-            )
-            
+            # Final save of conversation context and status - with proper error handling
+            try:
+                update_success = self.task_manager.update_task(
+                    self.task_id,
+                    status=final_status,
+                    current_round=len(chat_history),
+                    conversation_context=chat_history,
+                    metadata=metadata_update
+                )
+                if update_success:
+                    print(f"✅ Task {self.task_id} status updated to '{final_status}'")
+                else:
+                    print(f"❌ Failed to update task {self.task_id} status")
+            except Exception as update_error:
+                print(f"❌ Error updating task status: {update_error}")
+                # Force save the task session even if update fails
+                try:
+                    self.task_manager._save_sessions()
+                    print(f"🔄 Force saved task sessions after update error")
+                except Exception as save_error:
+                    print(f"❌ Critical: Could not save task sessions: {save_error}")
+        
         except Exception as e:
             print(f"DEBUG: Exception during chat: {e}")
             import traceback
@@ -471,14 +542,27 @@ class TeamManager:
             chat_history = []  # No group_chat.messages in new approach
             error_message = str(e)
             
-            # Update task status
+            # Update task status - with proper error handling
             if self.task_id:
-                self.task_manager.update_task(
-                    self.task_id,
-                    status='failed',
-                    current_round=0,  # No chat history available on error
-                    metadata={"failed_at": str(datetime.now()), "error": str(e)}
-                )
+                try:
+                    update_success = self.task_manager.update_task(
+                        self.task_id,
+                        status='failed',
+                        current_round=0,  # No chat history available on error
+                        metadata={"failed_at": str(datetime.now()), "error": str(e)}
+                    )
+                    if update_success:
+                        print(f"✅ Task {self.task_id} status updated to 'failed'")
+                    else:
+                        print(f"❌ Failed to update task {self.task_id} status")
+                except Exception as update_error:
+                    print(f"❌ Error updating task status: {update_error}")
+                    # Force save the task session even if update fails
+                    try:
+                        self.task_manager._save_sessions()
+                        print(f"🔄 Force saved task sessions after update error")
+                    except Exception as save_error:
+                        print(f"❌ Critical: Could not save task sessions: {save_error}")
         
         # Create result
         result = CollaborationResult(

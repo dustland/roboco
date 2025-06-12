@@ -14,11 +14,11 @@ from roboco.memory.manager import MemoryManager
 
 
 class AddMemoryTool(AbstractTool):
-    """Tool for adding memories to the system."""
+    """Tool for adding memories to the memory system."""
     
-    def __init__(self, memory_manager: MemoryManager, run_id: Optional[str] = None):
+    def __init__(self, memory_manager: MemoryManager, task_id: Optional[str] = None):
         self.memory_manager = memory_manager
-        self.run_id = run_id
+        self.task_id = task_id
 
     @property
     def name(self) -> str:
@@ -44,7 +44,7 @@ class AddMemoryTool(AbstractTool):
                 default=None
             ),
             ToolParameterConfig(
-                name="run_id",
+                name="task_id",
                 type="string",
                 description="Task/session identifier for this memory",
                 required=False,
@@ -70,13 +70,13 @@ class AddMemoryTool(AbstractTool):
     async def run(self, input_data: Any, config: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """Add content to memory."""
         try:
-            # Use provided run_id or fall back to tool's run_id
-            run_id = input_data.get("run_id") or self.run_id
+            # Use provided task_id or fall back to tool's task_id
+            task_id = input_data.get("task_id") or self.task_id
             
             result = self.memory_manager.add_memory(
                 content=input_data.get("content"),
                 agent_id=input_data.get("agent_id"),
-                run_id=run_id,
+                task_id=task_id,
                 metadata=input_data.get("metadata")
             )
             
@@ -97,9 +97,9 @@ class AddMemoryTool(AbstractTool):
 class SearchMemoryTool(AbstractTool):
     """Tool for searching memories."""
     
-    def __init__(self, memory_manager: MemoryManager, run_id: Optional[str] = None):
+    def __init__(self, memory_manager: MemoryManager, task_id: Optional[str] = None):
         self.memory_manager = memory_manager
-        self.run_id = run_id
+        self.task_id = task_id
 
     @property
     def name(self) -> str:
@@ -118,7 +118,7 @@ class SearchMemoryTool(AbstractTool):
                 required=True
             ),
             ToolParameterConfig(
-                name="run_id",
+                name="task_id",
                 type="string",
                 description="Task/session identifier to filter by",
                 required=False,
@@ -151,17 +151,17 @@ class SearchMemoryTool(AbstractTool):
     async def run(self, input_data: Any, config: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """Search for relevant memories."""
         try:
-            # Use provided run_id or fall back to tool's run_id
-            run_id = input_data.get("run_id") or self.run_id
+            # Use provided task_id or fall back to tool's task_id
+            task_id = input_data.get("task_id") or self.task_id
             agent_id = input_data.get("agent_id")
             
-            # If no filtering parameters provided, use run_id for session isolation
-            if not run_id and not agent_id:
-                run_id = self.run_id
+            # If no filtering parameters provided, use task_id for session isolation
+            if not task_id and not agent_id:
+                task_id = self.task_id
             
             memories = self.memory_manager.search_memory(
                 query=input_data.get("query"),
-                run_id=run_id,
+                task_id=task_id,
                 agent_id=agent_id,
                 limit=input_data.get("limit", 5)
             )
@@ -187,9 +187,9 @@ class SearchMemoryTool(AbstractTool):
 class ListMemoriesTool(AbstractTool):
     """Tool for listing memories with optional filtering."""
     
-    def __init__(self, memory_manager: MemoryManager, run_id: Optional[str] = None):
+    def __init__(self, memory_manager: MemoryManager, task_id: Optional[str] = None):
         self.memory_manager = memory_manager
-        self.run_id = run_id
+        self.task_id = task_id
 
     @property
     def name(self) -> str:
@@ -202,7 +202,7 @@ class ListMemoriesTool(AbstractTool):
     def get_invocation_schema(self) -> List[ToolParameterConfig]:
         return [
             ToolParameterConfig(
-                name="run_id",
+                name="task_id",
                 type="string",
                 description="Task/session identifier to filter by",
                 required=False,
@@ -235,16 +235,16 @@ class ListMemoriesTool(AbstractTool):
     async def run(self, input_data: Any, config: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """List memories with optional filtering."""
         try:
-            # Use provided run_id or fall back to tool's run_id
-            run_id = input_data.get("run_id") or self.run_id
+            # Use provided task_id or fall back to tool's task_id
+            task_id = input_data.get("task_id") or self.task_id
             agent_id = input_data.get("agent_id")
             
-            # If no filtering parameters provided, use run_id for session isolation
-            if not run_id and not agent_id:
-                run_id = self.run_id
+            # If no filtering parameters provided, use task_id for session isolation
+            if not task_id and not agent_id:
+                task_id = self.task_id
             
             memories = self.memory_manager.list_memories(
-                run_id=run_id,
+                task_id=task_id,
                 agent_id=agent_id,
                 limit=input_data.get("limit", 10)
             )
@@ -289,8 +289,8 @@ class GetMemoryTool:
                 result += f"User: {memory['user_id']}\n"
             if memory.get('agent_id'):
                 result += f"Agent: {memory['agent_id']}\n"
-            if memory.get('run_id'):
-                result += f"Session: {memory['run_id']}\n"
+            if memory.get('task_id'):
+                result += f"Session: {memory['task_id']}\n"
             if memory.get('metadata'):
                 result += f"Metadata: {memory['metadata']}\n"
             if memory.get('created_at'):
@@ -360,7 +360,7 @@ class ClearMemoriesTool:
         self,
         user_id: Optional[str] = None,
         agent_id: Optional[str] = None,
-        run_id: Optional[str] = None,
+        task_id: Optional[str] = None,
         confirm: bool = False
     ) -> str:
         """Clear memories with optional filtering."""
@@ -371,7 +371,7 @@ class ClearMemoriesTool:
             result = self.memory_manager.clear_memories(
                 user_id=user_id,
                 agent_id=agent_id,
-                run_id=run_id
+                task_id=task_id
             )
             
             if result.get("success", False):
@@ -380,8 +380,8 @@ class ClearMemoriesTool:
                     filters.append(f"user_id={user_id}")
                 if agent_id:
                     filters.append(f"agent_id={agent_id}")
-                if run_id:
-                    filters.append(f"run_id={run_id}")
+                if task_id:
+                    filters.append(f"task_id={task_id}")
                 
                 filter_str = f" (filters: {', '.join(filters)})" if filters else " (all memories)"
                 return f"Memories cleared successfully{filter_str}."
@@ -419,19 +419,19 @@ class MemoryStatsTool:
             return f"Error getting memory stats: {str(e)}"
 
 
-def create_memory_tools(memory_manager: MemoryManager, run_id: Optional[str] = None) -> List[AbstractTool]:
+def create_memory_tools(memory_manager: MemoryManager, task_id: Optional[str] = None) -> List[AbstractTool]:
     """
-    Create memory tools with optional run_id for session isolation.
+    Create memory tools with optional task_id for session isolation.
     
     Args:
         memory_manager: The memory manager instance
-        run_id: Optional task/session identifier for memory isolation
+        task_id: Optional task identifier for memory isolation
         
     Returns:
         List of memory tools
     """
     return [
-        AddMemoryTool(memory_manager, run_id),
-        SearchMemoryTool(memory_manager, run_id),
-        ListMemoriesTool(memory_manager, run_id)
+        AddMemoryTool(memory_manager, task_id),
+        SearchMemoryTool(memory_manager, task_id),
+        ListMemoriesTool(memory_manager, task_id)
     ] 

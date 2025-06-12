@@ -241,13 +241,13 @@ class TaskManager:
         return sorted(continuable, key=lambda s: s.updated_at, reverse=True)
     
     def get_task_memory_context(self, task_id: str) -> Dict[str, Any]:
-        """Get memory context for a task (run_id, agent_id patterns)."""
+        """Get memory context for a task (task_id, agent_id patterns)."""
         session = self.get_task(task_id)
         if not session:
             return {}
         
         return {
-            "run_id": task_id,
+            "task_id": task_id,
             "task_description": session.task_description,
             "created_at": session.created_at,
             "current_round": session.current_round,

@@ -7,6 +7,7 @@ across different roboco applications and examples.
 
 import asyncio
 from typing import Optional
+from pathlib import Path
 
 from roboco.core.team_manager import TeamManager
 from roboco.core.task_manager import TaskManager
@@ -120,23 +121,111 @@ async def show_task_details(task_id: str, workspace_path: str = "./workspace"):
         print(f"   --resume {task_summary['task_id']}")
 
 
+async def run_task(
+    config_path: str,
+    task_description: str, 
+    max_rounds: int = 50,
+    workspace_path: str = "./workspace"
+):
+    """
+    Run a new task with the specified configuration.
+    
+    Args:
+        config_path: Path to the team configuration file
+        task_description: Description of the task to execute
+        max_rounds: Maximum number of conversation rounds
+        workspace_path: Path to workspace directory
+        
+    Returns:
+        CollaborationResult containing the outcome and details
+    """
+    # Calculate workspace path relative to config file (to match TeamManager)
+    calculated_workspace_path = str(Path(config_path).parent / "workspace")
+    
+    print(f"🚀 Starting New Task")
+    print(f"📝 Task: {task_description}")
+    print(f"⚙️  Config: {config_path}")
+    print(f"🔢 Max rounds: {max_rounds}")
+    print("=" * 60)
+    
+    # Set up event monitoring
+    event_bus = InMemoryEventBus()
+    monitor = EventMonitor(print_interval=30.0)
+    
+    try:
+        # Start monitoring
+        await monitor.start(event_bus)
+        print("🔍 Event monitoring started...")
+        
+        # Create team manager and run task
+        team_manager = TeamManager(
+            config_path=config_path,
+            event_bus=event_bus
+        )
+        
+        result = await team_manager.run(
+            task=task_description,
+            max_rounds=max_rounds,
+            human_input_mode="NEVER",
+            continue_task=False
+        )
+        
+        # Print results
+        print("\n" + "="*60)
+        print("📝 TASK COMPLETED SUCCESSFULLY!")
+        print("="*60)
+        print(f"Summary: {result.summary}")
+        print(f"Task ID: {result.task_id}")
+        print(f"Success: {result.success}")
+        
+        return result
+        
+    except Exception as e:
+        print(f"❌ Error during task execution: {e}")
+        raise
+    finally:
+        await monitor.stop()
+        print("🔍 Event monitoring stopped")
+
+
 async def resume_task(
     task_id: str, 
     max_rounds: int = 25,
     workspace_path: str = "./workspace"
 ):
-    """Resume an existing task session."""
-    task_manager = TaskManager(workspace_path)
+    """
+    Resume an existing task session by task ID.
     
-    # Get task details
-    task_session = task_manager.get_task(task_id)
+    Args:
+        task_id: The task ID to resume
+        max_rounds: Maximum additional rounds to run
+        workspace_path: Path to workspace directory
+        
+    Returns:
+        CollaborationResult containing the outcome and details
+    """
+    # Calculate workspace path relative to config file (to match TeamManager)
+    # We need to get the config path from the task session first
+    temp_task_manager = TaskManager(workspace_path)
+    task_session = temp_task_manager.get_task(task_id)
     if not task_session:
         print(f"❌ Task {task_id} not found!")
+        return None
+    
+    # Calculate the correct workspace path based on the task's config path
+    calculated_workspace_path = str(Path(task_session.config_path).parent / "workspace")
+    task_manager = TaskManager(calculated_workspace_path)
+    
+    # Re-get task details with correct workspace path
+    task_session = task_manager.get_task(task_id)
+    if not task_session:
+        print(f"❌ Task {task_id} not found in calculated workspace!")
         return None
     
     print(f"🔄 Resuming Task: {task_session.task_description}")
     print(f"📅 Originally created: {task_session.created_at}")
     print(f"🔢 Previous rounds: {task_session.current_round}")
+    print(f"🔢 Additional rounds: {max_rounds}")
     print("=" * 60)
     
     # Set up event monitoring
