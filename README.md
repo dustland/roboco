@@ -15,6 +15,7 @@ Roboco is a configuration-driven framework for building collaborative AI agent t
 - **Search Integration**: Web search with SerpAPI backend
 - **Tool Ecosystem**: Built-in tools (filesystem, memory, search) plus extensible registry
 - **Event System**: Real-time monitoring and observability
+- **Task Management**: Resume interrupted workflows with persistent sessions
 - **Production Ready**: Designed for scalability and reliability
 
 ## 📦 Installation
@@ -48,18 +49,49 @@ async def main():
 asyncio.run(main())
 ```
 
+### Task Continuation (Optional)
+
+```python
+from roboco import start_new_task, resume_task, list_tasks
+
+# Start a task that can be resumed later
+result = await start_new_task(
+    "Write a comprehensive guide",
+    "config/team.yaml",
+    max_rounds=50
+)
+
+# Resume if interrupted
+await resume_task("B5cD8fGh", max_rounds=25)
+```
+
 ## 📚 Examples
 
 Complete working examples in `examples/`:
 
-- **[Simple Team](examples/simple_team/)**: Basic multi-agent collaboration with memory
-- **[SuperWriter](examples/superwriter/)**: Production-quality research document generation
+### [SuperWriter](examples/superwriter/) - Production Multi-Agent System
 
-Run examples:
+A comprehensive writing system with research, planning, writing, and review agents:
+
+```bash
+cd examples/superwriter
+
+# Start new collaboration
+python main.py "Write a guide on machine learning deployment"
+
+# Resume interrupted task (optional)
+python main.py --resume B5cD8fGh
+
+# List existing tasks
+python main.py --list-compact
+```
+
+### [Simple Team](examples/simple_team/) - Basic Collaboration
+
+Basic multi-agent collaboration with memory:
 
 ```bash
 cd examples/simple_team && python demo.py
-cd examples/superwriter && python demo.py
 ```
 
 ## 🏗️ Architecture
@@ -90,6 +122,9 @@ flowchart TB
         Tool["Tool System"]:::sub
         Event["Event System"]:::sub
     end
+
+    classDef agent fill:#e1f5fe
+    classDef sub fill:#f3e5f5
 ```
 
 **Core Components:**

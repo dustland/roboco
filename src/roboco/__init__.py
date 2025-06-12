@@ -45,6 +45,12 @@ from .memory import MemoryManager
 # Tool system
 from .tool import AbstractTool, InMemoryToolRegistry
 
+# CLI functions for task management
+from .core.cli import (
+    list_tasks, list_tasks_compact, show_task_details, resume_task,
+    start_new_task, find_similar_tasks, check_environment, show_default_help
+)
+
 # Server components (optional - removed for simplicity)
 
 # Convenience functions for simple usage
@@ -135,7 +141,15 @@ __all__ = [
     "AbstractTool",
     "InMemoryToolRegistry",
     
-
+    # CLI functions
+    "list_tasks",
+    "list_tasks_compact",
+    "show_task_details",
+    "resume_task",
+    "start_new_task",
+    "find_similar_tasks",
+    "check_environment",
+    "show_default_help",
     
     # Convenience functions
     "create_team",
