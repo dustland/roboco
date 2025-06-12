@@ -158,6 +158,7 @@ async def resume_task(
         result = await team_manager.run(
             task=task_session.task_description,
             max_rounds=max_rounds,
+            human_input_mode="NEVER",
             continue_task=True
         )
         
@@ -211,7 +212,8 @@ async def start_new_task(
         
         result = await team_manager.run(
             task=task_description,
-            max_rounds=max_rounds
+            max_rounds=max_rounds,
+            human_input_mode="NEVER"
         )
         
         # Print results

@@ -26,6 +26,7 @@ class TaskSession:
     max_rounds: int
     current_round: int
     metadata: Dict[str, Any]
+    conversation_context: Optional[List[Dict[str, Any]]] = None  # Store chat history
     
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
@@ -139,7 +140,8 @@ class TaskManager:
         task_id: str,
         status: Optional[str] = None,
         current_round: Optional[int] = None,
-        metadata: Optional[Dict[str, Any]] = None
+        metadata: Optional[Dict[str, Any]] = None,
+        conversation_context: Optional[List[Dict[str, Any]]] = None
     ):
         """Update a task session."""
         if task_id not in self._sessions:
@@ -154,9 +156,41 @@ class TaskManager:
             session.current_round = current_round
         if metadata:
             session.metadata.update(metadata)
+        if conversation_context is not None:
+            session.conversation_context = conversation_context
         
         self._save_sessions()
         return True
+    
+    def save_conversation_progress(
+        self,
+        task_id: str,
+        chat_history: List[Dict[str, Any]],
+        current_round: Optional[int] = None
+    ):
+        """Save conversation progress incrementally."""
+        if task_id not in self._sessions:
+            return False
+        
+        session = self._sessions[task_id]
+        session.conversation_context = chat_history
+        session.updated_at = datetime.now().isoformat()
+        
+        if current_round is not None:
+            session.current_round = current_round
+        
+        # Update status based on progress
+        if current_round and current_round >= session.max_rounds:
+            session.status = 'paused'  # Reached max rounds, can be resumed
+            session.metadata['paused_reason'] = 'max_rounds_reached'
+        
+        self._save_sessions()
+        return True
+    
+    def get_conversation_context(self, task_id: str) -> Optional[List[Dict[str, Any]]]:
+        """Get the conversation context for a task."""
+        session = self._sessions.get(task_id)
+        return session.conversation_context if session else None
     
     def list_tasks(
         self,

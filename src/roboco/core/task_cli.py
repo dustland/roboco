@@ -157,6 +157,7 @@ async def resume_task(
         result = await team_manager.run(
             task=task_session.task_description,
             max_rounds=max_rounds,
+            human_input_mode="NEVER",  # Explicitly set to NEVER to prevent human input prompts
             continue_task=True
         )
         
@@ -207,7 +208,8 @@ async def start_new_task(
             config_path=config_path,
             task=task_description,
             event_bus=event_bus,
-            max_rounds=max_rounds
+            max_rounds=max_rounds,
+            human_input_mode="NEVER"  # Explicitly set to NEVER to prevent human input prompts
         )
         
         # Print results

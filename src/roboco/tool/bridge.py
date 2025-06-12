@@ -104,82 +104,58 @@ def create_tool_function_for_ag2(
     # Construct the full docstring
     full_docstring = f"{tool_description}\n\n" + "\n".join(docstring_params_lines)
 
-    # Create the dynamic function
-    # We use functools.partial to bind the tool_instance to our wrapper
-    # The signature is applied to a lambda that then calls the partial.
-    # This is a common pattern for creating functions with dynamic signatures.
-
-    # Define the core logic that will be wrapped
-    async def execution_core(**kwargs):
-        return await tool_instance.run(input_data=kwargs) # Pass args as input_data dictionary
-
-    # Dynamically create the signature for the new function
-    # The name of the dynamic function should be valid (e.g., tool_instance.name)
-    # and often made "safe" (e.g. replace spaces or invalid chars)
-    # AG2 uses the function.__name__ for registration.
+    # Create the dynamic function with proper naming
+    # We need to create a function with the correct name for AG2 registration
     safe_func_name = tool_name.replace("-", "_").replace(" ", "_")
-
-
-    # Create the function with the dynamic signature
-    # Using a string definition and exec can be one way, but let's try to build it with `types.FunctionType`
-    # For simplicity in this step, let's define a template and fill it.
-    # A more robust solution might involve AST manipulation or more complex `inspect` usage.
-
-    # Simpler approach: Define a wrapper and then set its __signature__ and __doc__
-    # The actual call to tool.run will be handled by _execute_tool_wrapper
     
-    @functools.wraps(execution_core) # This helps preserve some metadata but signature is key
-    async def dynamic_tool_func(**kwargs):
-        # This is where arguments passed by AG2 will arrive.
-        # They should match the parameters defined in the signature.
-        result = await tool_instance.run(input_data=kwargs)
-        
-        # Convert result to string format for AG2 conversation
-        if isinstance(result, dict):
-            # Format dictionary results as readable strings
-            if result.get("success", True):
-                # Success case - format the main content
-                if "message" in result:
-                    response = result["message"]
-                    if "result" in result and result["result"]:
-                        response += f"\nDetails: {result['result']}"
-                    if "memories" in result and result["memories"]:
-                        response += f"\nFound {len(result['memories'])} memories"
-                        for i, memory in enumerate(result["memories"][:3], 1):  # Show first 3
-                            content = memory.get('content', '')[:100]
-                            response += f"\n{i}. {content}..."
-                    return response
-                else:
-                    # Fallback for success without message
-                    return f"Operation completed successfully: {result}"
+    # Create the function code as a string and execute it to get proper naming
+    func_code = f"""
+async def {safe_func_name}(**kwargs):
+    '''
+    {full_docstring}
+    '''
+    result = await tool_instance.run(input_data=kwargs)
+    
+    # Convert result to string format for AG2 conversation
+    if isinstance(result, dict):
+        # Format dictionary results as readable strings
+        if result.get("success", True):
+            # Success case - format the main content
+            if "message" in result:
+                response = result["message"]
+                if "result" in result and result["result"]:
+                    response += f"\\nDetails: {{result['result']}}"
+                if "memories" in result and result["memories"]:
+                    response += f"\\nFound {{len(result['memories'])}} memories"
+                    for i, memory in enumerate(result["memories"][:3], 1):  # Show first 3
+                        content = memory.get('content', '')[:100]
+                        response += f"\\n{{i}}. {{content}}..."
+                return response
             else:
-                # Error case
-                error_msg = result.get("error", "Unknown error occurred")
-                return f"Error: {error_msg}"
+                # Fallback for success without message
+                return f"Operation completed successfully: {{result}}"
         else:
-            # Non-dictionary results (strings, etc.) pass through
-            return str(result) if result is not None else "Operation completed"
-
-    # Set the dynamic signature and docstring
-    # Note: The name of the function is also important for AG2.
-    # We can't easily change dynamic_tool_func.__name__ after definition without specific tricks.
-    # AG2 typically expects the function to be registered with the name it will be called by.
-    # So, the function object itself should ideally have the 'safe_func_name'.
-    # One way is to use 'exec', but let's try to avoid it for now.
-    # For AG2, when you register, you provide the function object. The name it's registered under
-    # is what the LLM uses. The function object's internal __name__ is less critical for AG2's direct use
-    # but good for introspection.
-
+            # Error case
+            error_msg = result.get("error", "Unknown error occurred")
+            return f"Error: {{error_msg}}"
+    else:
+        # Non-dictionary results (strings, etc.) pass through
+        return str(result) if result is not None else "Operation completed"
+"""
+    
+    # Execute the function code to create the properly named function
+    namespace = {
+        'tool_instance': tool_instance,
+        'enumerate': enumerate,
+        'len': len,
+        'str': str
+    }
+    exec(func_code, namespace)
+    dynamic_tool_func = namespace[safe_func_name]
+    
+    # Set the dynamic signature
     sig = inspect.Signature(parameters=parameters)
     dynamic_tool_func.__signature__ = sig
-    dynamic_tool_func.__doc__ = full_docstring
-    # dynamic_tool_func.__name__ = safe_func_name # This is tricky to set directly on existing func
-
-    # To ensure the function object has the correct name for registration if needed:
-    # One common pattern is to create it via exec or to return a new function
-    # compiled with the correct name.
-    # For now, the object `dynamic_tool_func` will be registered.
-    # The name used in `register_function` will be `safe_func_name`.
 
     return dynamic_tool_func
 
