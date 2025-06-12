@@ -27,10 +27,12 @@ class CollaborationResult:
         chat_history: List[Dict[str, Any]],
         participants: List[str],
         success: bool = True,
-        error_message: Optional[str] = None
+        error_message: Optional[str] = None,
+        task_id: Optional[str] = None
     ):
         self.summary = summary
         self.chat_history = chat_history
         self.participants = participants
         self.success = success
         self.error_message = error_message
+        self.task_id = task_id

@@ -3,10 +3,12 @@ import os
 import importlib
 from typing import Dict, Any, List, Optional
 from pathlib import Path
+from datetime import datetime
 
 from autogen import GroupChat, GroupChatManager, ConversableAgent, register_function
 
 from .agents import Agent, ToolExecutorAgent
+from .task_manager import TaskManager
 from roboco.tool import create_tool_function_for_ag2
 from roboco.config import create_prompt_loader
 from roboco.core.exceptions import ConfigurationError
@@ -47,36 +49,48 @@ class CollaborationCompletedEvent(Event):
 
 class TeamManager:
     """
-    Manages and orchestrates collaborative teams of AI agents.
-    Unlike workflows, teams operate through dynamic collaboration and conversation.
+    Manages a team of agents and their collaboration.
+    
+    This class handles:
+    - Loading team configuration
+    - Initializing agents and tools
+    - Managing group chat and conversation flow
+    - Coordinating memory and event systems
+    - Task session management and continuation
     """
-    def __init__(self, config_path: str, event_bus: Optional[InMemoryEventBus] = None):
-        """
-        Initializes the TeamManager.
 
+    def __init__(self, config_path: str, event_bus: Optional[InMemoryEventBus] = None, task_id: Optional[str] = None):
+        """
+        Initialize the team manager.
+        
         Args:
-            config_path: Path to the team configuration YAML file.
-            event_bus: Optional event bus for system integration. Creates new one if not provided.
+            config_path: Path to the team configuration file
+            event_bus: Optional event bus for coordination
+            task_id: Optional existing task ID to continue
         """
         self.config_path = config_path
-        self.config_dir = Path(config_path).parent
         self.config = self._load_config()
         
-        # Initialize event system
+        # Get config directory for prompt loader
+        config_dir = Path(config_path).parent
+        self.prompt_loader = create_prompt_loader(str(Path(config_path).parent))
+        
+        # Initialize task management
+        workspace_path = Path(config_path).parent / "workspace"
+        self.task_manager = TaskManager(str(workspace_path))
+        self.task_id = task_id
+        
+        # Initialize event bus
         self.event_bus = event_bus or InMemoryEventBus()
         
-        # Initialize prompt loader (optional)
-        try:
-            self.prompt_loader = create_prompt_loader(str(self.config_dir))
-        except ConfigurationError:
-            self.prompt_loader = None
-        
         # Initialize components
-        self.agents = {}
-        self.tools = {}
+        self.agents: Dict[str, ConversableAgent] = {}
+        self.tools: Dict[str, Any] = {}
+        self.memory_manager = None
         self.group_chat = None
         self.group_chat_manager = None
         
+        # Initialize the team
         self._initialize_team()
 
     def _load_config(self) -> Dict[str, Any]:
@@ -173,13 +187,7 @@ class TeamManager:
         """Initialize agents from configuration."""
         agents_config = self.config.get("agents", [])
         
-        # Create a shared tool executor agent for all tool executions
-        self.tool_executor = ToolExecutorAgent(
-            name="tool_executor",
-            system_message="I execute tools for other agents.",
-            human_input_mode="NEVER"
-        )
-        
+        # First create all main agents
         for agent_config in agents_config:
             try:
                 # Get the agent class
@@ -211,16 +219,31 @@ class TeamManager:
                 
                 # Create agent
                 agent = agent_class(**agent_args)
+                self.agents[agent_config["name"]] = agent
                 
-                # Register memory tools with all agents that have LLM config using proper AG2 pattern
-                if hasattr(agent, 'llm_config') and agent.llm_config and hasattr(self, 'memory_manager'):
-                    from roboco.builtin_tools.memory_tools import create_memory_tools
-                    memory_tools = create_memory_tools(self.memory_manager)
-                    
-                    for memory_tool in memory_tools:
-                        tool_function = create_tool_function_for_ag2(memory_tool)
-                        
-                        # Use proper AG2 registration pattern
+            except Exception as e:
+                raise ConfigurationError(f"Error initializing agent {agent_config.get('name', 'unknown')}: {e}")
+        
+        # Create tool executor agent
+        self.tool_executor = ToolExecutorAgent(
+            name="tool_executor",
+            system_message="I execute tools for other agents.",
+            human_input_mode="NEVER"
+        )
+        
+        # Initialize memory tools with task_id if available
+        if self.memory_manager:
+            from roboco.builtin_tools.memory_tools import create_memory_tools
+            memory_tools = create_memory_tools(self.memory_manager, run_id=self.task_id)
+            
+            # Register memory tools with all agents that have LLM config
+            for memory_tool in memory_tools:
+                tool_function = create_tool_function_for_ag2(memory_tool)
+                self.tools[memory_tool.name] = memory_tool
+                
+                # Register with all main agents that have LLM config
+                for agent_name, agent in self.agents.items():
+                    if hasattr(agent, 'llm_config') and agent.llm_config:
                         register_function(
                             tool_function,
                             caller=agent,
@@ -228,30 +251,32 @@ class TeamManager:
                             name=memory_tool.name,
                             description=memory_tool.description
                         )
-                
-                # Register agent-specific tools using proper AG2 pattern
-                agent_tools = agent_config.get("tools", [])
-                for tool_name in agent_tools:
-                    if tool_name in self.tools:
-                        tool_instance = self.tools[tool_name]
-                        tool_function = create_tool_function_for_ag2(tool_instance)
-                        
-                        # Only register for agents with LLM config
-                        if hasattr(agent, 'llm_config') and agent.llm_config:
-                            register_function(
-                                tool_function,
-                                caller=agent,
-                                executor=self.tool_executor,
-                                name=tool_name,
-                                description=getattr(tool_instance, 'description', f"Tool: {tool_name}")
-                            )
-                    else:
-                        raise ConfigurationError(f"Tool '{tool_name}' not found for agent '{agent_config['name']}'")
-                
-                self.agents[agent_config["name"]] = agent
-                
-            except Exception as e:
-                raise ConfigurationError(f"Error initializing agent {agent_config.get('name', 'unknown')}: {e}")
+        
+        # Register agent-specific tools
+        for agent_config in agents_config:
+            agent_name = agent_config["name"]
+            agent = self.agents[agent_name]
+            agent_tools = agent_config.get("tools", [])
+            
+            for tool_name in agent_tools:
+                if tool_name in self.tools:
+                    tool_instance = self.tools[tool_name]
+                    tool_function = create_tool_function_for_ag2(tool_instance)
+                    
+                    # Only register for agents with LLM config
+                    if hasattr(agent, 'llm_config') and agent.llm_config:
+                        register_function(
+                            tool_function,
+                            caller=agent,
+                            executor=self.tool_executor,
+                            name=tool_name,
+                            description=getattr(tool_instance, 'description', f"Tool: {tool_name}")
+                        )
+                else:
+                    raise ConfigurationError(f"Tool '{tool_name}' not found for agent '{agent_name}'")
+        
+        # Add tool executor to agents dict for group chat
+        self.agents["tool_executor"] = self.tool_executor
 
     def _setup_group_chat(self):
         """Setup the group chat for collaboration."""
@@ -308,7 +333,8 @@ class TeamManager:
         self, 
         task: str, 
         max_rounds: Optional[int] = None,
-        human_input_mode: Optional[str] = None
+        human_input_mode: Optional[str] = None,
+        continue_task: bool = False
     ) -> CollaborationResult:
         """
         Execute a collaborative task with the team.
@@ -317,6 +343,7 @@ class TeamManager:
             task: The task description for the team to work on
             max_rounds: Optional override for maximum conversation rounds
             human_input_mode: Optional override for human input mode
+            continue_task: Whether to continue an existing task or create new one
             
         Returns:
             CollaborationResult containing the outcome and details
@@ -324,6 +351,26 @@ class TeamManager:
         # Start event bus if not already started
         if not self.event_bus._running:
             await self.event_bus.start()
+        
+        # Handle task session management
+        if not self.task_id or not continue_task:
+            # Create new task session
+            team_config = self.config.get("team", {})
+            self.task_id = self.task_manager.create_task(
+                task_description=task,
+                config_path=self.config_path,
+                max_rounds=max_rounds or team_config.get("max_rounds", 50),
+                metadata={"human_input_mode": human_input_mode}
+            )
+            print(f"🆔 Created new task session: {self.task_id}")
+        else:
+            # Update existing task
+            self.task_manager.update_task(
+                self.task_id,
+                status='active',
+                metadata={"resumed_at": str(datetime.now())}
+            )
+            print(f"🔄 Continuing task session: {self.task_id}")
         
         # Get team configuration
         team_config = self.config.get("team", {})
@@ -351,6 +398,18 @@ class TeamManager:
         await self.event_bus.publish(start_event)
         
         try:
+            # Prepare task message for continuation
+            if continue_task and self.task_id:
+                # Search for previous work in memory
+                if self.memory_manager:
+                    previous_memories = self.memory_manager.search_memory(
+                        query="requirements plan execution",
+                        run_id=self.task_id,
+                        limit=5
+                    )
+                    if previous_memories:
+                        task = f"Continue working on: {task}\n\nPrevious work found in memory. Please search memory to understand current progress and continue from where we left off."
+            
             # Start the collaboration
             chat_result = self.group_chat_manager.initiate_chat(
                 recipient=self.group_chat_manager,
@@ -368,6 +427,14 @@ class TeamManager:
             chat_history = self.group_chat.messages if self.group_chat else []
             error_message = None
             
+            # Update task status
+            self.task_manager.update_task(
+                self.task_id,
+                status='completed',
+                current_round=len(chat_history),
+                metadata={"completed_at": str(datetime.now())}
+            )
+            
         except Exception as e:
             print(f"DEBUG: Exception during chat: {e}")
             import traceback
@@ -377,6 +444,15 @@ class TeamManager:
             summary = f"Collaboration failed: {str(e)}"
             chat_history = self.group_chat.messages if self.group_chat else []
             error_message = str(e)
+            
+            # Update task status
+            if self.task_id:
+                self.task_manager.update_task(
+                    self.task_id,
+                    status='failed',
+                    current_round=len(chat_history),
+                    metadata={"failed_at": str(datetime.now()), "error": str(e)}
+                )
         
         # Create result
         result = CollaborationResult(
@@ -384,7 +460,8 @@ class TeamManager:
             summary=summary,
             chat_history=chat_history,
             participants=participants,
-            error_message=error_message
+            error_message=error_message,
+            task_id=self.task_id  # Include task_id in result
         )
         
         # Emit collaboration completed event

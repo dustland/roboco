@@ -61,7 +61,8 @@ class TeamBuilder:
                    template_variables: Optional[Dict[str, Any]] = None,
                    memory_config: Optional[MemoryConfig] = None,
                    event_config: Optional[EventConfig] = None,
-                   event_bus=None) -> TeamManager:
+                   event_bus=None,
+                   task_id: Optional[str] = None) -> TeamManager:
         """
         Create a team from configuration files.
         
@@ -71,6 +72,7 @@ class TeamBuilder:
             memory_config: Memory system configuration
             event_config: Event system configuration
             event_bus: Optional event bus instance to use
+            task_id: Optional existing task ID for continuation
             
         Returns:
             Configured TeamManager instance
@@ -79,7 +81,7 @@ class TeamBuilder:
             config_path = "./config/default.yaml"
         
         # For the new simplified structure, just create TeamManager directly
-        return TeamManager(config_path=config_path, event_bus=event_bus)
+        return TeamManager(config_path=config_path, event_bus=event_bus, task_id=task_id)
     
     @staticmethod
     def create_team_from_preset(preset_name: str,

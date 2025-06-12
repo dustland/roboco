@@ -67,9 +67,11 @@ async def create_team(config_path: str, **kwargs) -> TeamManager:
 
 async def run_team(config_path: str, task: str, 
                    event_bus=None, max_rounds: Optional[int] = None, 
-                   human_input_mode: Optional[str] = None, **kwargs) -> CollaborationResult:
+                   human_input_mode: Optional[str] = None, 
+                   task_id: Optional[str] = None,
+                   **kwargs) -> CollaborationResult:
     """
-    One-shot team execution function for simple usage.
+    One-shot team execution function for simple usage with task management support.
     
     Args:
         config_path: Path to team configuration YAML file
@@ -80,21 +82,29 @@ async def run_team(config_path: str, task: str,
                          - "ALWAYS": Request human input for every message
                          - "TERMINATE": Only request human input for termination decisions
                          - "NEVER": Fully automated (good for demos)
+        task_id: Optional existing task ID to continue (if provided, will continue existing task)
         **kwargs: Additional arguments passed to TeamManager
         
     Returns:
-        CollaborationResult with the team's output
+        CollaborationResult with the team's output and task_id
         
     Example:
-        # Use config defaults
-        result = await run_team("config/team.yaml", "Write a blog post about robots")
+        # Start new task
+        result = await run_team("config/default.yaml", "Write a blog post about robots")
+        
+        # Continue existing task (automatically detected by task_id presence)
+        result = await run_team("config/default.yaml", "Continue the blog post", 
+                               task_id="abc123")
         
         # Override config settings
-        result = await run_team("config/team.yaml", "Write a blog post about robots", 
+        result = await run_team("config/default.yaml", "Write a blog post about robots", 
                                max_rounds=15, human_input_mode="TERMINATE")
     """
-    team = TeamBuilder.create_team(config_path, event_bus=event_bus, **kwargs)
-    return await team.run(task, max_rounds=max_rounds, human_input_mode=human_input_mode)
+    # If task_id is provided, automatically continue the task
+    continue_task = task_id is not None
+    
+    team = TeamBuilder.create_team(config_path, event_bus=event_bus, task_id=task_id, **kwargs)
+    return await team.run(task, max_rounds=max_rounds, human_input_mode=human_input_mode, continue_task=continue_task)
 
 # Version info - updated to match pyproject.toml
 __version__ = "0.7.0"
