@@ -13,138 +13,196 @@ from roboco.config.models import ToolParameterConfig
 from roboco.memory.manager import MemoryManager
 
 
-class AddMemoryTool:
+class AddMemoryTool(AbstractTool):
     """Tool for adding memories to the system."""
     
     def __init__(self, memory_manager: MemoryManager):
         self.memory_manager = memory_manager
-        self.name = "add_memory"
-        self.description = "Add new content to memory with automatic intelligent extraction"
 
-    def __call__(
-        self,
-        content: str,
-        user_id: Optional[str] = None,
-        agent_id: Optional[str] = None,
-        run_id: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None
-    ) -> str:
+    @property
+    def name(self) -> str:
+        return "add_memory"
+
+    @property
+    def description(self) -> str:
+        return "Add new content to memory with automatic intelligent extraction"
+
+    def get_invocation_schema(self) -> List[ToolParameterConfig]:
+        return [
+            ToolParameterConfig(
+                name="content",
+                type="string",
+                description="The content to store in memory",
+                required=True
+            ),
+            ToolParameterConfig(
+                name="agent_id",
+                type="string",
+                description="Agent identifier for this memory",
+                required=False,
+                default=None
+            ),
+            ToolParameterConfig(
+                name="metadata",
+                type="object",
+                description="Optional metadata to associate with the memory",
+                required=False,
+                default=None
+            )
+        ]
+
+    @classmethod
+    def get_config_schema(cls) -> Dict[str, Any]:
+        return {
+            "type": "object",
+            "properties": {},
+            "description": "Memory tool requires no additional configuration"
+        }
+
+    async def run(self, input_data: Any, config: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """Add content to memory."""
         try:
             result = self.memory_manager.add_memory(
-                content=content,
-                user_id=user_id,
-                agent_id=agent_id,
-                run_id=run_id,
-                metadata=metadata
+                content=input_data.get("content"),
+                agent_id=input_data.get("agent_id"),
+                metadata=input_data.get("metadata")
             )
             
             if result.get("success", True):
-                return f"Memory added successfully. Results: {result}"
+                return {"success": True, "message": "Memory added successfully", "result": result}
             else:
-                return f"Failed to add memory: {result.get('error', 'Unknown error')}"
+                return {"success": False, "error": result.get('error', 'Unknown error')}
                 
         except Exception as e:
-            return f"Error adding memory: {str(e)}"
+            return {"success": False, "error": f"Error adding memory: {str(e)}"}
+
+    async def stream(self, input_data: Any, config: Optional[Dict[str, Any]] = None):
+        """Stream memory addition result."""
+        result = await self.run(input_data, config)
+        yield result
 
 
-class SearchMemoryTool:
+class SearchMemoryTool(AbstractTool):
     """Tool for searching memories."""
     
     def __init__(self, memory_manager: MemoryManager):
         self.memory_manager = memory_manager
-        self.name = "search_memory"
-        self.description = "Search memories using semantic similarity matching"
 
-    def __call__(
-        self,
-        query: str,
-        user_id: Optional[str] = None,
-        agent_id: Optional[str] = None,
-        run_id: Optional[str] = None,
-        limit: int = 5
-    ) -> str:
+    @property
+    def name(self) -> str:
+        return "search_memory"
+
+    @property
+    def description(self) -> str:
+        return "Search memories using semantic similarity matching"
+
+    def get_invocation_schema(self) -> List[ToolParameterConfig]:
+        return [
+            ToolParameterConfig(
+                name="query",
+                type="string",
+                description="The search query",
+                required=True
+            ),
+            ToolParameterConfig(
+                name="limit",
+                type="integer",
+                description="Maximum number of results to return",
+                required=False,
+                default=5
+            )
+        ]
+
+    @classmethod
+    def get_config_schema(cls) -> Dict[str, Any]:
+        return {
+            "type": "object",
+            "properties": {},
+            "description": "Memory tool requires no additional configuration"
+        }
+
+    async def run(self, input_data: Any, config: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """Search for relevant memories."""
         try:
             memories = self.memory_manager.search_memory(
-                query=query,
-                user_id=user_id,
-                agent_id=agent_id,
-                run_id=run_id,
-                limit=limit
+                query=input_data.get("query"),
+                limit=input_data.get("limit", 5)
             )
             
             if not memories:
-                return "No relevant memories found."
+                return {"success": True, "message": "No relevant memories found", "memories": []}
             
-            result = f"Found {len(memories)} relevant memories:\n\n"
-            for i, memory in enumerate(memories, 1):
-                result += f"{i}. ID: {memory['id']}\n"
-                result += f"   Content: {memory['content']}\n"
-                if memory.get('metadata'):
-                    result += f"   Metadata: {memory['metadata']}\n"
-                result += "\n"
-            
-            return result
+            return {
+                "success": True,
+                "message": f"Found {len(memories)} relevant memories",
+                "memories": memories
+            }
             
         except Exception as e:
-            return f"Error searching memories: {str(e)}"
+            return {"success": False, "error": f"Error searching memories: {str(e)}"}
+
+    async def stream(self, input_data: Any, config: Optional[Dict[str, Any]] = None):
+        """Stream memory search results."""
+        result = await self.run(input_data, config)
+        yield result
 
 
-class ListMemoriesTool:
+class ListMemoriesTool(AbstractTool):
     """Tool for listing memories with optional filtering."""
     
     def __init__(self, memory_manager: MemoryManager):
         self.memory_manager = memory_manager
-        self.name = "list_memories"
-        self.description = "List memories with optional filtering by user, agent, or session"
 
-    def __call__(
-        self,
-        user_id: Optional[str] = None,
-        agent_id: Optional[str] = None,
-        run_id: Optional[str] = None,
-        limit: int = 10
-    ) -> str:
+    @property
+    def name(self) -> str:
+        return "list_memories"
+
+    @property
+    def description(self) -> str:
+        return "List memories with optional filtering"
+
+    def get_invocation_schema(self) -> List[ToolParameterConfig]:
+        return [
+            ToolParameterConfig(
+                name="limit",
+                type="integer",
+                description="Maximum number of results to return",
+                required=False,
+                default=10
+            )
+        ]
+
+    @classmethod
+    def get_config_schema(cls) -> Dict[str, Any]:
+        return {
+            "type": "object",
+            "properties": {},
+            "description": "Memory tool requires no additional configuration"
+        }
+
+    async def run(self, input_data: Any, config: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """List memories with optional filtering."""
         try:
             memories = self.memory_manager.list_memories(
-                user_id=user_id,
-                agent_id=agent_id,
-                run_id=run_id,
-                limit=limit
+                limit=input_data.get("limit", 10)
             )
             
             if not memories:
-                filters = []
-                if user_id:
-                    filters.append(f"user_id={user_id}")
-                if agent_id:
-                    filters.append(f"agent_id={agent_id}")
-                if run_id:
-                    filters.append(f"run_id={run_id}")
-                
-                filter_str = f" (filters: {', '.join(filters)})" if filters else ""
-                return f"No memories found{filter_str}."
+                return {"success": True, "message": "No memories found", "memories": []}
             
-            result = f"Found {len(memories)} memories:\n\n"
-            for i, memory in enumerate(memories, 1):
-                result += f"{i}. ID: {memory['id']}\n"
-                result += f"   Content: {memory['content'][:100]}{'...' if len(memory['content']) > 100 else ''}\n"
-                if memory.get('user_id'):
-                    result += f"   User: {memory['user_id']}\n"
-                if memory.get('agent_id'):
-                    result += f"   Agent: {memory['agent_id']}\n"
-                if memory.get('run_id'):
-                    result += f"   Session: {memory['run_id']}\n"
-                if memory.get('created_at'):
-                    result += f"   Created: {memory['created_at']}\n"
-                result += "\n"
-            
-            return result
+            return {
+                "success": True,
+                "message": f"Found {len(memories)} memories",
+                "memories": memories
+            }
             
         except Exception as e:
-            return f"Error listing memories: {str(e)}"
+            return {"success": False, "error": f"Error listing memories: {str(e)}"}
+
+    async def stream(self, input_data: Any, config: Optional[Dict[str, Any]] = None):
+        """Stream memory listing results."""
+        result = await self.run(input_data, config)
+        yield result
 
 
 class GetMemoryTool:
@@ -299,15 +357,10 @@ class MemoryStatsTool:
             return f"Error getting memory stats: {str(e)}"
 
 
-def create_memory_tools(memory_manager: MemoryManager) -> List[Any]:
-    """Create all memory tools for an agent."""
+def create_memory_tools(memory_manager: MemoryManager) -> List[AbstractTool]:
+    """Create essential memory tools for an agent."""
     return [
         AddMemoryTool(memory_manager),
         SearchMemoryTool(memory_manager),
         ListMemoriesTool(memory_manager),
-        GetMemoryTool(memory_manager),
-        UpdateMemoryTool(memory_manager),
-        DeleteMemoryTool(memory_manager),
-        ClearMemoriesTool(memory_manager),
-        MemoryStatsTool(memory_manager),
     ] 

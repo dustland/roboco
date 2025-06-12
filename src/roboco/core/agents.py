@@ -37,7 +37,7 @@ class ToolExecutorAgent(ConversableAgent):
         system_message: Optional[str] = "Tool execution agent.", # Minimal system message
         human_input_mode: str = "NEVER",
         code_execution_config: Optional[Dict[str, Any] | bool] = False, # No arbitrary code execution
-        default_auto_reply: Optional[str] = "", # Reply with empty string after execution by default
+        default_auto_reply: Optional[str] = "Tools executed successfully.", # Provide default content
         llm_config: Optional[LLMConfig | Dict[str, Any] | bool] = False, # No LLM needed by default
         **kwargs,
     ):

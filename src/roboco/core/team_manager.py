@@ -4,7 +4,7 @@ import importlib
 from typing import Dict, Any, List, Optional
 from pathlib import Path
 
-from autogen import GroupChat, GroupChatManager, ConversableAgent
+from autogen import GroupChat, GroupChatManager, ConversableAgent, register_function
 
 from .agents import Agent, ToolExecutorAgent
 from roboco.tool import create_tool_function_for_ag2
@@ -33,14 +33,15 @@ class CollaborationStartedEvent(Event):
 
 class CollaborationCompletedEvent(Event):
     """Event emitted when collaboration completes."""
-    def __init__(self, team_name: str, task: str, result: str, participants: List[str]):
+    def __init__(self, team_name: str, task: str, participants: List[str], success: bool, summary: str):
         super().__init__(
-            event_type="collaboration.completed", 
+            event_type="collaboration.completed",
             payload={
                 "team_name": team_name,
                 "task": task,
-                "result": result,
-                "participants": participants
+                "participants": participants,
+                "success": success,
+                "summary": summary
             }
         )
 
@@ -137,6 +138,7 @@ class TeamManager:
 
     def _initialize_team(self):
         """Initialize all team components from configuration."""
+        self._initialize_memory()  # Initialize memory first
         self._initialize_tools()
         self._initialize_agents()
         self._setup_group_chat()
@@ -160,7 +162,7 @@ class TeamManager:
                 tool_instance_config = tool_config.get("config", {})
                 tool_instance = tool_class(**tool_instance_config)
                 
-                # Store tool and create AutoGen function
+                # Store tool
                 tool_name = tool_config["name"]
                 self.tools[tool_name] = tool_instance
                 
@@ -170,6 +172,13 @@ class TeamManager:
     def _initialize_agents(self):
         """Initialize agents from configuration."""
         agents_config = self.config.get("agents", [])
+        
+        # Create a shared tool executor agent for all tool executions
+        self.tool_executor = ToolExecutorAgent(
+            name="tool_executor",
+            system_message="I execute tools for other agents.",
+            human_input_mode="NEVER"
+        )
         
         for agent_config in agents_config:
             try:
@@ -195,7 +204,7 @@ class TeamManager:
                     # Set API key from environment if not specified
                     if "config_list" in llm_config:
                         for config in llm_config["config_list"]:
-                            if "api_key" not in config:
+                            if "api_key" not in config or config["api_key"] is None:
                                 config["api_key"] = os.getenv("OPENAI_API_KEY")
                     
                     agent_args["llm_config"] = llm_config
@@ -203,25 +212,41 @@ class TeamManager:
                 # Create agent
                 agent = agent_class(**agent_args)
                 
-                # Register memory tools with all agents that have LLM config
+                # Register memory tools with all agents that have LLM config using proper AG2 pattern
                 if hasattr(agent, 'llm_config') and agent.llm_config and hasattr(self, 'memory_manager'):
                     from roboco.builtin_tools.memory_tools import create_memory_tools
                     memory_tools = create_memory_tools(self.memory_manager)
                     
                     for memory_tool in memory_tools:
                         tool_function = create_tool_function_for_ag2(memory_tool)
-                        agent.register_for_execution(name=memory_tool.name)(tool_function)
-                        agent.register_for_llm(name=memory_tool.name, description=memory_tool.description)(tool_function)
-                
-                # Register configured tools with the agent if it's a ToolExecutorAgent
-                if isinstance(agent, ToolExecutorAgent):
-                    for tool_name, tool_instance in self.tools.items():
-                        tool_function = create_tool_function_for_ag2(tool_instance)
-                        agent.register_for_execution(name=tool_name)(tool_function)
                         
-                        # Only register for LLM if the agent has LLM config
+                        # Use proper AG2 registration pattern
+                        register_function(
+                            tool_function,
+                            caller=agent,
+                            executor=self.tool_executor,
+                            name=memory_tool.name,
+                            description=memory_tool.description
+                        )
+                
+                # Register agent-specific tools using proper AG2 pattern
+                agent_tools = agent_config.get("tools", [])
+                for tool_name in agent_tools:
+                    if tool_name in self.tools:
+                        tool_instance = self.tools[tool_name]
+                        tool_function = create_tool_function_for_ag2(tool_instance)
+                        
+                        # Only register for agents with LLM config
                         if hasattr(agent, 'llm_config') and agent.llm_config:
-                            agent.register_for_llm(name=tool_name, description=f"Tool: {tool_name}")(tool_function)
+                            register_function(
+                                tool_function,
+                                caller=agent,
+                                executor=self.tool_executor,
+                                name=tool_name,
+                                description=getattr(tool_instance, 'description', f"Tool: {tool_name}")
+                            )
+                    else:
+                        raise ConfigurationError(f"Tool '{tool_name}' not found for agent '{agent_config['name']}'")
                 
                 self.agents[agent_config["name"]] = agent
                 
@@ -233,26 +258,26 @@ class TeamManager:
         if not self.agents:
             raise ConfigurationError("No agents configured for the team")
         
-        # Get group chat configuration
-        group_chat_config = self.config.get("group_chat", {})
-        collaboration_config = self.config.get("collaboration", {})
+        # Get team configuration (new unified section)
+        team_config = self.config.get("team", {})
         
-        # Create group chat
+        # Create group chat - include tool executor in the agents list
         agents_list = list(self.agents.values())
+        if hasattr(self, 'tool_executor'):
+            agents_list.append(self.tool_executor)
+        
         self.group_chat = GroupChat(
             agents=agents_list,
             messages=[],
-            max_round=group_chat_config.get("max_round", collaboration_config.get("max_rounds", 10)),
-            speaker_selection_method=group_chat_config.get("speaker_selection_method", 
-                                                         collaboration_config.get("speaker_selection_method", "auto")),
-            allow_repeat_speaker=group_chat_config.get("allow_repeat_speaker", 
-                                                     collaboration_config.get("allow_repeat_speaker", False))
+            max_round=team_config.get("max_rounds", 10),
+            speaker_selection_method=team_config.get("speaker_selection_method", "auto"),
+            allow_repeat_speaker=team_config.get("allow_repeat_speaker", False)
         )
         
         # Create group chat manager
         # Use the first agent with LLM config as the manager
         manager_agent = None
-        for agent in agents_list:
+        for agent in self.agents.values():  # Only check main agents, not tool executor
             if hasattr(agent, 'llm_config') and agent.llm_config:
                 manager_agent = agent
                 break
@@ -265,121 +290,124 @@ class TeamManager:
             llm_config=manager_agent.llm_config
         )
 
-    def get_team_info(self) -> Dict[str, Any]:
-        """
-        Get information about the current team.
+    def _initialize_memory(self):
+        """Initialize memory system if configured."""
+        memory_config = self.config.get("memory")
+        if not memory_config:
+            return
         
-        Returns:
-            Dictionary containing team information
-        """
-        return {
-            "project": self.config.get("project", {}),
-            "agents": [{"name": name, "class": type(agent).__name__} for name, agent in self.agents.items()],
-            "tools": [{"name": name, "class": type(tool).__name__} for name, tool in self.tools.items()],
-            "variables": self.config.get("variables", {}),
-            "collaboration_settings": self.config.get("collaboration", {}),
-        }
+        try:
+            from roboco.memory.manager import MemoryManager
+            self.memory_manager = MemoryManager(memory_config)
+        except ImportError:
+            raise ConfigurationError("Memory system not available. Install required dependencies.")
+        except Exception as e:
+            raise ConfigurationError(f"Error initializing memory system: {e}")
 
-    async def run(self, task: str, max_rounds: Optional[int] = None, 
-                  human_input_mode: Optional[str] = None) -> CollaborationResult:
+    async def run(
+        self, 
+        task: str, 
+        max_rounds: Optional[int] = None,
+        human_input_mode: Optional[str] = None
+    ) -> CollaborationResult:
         """
-        Start a collaborative session with the team.
+        Execute a collaborative task with the team.
         
         Args:
-            task: The initial task or request to be processed by the team.
-            max_rounds: Maximum number of collaboration rounds (overrides config if provided)
-            human_input_mode: Human-in-the-loop mode (overrides config if provided):
-                            - "ALWAYS": Request human input for every message
-                            - "TERMINATE": Only request human input for termination decisions  
-                            - "NEVER": Fully automated (good for demos)
-        
+            task: The task description for the team to work on
+            max_rounds: Optional override for maximum conversation rounds
+            human_input_mode: Optional override for human input mode
+            
         Returns:
-            CollaborationResult: The result of the team collaboration.
+            CollaborationResult containing the outcome and details
         """
-        if not self.group_chat_manager:
-            raise ConfigurationError("Team not properly initialized")
-        
-        # Get collaboration config
-        collaboration_config = self.config.get("collaboration", {})
-        
-        # Use provided max_rounds or fall back to config, then default
-        if max_rounds is not None:
-            self.group_chat.max_round = max_rounds
-        elif "max_rounds" in collaboration_config:
-            self.group_chat.max_round = collaboration_config["max_rounds"]
-        
-        # Use provided human_input_mode or fall back to config, then default
-        if human_input_mode is None:
-            human_input_mode = collaboration_config.get("human_input_mode", "NEVER")
-        
-        # Get team info for events
-        team_name = self.config.get("project", {}).get("name", "Unknown Team")
-        participants = list(self.agents.keys())
-        
         # Start event bus if not already started
         if not self.event_bus._running:
             await self.event_bus.start()
         
+        # Get team configuration
+        team_config = self.config.get("team", {})
+        
+        # Apply parameter overrides
+        if max_rounds is not None:
+            self.group_chat.max_round = max_rounds
+        if human_input_mode is not None:
+            # Apply human input mode to all agents
+            for agent in self.agents.values():
+                if hasattr(agent, 'human_input_mode'):
+                    agent.human_input_mode = human_input_mode
+        else:
+            # Use config default
+            config_human_input_mode = team_config.get("human_input_mode", "TERMINATE")
+            for agent in self.agents.values():
+                if hasattr(agent, 'human_input_mode'):
+                    agent.human_input_mode = config_human_input_mode
+        
         # Emit collaboration started event
+        participants = list(self.agents.keys())
+        team_name = self.config.get("name", "UnnamedTeam")
+        
         start_event = CollaborationStartedEvent(team_name, task, participants)
         await self.event_bus.publish(start_event)
         
         try:
-            # Start the collaboration with human-in-the-loop mode
-            result = self.group_chat_manager.initiate_chat(
-                self.group_chat_manager,
+            # Start the collaboration
+            chat_result = self.group_chat_manager.initiate_chat(
+                recipient=self.group_chat_manager,
                 message=task,
-                clear_history=True,
-                human_input_mode=human_input_mode
+                clear_history=True
             )
             
-            # Extract information from the result
-            chat_history = []
-            if hasattr(self.group_chat, 'messages'):
-                chat_history = [
-                    {
-                        "name": msg.get("name", "Unknown"),
-                        "content": msg.get("content", ""),
-                        "role": msg.get("role", "assistant")
-                    }
-                    for msg in self.group_chat.messages
-                ]
+            # Debug: Check what chat_result contains
+            print(f"DEBUG: chat_result type: {type(chat_result)}")
+            print(f"DEBUG: chat_result: {chat_result}")
             
-            # Create summary
-            if chat_history:
-                last_message = chat_history[-1]["content"] if chat_history else "No messages"
-                summary = f"Team collaboration completed. Final result: {last_message[:200]}..."
-            else:
-                summary = "Team collaboration completed with no recorded messages."
-            
-            # Get participant names
-            participants = list(self.agents.keys())
-            
-            # Emit collaboration completed event
-            completion_event = CollaborationCompletedEvent(team_name, task, summary, participants)
-            await self.event_bus.publish(completion_event)
-            
-            return CollaborationResult(
-                summary=summary,
-                chat_history=chat_history,
-                participants=participants,
-                success=True
-            )
+            # Extract results - handle potential None values
+            success = True
+            summary = "Collaboration completed successfully"
+            chat_history = self.group_chat.messages if self.group_chat else []
+            error_message = None
             
         except Exception as e:
-            error_msg = f"Collaboration failed: {str(e)}"
+            print(f"DEBUG: Exception during chat: {e}")
+            import traceback
+            traceback.print_exc()
             
-            # Emit collaboration completed event (with error)
-            completion_event = CollaborationCompletedEvent(team_name, task, error_msg, participants)
-            await self.event_bus.publish(completion_event)
-            
-            return CollaborationResult(
-                summary=error_msg,
-                chat_history=[],
-                participants=list(self.agents.keys()),
-                success=False,
-                error_message=str(e)
-            )
+            success = False
+            summary = f"Collaboration failed: {str(e)}"
+            chat_history = self.group_chat.messages if self.group_chat else []
+            error_message = str(e)
+        
+        # Create result
+        result = CollaborationResult(
+            success=success,
+            summary=summary,
+            chat_history=chat_history,
+            participants=participants,
+            error_message=error_message
+        )
+        
+        # Emit collaboration completed event
+        complete_event = CollaborationCompletedEvent(team_name, task, participants, success, summary)
+        await self.event_bus.publish(complete_event)
+        
+        return result
+
+    def get_agent(self, name: str) -> Optional[ConversableAgent]:
+        """Get an agent by name."""
+        return self.agents.get(name)
+
+    def list_agents(self) -> List[str]:
+        """List all agent names."""
+        return list(self.agents.keys())
+
+    def get_tool(self, name: str):
+        """Get a tool by name."""
+        return self.tools.get(name)
+
+    def list_tools(self) -> List[str]:
+        """List all tool names."""
+        return list(self.tools.keys())
 
     async def collaborate(self, team_config_path: str, task: str) -> Dict[str, Any]:
         """

@@ -132,7 +132,33 @@ def create_tool_function_for_ag2(
     async def dynamic_tool_func(**kwargs):
         # This is where arguments passed by AG2 will arrive.
         # They should match the parameters defined in the signature.
-        return await tool_instance.run(input_data=kwargs)
+        result = await tool_instance.run(input_data=kwargs)
+        
+        # Convert result to string format for AG2 conversation
+        if isinstance(result, dict):
+            # Format dictionary results as readable strings
+            if result.get("success", True):
+                # Success case - format the main content
+                if "message" in result:
+                    response = result["message"]
+                    if "result" in result and result["result"]:
+                        response += f"\nDetails: {result['result']}"
+                    if "memories" in result and result["memories"]:
+                        response += f"\nFound {len(result['memories'])} memories"
+                        for i, memory in enumerate(result["memories"][:3], 1):  # Show first 3
+                            content = memory.get('content', '')[:100]
+                            response += f"\n{i}. {content}..."
+                    return response
+                else:
+                    # Fallback for success without message
+                    return f"Operation completed successfully: {result}"
+            else:
+                # Error case
+                error_msg = result.get("error", "Unknown error occurred")
+                return f"Error: {error_msg}"
+        else:
+            # Non-dictionary results (strings, etc.) pass through
+            return str(result) if result is not None else "Operation completed"
 
     # Set the dynamic signature and docstring
     # Note: The name of the function is also important for AG2.

@@ -31,9 +31,9 @@ async def main():
         
         # Run the team collaboration with a simple task
         # The planner will expand this into complete requirements
-        # All collaboration settings (max_rounds, human_input_mode) are configured in config/team.yaml
+        # All collaboration settings (max_rounds, human_input_mode) are configured in config/default.yaml
         result = await run_team(
-            config_path="config",
+            config_path="config/default.yaml",  # Fixed: point to actual YAML file
             task="Write a comprehensive article about the future of AI in healthcare",
             event_bus=event_bus
         )
