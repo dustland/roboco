@@ -80,24 +80,15 @@ The Memory System provides agents with a robust capacity for learning and contex
 
 ### Memory Interface
 
-The MemoryManager provides two levels of access:
+The TaskMemory methods are exposed to agents through the tool system:
 
-1. **Tool Interface**: Memory operations are registered as tools that agents can call through LLM function calling
-2. **Framework API**: Direct programmatic access for framework-level operations
-
-| Tool Name       | MemoryManager Method | Description                                               |
-| --------------- | -------------------- | --------------------------------------------------------- |
-| `add_memory`    | `add_memory()`       | Adds content with automatic chunking for large items      |
-| `query_memory`  | `query_memory()`     | Retrieves relevant information with token limit awareness |
-| `list_memory`   | `list_memory()`      | Lists memories with metadata filtering and pagination     |
-| `get_memory`    | `get_memory()`       | Retrieves specific memory by ID with chunk information    |
-| `update_memory` | `update_memory()`    | Updates existing memory while preserving structure        |
-| `delete_memory` | `delete_memory()`    | Removes memory and associated chunks/metadata             |
-| `clear_memory`  | `clear_memory()`     | Clears session memories with backup options               |
-| `search_memory` | `search_memory()`    | Performs semantic search with relevance ranking           |
-
-**Agent Access (Tool Interface)**: LLMs can decide when and how to use memory through tool calls
-**Framework Access (Direct API)**: Framework code calls MemoryManager methods directly for system operations
+| Tool Name       | TaskMemory Method | Description                                         |
+| --------------- | ----------------- | --------------------------------------------------- |
+| `add_memory`    | `add()`           | Adds content with automatic intelligent extraction  |
+| `search_memory` | `search()`        | Retrieves relevant information with semantic search |
+| `list_memories` | `get_all()`       | Lists memories with agent filtering and pagination  |
+| `get_memory`    | `get()`           | Retrieves specific memory by ID                     |
+| `clear_memory`  | `clear()`         | Clears agent memories with task scope               |
 
 > **Implementation Details**: For a comprehensive discussion of the memory architecture, including the storage provider pattern, chunking strategies, and data models, see the [Memory System Design](./memory-system.md) document.
 

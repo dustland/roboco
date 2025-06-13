@@ -6,7 +6,7 @@ import os
 import asyncio
 from pathlib import Path
 from typing import Annotated
-from roboco.tool.base import Tool, tool
+from ..tool.base import Tool, tool
 
 class BasicTool(Tool):
     """Basic file system and utility tools using the new decorator-based system."""
@@ -224,10 +224,5 @@ class BasicTool(Tool):
         except Exception as e:
             return f"❌ Error deleting file: {str(e)}"
 
-# Create a default instance for backward compatibility
-def create_basic_tool(workspace_path: str = "./workspace"):
-    """Create a basic tool instance."""
-    return BasicTool(workspace_path)
-
 # Export the tool class
-__all__ = ['BasicTool', 'create_basic_tool']
+__all__ = ['BasicTool']

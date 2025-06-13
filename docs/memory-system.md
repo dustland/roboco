@@ -40,7 +40,7 @@ graph TB
     end
 
     subgraph "Memory Core"
-        MM[MemoryManager]
+        TM[TaskMemory]
         SM[SessionManager]
     end
 
@@ -59,9 +59,9 @@ graph TB
 
     MI --> API
     MI --> TOOLS
-    API --> MM
-    TOOLS --> MM
-    MM --> SM
+    API --> TM
+    TOOLS --> TM
+    TM --> SM
     SM --> MEM0
     MEM0 --> VS
     MEM0 --> GS

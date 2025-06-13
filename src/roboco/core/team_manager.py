@@ -9,46 +9,22 @@ import yaml
 from typing import Dict, Any, List, Optional
 from datetime import datetime
 
-from autogen import ConversableAgent
+from .agents import Agent
 from autogen.agentchat import initiate_group_chat
 
 from autogen.agentchat.group.patterns import AutoPattern
-from .task_manager import TaskManager
-from .models import CollaborationResult
-from roboco.core.exceptions import ConfigurationError
-from roboco.event.bus import InMemoryEventBus
-from roboco.event.events import Event
+from .models import TaskResult
+from .exceptions import ConfigurationError
+from ..event.bus import InMemoryEventBus
+from ..event.events import Event
 
 from dotenv import load_dotenv
+from .events import TaskStartedEvent, TaskCompletedEvent
+
+from .memory import TaskMemory
 
 # Load environment variables from .env file, which should contain OPENAI_API_KEY
 load_dotenv()
-
-class CollaborationStartedEvent(Event):
-    """Event emitted when collaboration starts."""
-    def __init__(self, team_name: str, task: str, participants: List[str]):
-        super().__init__(
-            event_type="collaboration.started",
-            data={
-                "team_name": team_name,
-                "task": task,
-                "participants": participants
-            }
-        )
-
-class CollaborationCompletedEvent(Event):
-    """Event emitted when collaboration completes."""
-    def __init__(self, team_name: str, task: str, participants: List[str], success: bool, summary: str):
-        super().__init__(
-            event_type="collaboration.completed",
-            data={
-                "team_name": team_name,
-                "task": task,
-                "participants": participants,
-                "success": success,
-                "summary": summary
-            }
-        )
 
 class TeamManager:
     """
@@ -59,7 +35,6 @@ class TeamManager:
     - Initializing agents and tools
     - Managing group chat and conversation flow
     - Coordinating memory and event systems
-    - Task session management and continuation
     """
 
     def __init__(self, config_path: str, event_bus: Optional[InMemoryEventBus] = None, task_id: Optional[str] = None):
@@ -83,9 +58,6 @@ class TeamManager:
         
         # Set up event bus
         self.event_bus = event_bus or InMemoryEventBus()
-        
-        # Set up task manager
-        self.task_manager = TaskManager()
         
         # Initialize team components
         self._initialize_memory()
@@ -168,15 +140,15 @@ class TeamManager:
 
     def _initialize_tools(self):
         """Initialize tool registry and register all tools."""
-        from roboco.tool.base import ToolRegistry
-        from roboco.builtin_tools import MemoryTool, BasicTool, SearchTool
+        from ..tool.base import ToolRegistry
+        from ..builtin_tools import MemoryTool, BasicTool, SearchTool
         
         # Create tool registry
         self.tool_registry = ToolRegistry()
         
         # Register memory tools (required for all agents)
         if self.memory_manager:
-            memory_tool = MemoryTool(memory_manager=self.memory_manager)
+            memory_tool = MemoryTool(task_memory=self.memory_manager)
             self.tool_registry.register("memory", memory_tool)
         
         # Register basic tools
@@ -209,49 +181,26 @@ class TeamManager:
                 if not agent_name:
                     raise ConfigurationError("Agent configuration missing 'name'")
                 
-                # Get agent role
-                agent_role = agent_config.get("role")
-                if not agent_role:
-                    raise ConfigurationError(f"Agent {agent_name} configuration missing 'role'")
                 
                 # Get agent class
-                agent_class = agent_config.get("class", "ConversableAgent")
+                agent_class = agent_config.get("class", "Agent")
                 
                 # Get agent system message
                 system_message = self._load_agent_prompt(agent_config)
                 
                 # Create agent based on class
-                if agent_class == "ConversableAgent":
-                    from autogen import ConversableAgent
+                if agent_class == "Agent":
+                    from .agents import Agent
                     llm_config = agent_config.get("llm_config", {})
-                    agent = ConversableAgent(
+                    agent = Agent(
                         name=agent_name,
                         system_message=system_message,
                         llm_config=llm_config,
                         human_input_mode="NEVER"
-                    )
-                
-                elif agent_class == "AssistantAgent":
-                    from autogen import AssistantAgent
-                    llm_config = agent_config.get("llm_config", {})
-                    agent = AssistantAgent(
-                        name=agent_name,
-                        system_message=system_message,
-                        llm_config=llm_config,
-                        human_input_mode="NEVER"
-                    )
-                
-                elif agent_class == "UserProxyAgent":
-                    from autogen import UserProxyAgent
-                    agent = UserProxyAgent(
-                        name=agent_name,
-                        system_message=system_message,
-                        human_input_mode="NEVER",
-                        max_consecutive_auto_reply=10
                     )
                 
                 elif agent_class == "UserAgent":
-                    from roboco.core.agents import UserAgent
+                    from .agents import UserAgent
                     agent = UserAgent(
                         name=agent_name,
                         system_message=system_message,
@@ -259,12 +208,12 @@ class TeamManager:
                     )
                 
                 else:
-                    raise ConfigurationError(f"Unknown agent class: {agent_class}")
+                    raise ConfigurationError(f"Unknown agent class: {agent_class}. Supported classes: Agent, UserAgent")
                 
                 # Store agent
                 self.agents[agent_name] = agent
                 
-                print(f"🤖 Created agent '{agent_name}' with role '{agent_role}'")
+                print(f"🤖 Created agent '{agent_name}' ({agent_class})")
             
             except Exception as e:
                 raise ConfigurationError(f"Error initializing agent {agent_config.get('name', 'unknown')}: {e}")
@@ -317,10 +266,10 @@ class TeamManager:
     def _create_search_manager(self):
         """Create a search manager instance."""
         try:
-            from roboco.search import SearchManager
+            from ..search import SearchManager
             import os
             
-            api_key = os.getenv("SERPAPI_API_KEY")
+            api_key = os.getenv("SERPAPI_KEY")
             if api_key:
                 search_manager = SearchManager(
                     default_backend="serpapi",
@@ -328,7 +277,7 @@ class TeamManager:
                 )
                 return search_manager
             else:
-                print(f"⚠️ No SERPAPI_API_KEY found - search tools may not work")
+                print(f"⚠️ No SERPAPI_KEY found - search tools may not work")
                 return None
         except ImportError:
             print(f"⚠️ Search module not available - search tools disabled")
@@ -413,8 +362,8 @@ class TeamManager:
             return
         
         try:
-            from roboco.memory.manager import MemoryManager
-            self.memory_manager = MemoryManager(memory_config)
+            from .memory import TaskMemory
+            self.memory_manager = TaskMemory(task_id=self.task_id, config=memory_config)
         except ImportError:
             raise ConfigurationError("Memory system not available. Install required dependencies.")
         except Exception as e:
@@ -433,18 +382,18 @@ class TeamManager:
         max_rounds: Optional[int] = None,
         human_input_mode: Optional[str] = None,
         continue_task: bool = False
-    ) -> CollaborationResult:
+    ) -> TaskResult:
         """
-        Execute a collaborative task with the team.
+        Run the team collaboration on a task.
         
         Args:
-            task: The task description for the team to work on
-            max_rounds: Optional override for maximum conversation rounds
-            human_input_mode: Optional override for human input mode
-            continue_task: Whether to continue an existing task or create new one
+            task: Task description or instruction
+            max_rounds: Maximum number of conversation rounds
+            human_input_mode: How to handle human input ("ALWAYS", "NEVER", "TERMINATE")
+            continue_task: Whether this is continuing a previous task
             
         Returns:
-            CollaborationResult containing the outcome and details
+            TaskResult containing the outcome and details
         """
         # Start event bus if not already started
         if not self.event_bus._running:
@@ -490,7 +439,7 @@ class TeamManager:
         participants = list(self.agents.keys())
         team_name = self.config.get("name", "UnnamedTeam")
         
-        start_event = CollaborationStartedEvent(team_name, task, participants)
+        start_event = TaskStartedEvent(self.task_id or "unknown", team_name, task, participants)
         await self.event_bus.publish(start_event)
         
         try:
@@ -498,9 +447,8 @@ class TeamManager:
             if continue_task and self.task_id:
                 # Search for previous work in memory
                 if self.memory_manager:
-                    previous_memories = self.memory_manager.search_memory(
+                    previous_memories = self.memory_manager.search(
                         query="requirements plan execution",
-                        task_id=self.task_id,
                         limit=5
                     )
                     if previous_memories:
@@ -620,7 +568,7 @@ class TeamManager:
                         print(f"❌ Critical: Could not save task sessions: {save_error}")
         
         # Create result
-        result = CollaborationResult(
+        result = TaskResult(
             success=success,
             summary=summary,
             chat_history=chat_history,
@@ -630,12 +578,12 @@ class TeamManager:
         )
         
         # Emit collaboration completed event
-        complete_event = CollaborationCompletedEvent(team_name, task, participants, success, summary)
+        complete_event = TaskCompletedEvent(self.task_id or "unknown", team_name, task, participants, success, summary)
         await self.event_bus.publish(complete_event)
         
         return result
 
-    def get_agent(self, name: str) -> Optional[ConversableAgent]:
+    def get_agent(self, name: str) -> Optional[Agent]:
         """Get an agent by name."""
         return self.agents.get(name)
 
@@ -662,7 +610,7 @@ class TeamManager:
         Returns:
             Dictionary containing collaboration result
         """
-        from roboco.config.loaders import ConfigLoader
+        from ..config.loaders import ConfigLoader
         
         # Load the team configuration
         loader = ConfigLoader()

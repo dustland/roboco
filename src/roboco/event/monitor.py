@@ -9,25 +9,18 @@ from typing import Dict, List, Any, Optional, Callable, Awaitable
 from datetime import datetime
 import asyncio
 
-from .events import (
-    Event, AgentEvent, ToolEvent, SystemEvent,
-    MessageSentEvent, MessageReceivedEvent,
-    ToolCallInitiatedEvent, ToolCallCompletedEvent,
-    SystemStartedEvent, ErrorOccurredEvent
-)
+from .events import Event
 from .bus import EventBus
 
 
-class CollaborationMetrics:
+class TaskMetrics:
     """Container for collaboration performance metrics."""
     
     def __init__(self):
         self.start_time = datetime.utcnow()
         self.total_events = 0
-        self.agent_stats: Dict[str, Dict[str, Any]] = {}
-        self.tool_stats: Dict[str, Dict[str, Any]] = {}
+        self.event_types: Dict[str, int] = {}
         self.timeline: List[Dict[str, Any]] = []
-        self.error_count = 0
         
     @property
     def duration_seconds(self) -> float:
@@ -46,9 +39,7 @@ class CollaborationMetrics:
             'monitoring_duration_seconds': self.duration_seconds,
             'total_events': self.total_events,
             'events_per_second': self.events_per_second,
-            'error_count': self.error_count,
-            'agent_statistics': self.agent_stats,
-            'tool_statistics': self.tool_stats,
+            'event_types': self.event_types,
             'timeline_length': len(self.timeline)
         }
 
@@ -58,11 +49,10 @@ class EventMonitor:
     Real-time event monitoring and analytics for multi-agent collaboration.
     
     Provides comprehensive observability including:
-    - Agent activity tracking
-    - Tool usage analytics  
+    - Event activity tracking
     - Performance metrics
-    - Collaboration timeline
-    - Error monitoring
+    - Event timeline
+    - Custom event handling
     
     Example:
         monitor = EventMonitor()
@@ -88,7 +78,7 @@ class EventMonitor:
             print_interval: If set, automatically print stats every N seconds
             max_timeline_events: Maximum timeline events to keep in memory
         """
-        self.metrics = CollaborationMetrics()
+        self.metrics = TaskMetrics()
         self.print_interval = print_interval
         self.max_timeline_events = max_timeline_events
         self._monitoring_task: Optional[asyncio.Task] = None
@@ -104,11 +94,8 @@ class EventMonitor:
         """
         self._event_bus = event_bus
         
-        # Subscribe to different event types
-        event_bus.subscribe(AgentEvent, self._handle_agent_event)
-        event_bus.subscribe(ToolEvent, self._handle_tool_event)
-        event_bus.subscribe(SystemEvent, self._handle_system_event)
-        event_bus.subscribe(Event, self._handle_generic_event)
+        # Subscribe to all events
+        event_bus.subscribe(Event, self._handle_event)
         
         # Start periodic printing if configured
         if self.print_interval:
@@ -126,10 +113,7 @@ class EventMonitor:
             
         # Unsubscribe from event bus
         if self._event_bus:
-            self._event_bus.unsubscribe(AgentEvent, self._handle_agent_event)
-            self._event_bus.unsubscribe(ToolEvent, self._handle_tool_event)
-            self._event_bus.unsubscribe(SystemEvent, self._handle_system_event)
-            self._event_bus.unsubscribe(Event, self._handle_generic_event)
+            self._event_bus.unsubscribe(Event, self._handle_event)
             self._event_bus = None
     
     def add_custom_handler(self, handler: Callable[[Event], Awaitable[None]]) -> None:
@@ -141,126 +125,26 @@ class EventMonitor:
         """
         self._custom_handlers.append(handler)
     
-    async def _handle_agent_event(self, event: AgentEvent) -> None:
-        """Handle agent-related events."""
+    async def _handle_event(self, event: Event) -> None:
+        """Handle all events."""
         self.metrics.total_events += 1
         
-        agent_id = getattr(event, 'agent_id', 'unknown')
-        if agent_id not in self.metrics.agent_stats:
-            self.metrics.agent_stats[agent_id] = {
-                'messages_sent': 0,
-                'messages_received': 0,
-                'total_events': 0,
-                'first_activity': event.timestamp,
-                'last_activity': event.timestamp
-            }
+        # Track event types
+        event_type = event.event_type
+        if event_type not in self.metrics.event_types:
+            self.metrics.event_types[event_type] = 0
+        self.metrics.event_types[event_type] += 1
         
-        stats = self.metrics.agent_stats[agent_id]
-        stats['total_events'] += 1
-        stats['last_activity'] = event.timestamp
-        
-        if isinstance(event, MessageSentEvent):
-            stats['messages_sent'] += 1
-            self._add_timeline_event({
-                'timestamp': event.timestamp,
-                'type': 'message_sent',
-                'agent': agent_id,
-                'recipient': getattr(event, 'recipient_agent_id', 'broadcast'),
-                'message_id': event.message_id
-            })
-            
-        elif isinstance(event, MessageReceivedEvent):
-            stats['messages_received'] += 1
-            self._add_timeline_event({
-                'timestamp': event.timestamp,
-                'type': 'message_received',
-                'agent': agent_id,
-                'sender': getattr(event, 'sender_agent_id', 'system'),
-                'message_id': event.message_id
-            })
+        # Add to timeline
+        self._add_timeline_event({
+            'timestamp': event.timestamp,
+            'event_type': event.event_type,
+            'source': event.source,
+            'event_id': event.event_id,
+            'data': event.data
+        })
         
         # Call custom handlers
-        await self._call_custom_handlers(event)
-    
-    async def _handle_tool_event(self, event: ToolEvent) -> None:
-        """Handle tool-related events."""
-        self.metrics.total_events += 1
-        
-        tool_name = getattr(event, 'tool_name', 'unknown')
-        if tool_name not in self.metrics.tool_stats:
-            self.metrics.tool_stats[tool_name] = {
-                'calls_initiated': 0,
-                'calls_completed': 0,
-                'calls_failed': 0,
-                'total_execution_time': 0.0,
-                'average_execution_time': 0.0
-            }
-        
-        stats = self.metrics.tool_stats[tool_name]
-        
-        if isinstance(event, ToolCallInitiatedEvent):
-            stats['calls_initiated'] += 1
-            self._add_timeline_event({
-                'timestamp': event.timestamp,
-                'type': 'tool_call_started',
-                'tool': tool_name,
-                'agent': getattr(event, 'agent_id', 'unknown'),
-                'call_id': getattr(event, 'tool_call_id', 'unknown')
-            })
-            
-        elif isinstance(event, ToolCallCompletedEvent):
-            if hasattr(event, 'error') and event.error:
-                stats['calls_failed'] += 1
-            else:
-                stats['calls_completed'] += 1
-                
-            if hasattr(event, 'execution_time_ms') and event.execution_time_ms:
-                stats['total_execution_time'] += event.execution_time_ms
-                completed_calls = stats['calls_completed'] + stats['calls_failed']
-                if completed_calls > 0:
-                    stats['average_execution_time'] = stats['total_execution_time'] / completed_calls
-            
-            self._add_timeline_event({
-                'timestamp': event.timestamp,
-                'type': 'tool_call_completed',
-                'tool': tool_name,
-                'agent': getattr(event, 'agent_id', 'unknown'),
-                'success': not (hasattr(event, 'error') and event.error),
-                'execution_time': getattr(event, 'execution_time_ms', 0)
-            })
-        
-        # Call custom handlers
-        await self._call_custom_handlers(event)
-    
-    async def _handle_system_event(self, event: SystemEvent) -> None:
-        """Handle system-level events."""
-        self.metrics.total_events += 1
-        
-        if isinstance(event, SystemStartedEvent):
-            self._add_timeline_event({
-                'timestamp': event.timestamp,
-                'type': 'system_started',
-                'source': event.source
-            })
-        elif isinstance(event, ErrorOccurredEvent):
-            self.metrics.error_count += 1
-            self._add_timeline_event({
-                'timestamp': event.timestamp,
-                'type': 'error',
-                'error_type': getattr(event, 'error_type', 'unknown'),
-                'message': event.error_message
-            })
-        
-        # Call custom handlers
-        await self._call_custom_handlers(event)
-    
-    async def _handle_generic_event(self, event: Event) -> None:
-        """Handle any other events."""
-        # Only count events not already handled by specific handlers
-        if not isinstance(event, (AgentEvent, ToolEvent, SystemEvent)):
-            self.metrics.total_events += 1
-        
-        # Call custom handlers for all events
         await self._call_custom_handlers(event)
     
     async def _call_custom_handlers(self, event: Event) -> None:
@@ -289,38 +173,19 @@ class EventMonitor:
     
     def print_stats(self) -> None:
         """Print current monitoring statistics."""
-        print(f"\n📊 Collaboration Monitoring Stats:")
+        print(f"\n📊 Event Monitoring Stats:")
         print(f"   • Total events: {self.metrics.total_events}")
         print(f"   • Duration: {self.metrics.duration_seconds:.1f}s")
         print(f"   • Events/sec: {self.metrics.events_per_second:.2f}")
-        print(f"   • Active agents: {len(self.metrics.agent_stats)}")
-        print(f"   • Tools used: {len(self.metrics.tool_stats)}")
         
-        if self.metrics.error_count > 0:
-            print(f"   • Errors: {self.metrics.error_count}")
-        
-        if self.metrics.agent_stats:
-            print(f"   • Agent activity:")
-            for agent_id, stats in self.metrics.agent_stats.items():
-                print(f"     - {agent_id}: {stats['messages_sent']} sent, {stats['messages_received']} received")
-        
-        if self.metrics.tool_stats:
-            print(f"   • Tool usage:")
-            for tool_name, stats in self.metrics.tool_stats.items():
-                success_rate = (stats['calls_completed'] / max(1, stats['calls_initiated'])) * 100
-                print(f"     - {tool_name}: {stats['calls_completed']}/{stats['calls_initiated']} calls ({success_rate:.1f}% success)")
+        if self.metrics.event_types:
+            print(f"   • Event types:")
+            for event_type, count in sorted(self.metrics.event_types.items()):
+                print(f"     - {event_type}: {count}")
     
-    def get_metrics(self) -> CollaborationMetrics:
+    def get_metrics(self) -> TaskMetrics:
         """Get the current metrics object."""
         return self.metrics
-    
-    def get_agent_activity(self, agent_id: str) -> Optional[Dict[str, Any]]:
-        """Get activity statistics for a specific agent."""
-        return self.metrics.agent_stats.get(agent_id)
-    
-    def get_tool_usage(self, tool_name: str) -> Optional[Dict[str, Any]]:
-        """Get usage statistics for a specific tool."""
-        return self.metrics.tool_stats.get(tool_name)
     
     def get_timeline_events(self, event_type: Optional[str] = None, 
                            limit: Optional[int] = None) -> List[Dict[str, Any]]:
@@ -328,7 +193,7 @@ class EventMonitor:
         Get timeline events, optionally filtered by type.
         
         Args:
-            event_type: Filter by event type (e.g., 'message_sent', 'tool_call_started')
+            event_type: Filter by event type (e.g., 'task.started', 'task.completed')
             limit: Maximum number of events to return (most recent first)
             
         Returns:
@@ -337,17 +202,13 @@ class EventMonitor:
         events = self.metrics.timeline
         
         if event_type:
-            events = [e for e in events if e.get('type') == event_type]
+            events = [e for e in events if e.get('event_type') == event_type]
         
         if limit:
             events = events[-limit:]
         
         return events
     
-    def get_error_events(self) -> List[Dict[str, Any]]:
-        """Get all error events from the timeline."""
-        return self.get_timeline_events('error')
-    
     def reset_metrics(self) -> None:
         """Reset all metrics and start fresh."""
-        self.metrics = CollaborationMetrics() 
+        self.metrics = TaskMetrics() 

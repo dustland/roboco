@@ -8,12 +8,7 @@ from dataclasses import dataclass, asdict
 from datetime import datetime
 import json
 
-try:
-    from mem0 import Memory
-    MEM0_AVAILABLE = True
-except ImportError:
-    MEM0_AVAILABLE = False
-
+from mem0 import Memory
 from ..config.models import MemoryConfig
 
 
@@ -33,22 +28,22 @@ class MemoryEntry:
         return asdict(self)
 
 
-class MemoryManager:
+class TaskMemory:
     """
-    Manages memory operations using Mem0 backend.
+    Task-scoped memory operations using Mem0 backend.
     
-    This class provides a unified interface for memory operations while leveraging
-    Mem0's intelligent memory extraction, semantic search, and graph-based storage.
+    This class provides memory operations automatically scoped to a specific task,
+    leveraging Mem0's intelligent memory extraction, semantic search, and graph-based storage.
     """
 
-    def __init__(self, config: Optional[MemoryConfig] = None):
-        """Initialize the memory manager with Mem0 backend."""
-        if not MEM0_AVAILABLE:
-            raise ImportError(
-                "mem0ai is required for memory functionality. "
-                "Install it with: pip install mem0ai"
-            )
+    def __init__(self, task_id: Optional[str] = None, config: Optional[MemoryConfig] = None):
+        """Initialize task memory with Mem0 backend.
         
+        Args:
+            task_id: Optional task ID to scope all operations to
+            config: Optional memory configuration
+        """
+        self.task_id = task_id
         self.config = config or MemoryConfig()
         self._client = None
         self._setup_mem0()
@@ -142,22 +137,18 @@ class MemoryManager:
                 # Final fallback
                 self._client = Memory()
 
-    def add_memory(
+    def add(
         self,
         content: Union[str, List[Dict[str, str]]],
-        user_id: Optional[str] = None,
         agent_id: Optional[str] = None,
-        task_id: Optional[str] = None,
         metadata: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """
-        Add a memory using Mem0's intelligent extraction.
+        Add a memory for this task.
         
         Args:
             content: Text content or conversation messages to store
-            user_id: Optional user identifier
             agent_id: Optional agent identifier  
-            task_id: Optional task identifier
             metadata: Optional metadata to associate with the memory
             
         Returns:
@@ -166,12 +157,10 @@ class MemoryManager:
         try:
             # Prepare keyword arguments
             kwargs = {}
-            if user_id:
-                kwargs["user_id"] = user_id
             if agent_id:
                 kwargs["agent_id"] = agent_id
-            if task_id:
-                kwargs["run_id"] = task_id  # Mem0 still uses run_id internally
+            if self.task_id:
+                kwargs["run_id"] = self.task_id  # Mem0 still uses run_id internally
             if metadata:
                 kwargs["metadata"] = metadata
 
@@ -182,22 +171,18 @@ class MemoryManager:
         except Exception as e:
             return {"error": str(e), "success": False}
 
-    def search_memory(
+    def search(
         self,
         query: str,
-        user_id: Optional[str] = None,
         agent_id: Optional[str] = None,
-        task_id: Optional[str] = None,
         limit: int = 10
     ) -> List[Dict[str, Any]]:
         """
-        Search memories using semantic similarity.
+        Search memories for this task using semantic similarity.
         
         Args:
             query: Search query
-            user_id: Optional user identifier to filter by
             agent_id: Optional agent identifier to filter by
-            task_id: Optional task identifier to filter by
             limit: Maximum number of results to return
             
         Returns:
@@ -206,12 +191,10 @@ class MemoryManager:
         try:
             # Prepare keyword arguments
             kwargs = {"limit": limit}
-            if user_id:
-                kwargs["user_id"] = user_id
             if agent_id:
                 kwargs["agent_id"] = agent_id
-            if task_id:
-                kwargs["run_id"] = task_id  # Mem0 still uses run_id internally
+            if self.task_id:
+                kwargs["run_id"] = self.task_id  # Mem0 still uses run_id internally
 
             # Search memories using Mem0
             results = self._client.search(query, **kwargs)
@@ -238,57 +221,47 @@ class MemoryManager:
             print(f"Error searching memories: {e}")
             return []
 
-    def get_memory(self, memory_id: str) -> Optional[Dict[str, Any]]:
+    def get(self, memory_id: str) -> Optional[Dict[str, Any]]:
         """
         Get a specific memory by ID.
         
         Args:
-            memory_id: The memory identifier
+            memory_id: The ID of the memory to retrieve
             
         Returns:
-            Memory entry or None if not found
+            Memory entry if found, None otherwise
         """
         try:
-            # Mem0 doesn't have a direct get by ID method
-            # We'll use get_all and filter
-            all_memories = self._client.get_all(limit=1000)
-            
-            if isinstance(all_memories, dict) and "results" in all_memories:
-                for item in all_memories["results"]:
-                    if item.get("id") == memory_id:
-                        memory = MemoryEntry(
-                            id=item.get("id", ""),
-                            content=item.get("memory", ""),
-                            user_id=item.get("user_id"),
-                            agent_id=item.get("agent_id"),
-                            task_id=item.get("run_id"),  # Map run_id back to task_id
-                            metadata=item.get("metadata", {}),
-                            created_at=item.get("created_at"),
-                            updated_at=item.get("updated_at")
-                        )
-                        return memory.to_dict()
-            
+            result = self._client.get(memory_id)
+            if result:
+                memory = MemoryEntry(
+                    id=result.get("id", ""),
+                    content=result.get("memory", ""),
+                    user_id=result.get("user_id"),
+                    agent_id=result.get("agent_id"),
+                    task_id=result.get("run_id"),  # Map run_id back to task_id
+                    metadata=result.get("metadata", {}),
+                    created_at=result.get("created_at"),
+                    updated_at=result.get("updated_at")
+                )
+                return memory.to_dict()
             return None
 
         except Exception as e:
             print(f"Error getting memory {memory_id}: {e}")
             return None
 
-    def list_memories(
+    def get_all(
         self,
-        user_id: Optional[str] = None,
         agent_id: Optional[str] = None,
-        task_id: Optional[str] = None,
         limit: int = 100
     ) -> List[Dict[str, Any]]:
         """
-        List memories with optional filtering.
+        Get all memories for this task.
         
         Args:
-            user_id: Optional user identifier to filter by
             agent_id: Optional agent identifier to filter by
-            task_id: Optional task identifier to filter by
-            limit: Maximum number of results to return
+            limit: Maximum number of memories to return
             
         Returns:
             List of memory entries
@@ -296,20 +269,18 @@ class MemoryManager:
         try:
             # Prepare keyword arguments
             kwargs = {"limit": limit}
-            if user_id:
-                kwargs["user_id"] = user_id
             if agent_id:
                 kwargs["agent_id"] = agent_id
-            if task_id:
-                kwargs["run_id"] = task_id  # Mem0 still uses run_id internally
+            if self.task_id:
+                kwargs["run_id"] = self.task_id  # Mem0 still uses run_id internally
 
-            # Get memories using Mem0
+            # Get all memories using Mem0
             results = self._client.get_all(**kwargs)
             
             # Convert to our standard format
             memories = []
-            if isinstance(results, dict) and "results" in results:
-                for item in results["results"]:
+            if isinstance(results, list):
+                for item in results:
                     memory = MemoryEntry(
                         id=item.get("id", ""),
                         content=item.get("memory", ""),
@@ -328,58 +299,47 @@ class MemoryManager:
             print(f"Error listing memories: {e}")
             return []
 
-    def update_memory(
-        self,
-        memory_id: str,
-        content: str
-    ) -> Dict[str, Any]:
+    def update(self, memory_id: str, content: str) -> Dict[str, Any]:
         """
-        Update a memory entry.
+        Update an existing memory.
         
         Args:
-            memory_id: The memory identifier
+            memory_id: The ID of the memory to update
             content: New content for the memory
             
         Returns:
             Dict containing the result of the update
         """
         try:
-            result = self._client.update(memory_id=memory_id, data=content)
+            result = self._client.update(memory_id, content)
             return result
 
         except Exception as e:
             return {"error": str(e), "success": False}
 
-    def delete_memory(self, memory_id: str) -> Dict[str, Any]:
+    def delete(self, memory_id: str) -> Dict[str, Any]:
         """
         Delete a specific memory.
         
         Args:
-            memory_id: The memory identifier
+            memory_id: The ID of the memory to delete
             
         Returns:
             Dict containing the result of the deletion
         """
         try:
-            result = self._client.delete(memory_id=memory_id)
-            return {"success": True, "message": f"Memory {memory_id} deleted"}
+            result = self._client.delete(memory_id)
+            return result
 
         except Exception as e:
             return {"error": str(e), "success": False}
 
-    def clear_memories(
-        self,
-        user_id: Optional[str] = None,
-        agent_id: Optional[str] = None,
-        task_id: Optional[str] = None
-    ) -> Dict[str, Any]:
+    def clear(self, agent_id: Optional[str] = None) -> Dict[str, Any]:
         """
-        Clear memories with optional filtering.
+        Clear all memories for this task.
         
         Args:
-            user_id: Optional user identifier to filter by
             agent_id: Optional agent identifier to filter by
-            task_id: Optional task identifier to filter by
             
         Returns:
             Dict containing the result of the operation
@@ -387,92 +347,95 @@ class MemoryManager:
         try:
             # Prepare keyword arguments
             kwargs = {}
-            if user_id:
-                kwargs["user_id"] = user_id
             if agent_id:
                 kwargs["agent_id"] = agent_id
-            if task_id:
-                kwargs["run_id"] = task_id  # Mem0 still uses run_id internally
+            if self.task_id:
+                kwargs["run_id"] = self.task_id  # Mem0 still uses run_id internally
 
-            # Clear memories using Mem0
+            # Delete all memories using Mem0
             result = self._client.delete_all(**kwargs)
-            return {"success": True, "message": "Memories cleared successfully"}
+            return result
 
         except Exception as e:
             return {"error": str(e), "success": False}
 
-    def get_memory_history(self, memory_id: str) -> List[Dict[str, Any]]:
+    def get_history(self, memory_id: str) -> List[Dict[str, Any]]:
         """
-        Get the history of changes for a memory.
+        Get the history of changes for a specific memory.
         
         Args:
-            memory_id: The memory identifier
+            memory_id: The ID of the memory
             
         Returns:
             List of history entries
         """
         try:
-            history = self._client.history(memory_id=memory_id)
-            return history if isinstance(history, list) else []
+            result = self._client.history(memory_id)
+            return result if result else []
 
         except Exception as e:
-            print(f"Error getting memory history for {memory_id}: {e}")
+            print(f"Error getting memory history: {e}")
             return []
 
     def get_stats(self) -> Dict[str, Any]:
         """
-        Get memory system statistics.
+        Get statistics about the memory system.
         
         Returns:
             Dict containing memory statistics
         """
         try:
-            # Get total count of memories
-            all_memories = self._client.get_all(limit=10000)
-            total_count = 0
+            # Get all memories for this task to calculate stats
+            all_memories = self.get_all()
             
-            if isinstance(all_memories, dict) and "results" in all_memories:
-                total_count = len(all_memories["results"])
-
-            return {
-                "total_memories": total_count,
-                "backend": "mem0ai",
-                "version": "v1.1"
+            stats = {
+                "total_memories": len(all_memories),
+                "task_id": self.task_id,
+                "agents": list(set(m.get("agent_id") for m in all_memories if m.get("agent_id"))),
+                "memory_types": list(set(m.get("metadata", {}).get("type") for m in all_memories if m.get("metadata", {}).get("type")))
             }
+            
+            return stats
 
         except Exception as e:
             return {"error": str(e), "total_memories": 0}
 
 
-# Backward compatibility aliases
-class IntelligentChunker:
-    """Deprecated: Chunking is now handled by Mem0 internally."""
+class AgentMemory:
+    """
+    Agent-scoped memory operations.
     
-    def __init__(self, *args, **kwargs):
-        print("Warning: IntelligentChunker is deprecated. Mem0 handles chunking internally.")
-    
-    def chunk_text(self, text: str, metadata: Optional[Dict] = None) -> List[Dict]:
-        return [{"text": text, "metadata": metadata or {}}]
+    This class provides memory operations automatically scoped to a specific agent,
+    optionally within a task context.
+    """
 
+    def __init__(self, agent_id: str, task_id: Optional[str] = None, config: Optional[MemoryConfig] = None):
+        """Initialize agent memory.
+        
+        Args:
+            agent_id: Agent identifier to scope operations to
+            task_id: Optional task ID to further scope operations
+            config: Optional memory configuration
+        """
+        self.agent_id = agent_id
+        self.task_memory = TaskMemory(task_id=task_id, config=config)
 
-class TokenAwareRetriever:
-    """Deprecated: Retrieval is now handled by Mem0's semantic search."""
-    
-    def __init__(self, *args, **kwargs):
-        print("Warning: TokenAwareRetriever is deprecated. Use MemoryManager.search_memory instead.")
-    
-    def retrieve(self, query: str, max_tokens: int = 1000) -> List[Dict]:
-        return []
+    def add(
+        self,
+        content: Union[str, List[Dict[str, str]]],
+        metadata: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        """Add a memory for this agent."""
+        return self.task_memory.add(content=content, agent_id=self.agent_id, metadata=metadata)
 
+    def search(self, query: str, limit: int = 10) -> List[Dict[str, Any]]:
+        """Search memories for this agent."""
+        return self.task_memory.search(query=query, agent_id=self.agent_id, limit=limit)
 
-class MemoryBackend:
-    """Deprecated: Storage is now handled by Mem0's backends."""
-    
-    def __init__(self, *args, **kwargs):
-        print("Warning: MemoryBackend is deprecated. Mem0 handles storage internally.")
-    
-    def store(self, *args, **kwargs):
-        pass
-    
-    def retrieve(self, *args, **kwargs):
-        return [] 
+    def get_all(self, limit: int = 100) -> List[Dict[str, Any]]:
+        """Get all memories for this agent."""
+        return self.task_memory.get_all(agent_id=self.agent_id, limit=limit)
+
+    def clear(self) -> Dict[str, Any]:
+        """Clear all memories for this agent."""
+        return self.task_memory.clear(agent_id=self.agent_id) 

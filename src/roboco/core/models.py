@@ -19,8 +19,8 @@ class Message(BaseModel):
         frozen = True # Enforce immutability
         arbitrary_types_allowed = True # To allow BaseModel in content
 
-class CollaborationResult:
-    """Result of a collaboration session."""
+class TaskResult:
+    """Result of a task execution."""
     def __init__(
         self, 
         summary: str,

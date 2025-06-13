@@ -260,27 +260,27 @@ logging.basicConfig(level=logging.DEBUG)
 ### Custom Memory Queries
 
 ```python
-from roboco.memory.manager import MemoryManager
+from roboco.core.memory import TaskMemory
 
-memory_manager = MemoryManager()
+# Create task-scoped memory
+task_memory = TaskMemory(task_id="my_task")
 
-# Search across all tasks
-results = memory_manager.search_memory(
+# Search within task scope
+results = task_memory.search(
     query="project planning strategies",
     limit=10
 )
 
 # Filter by agent
-agent_memories = memory_manager.list_memories(
+agent_memories = task_memory.get_all(
     agent_id="planner",
     limit=20
 )
 
-# Task-specific search
-task_results = memory_manager.search_memory(
-    query="documentation requirements",
-    task_id="specific_task_id",
-    limit=5
+# Add memories
+task_memory.add(
+    content="Key insight about documentation requirements",
+    agent_id="writer"
 )
 ```
 

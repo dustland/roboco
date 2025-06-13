@@ -5,7 +5,7 @@ import yaml
 from pydantic import ValidationError
 
 from .models import RobocoConfig
-from roboco.core.exceptions import ConfigurationError
+from ..core.exceptions import ConfigurationError
 
 class ConfigLoader(ABC):
     """

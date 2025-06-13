@@ -1,79 +1,72 @@
 """
 Roboco - Multi-Agent Collaboration Framework
 
-A production-ready framework for building collaborative AI agent teams.
-Built on AG2 (AutoGen) with configuration-based team setup.
+A framework for multi-agent collaboration where users can control, monitor, 
+and interact with teams of AI agents working together on tasks.
 
-Usage:
-    from roboco import TeamManager, Agent, UserAgent
-    
-    # Direct usage
-    team = TeamManager("path/to/team.yaml")
-    result = await team.run("Your task here")
-    
-    # Configuration-based team creation
-    from roboco import TeamBuilder
-    
-    team = TeamBuilder.create_team("config/team.yaml")
-    result = await team.run("Your task here")
-    
-    # For task management, use the CLI module:
-    from roboco.core.cli import run_task, resume_task, list_tasks
-    
-    result = await run_task("config/team.yaml", "Your task here")
-    await resume_task(result.task_id, max_rounds=10)
+Core Workflow:
+    1. Configure team (agents + tools) → team.yaml
+    2. Create and start collaborative task
+    3. Monitor agent collaboration in real-time  
+    4. Access chat and memory interfaces
+    5. Fetch results and manage task lifecycle
+
+New Task-Centric API:
+
+# Task Management
+from roboco import create_task, get_task, list_tasks
+
+task = create_task("team.yaml")  # Create but don't start
+task = get_task(task_id)         # Get existing task
+tasks = list_tasks()             # All tasks
+
+# Task Lifecycle
+await task.start("description")  # Smart start/resume
+await task.stop()               # Stop collaboration
+await task.delete()             # Clean up
+
+# Event Handling
+task.on("event", handler)
+task.off("event", handler)
+
+# Chat Session Access
+session = task.get_chat()
+history = session.get_chat_history()
+await session.send_message("message")
+
+# Memory Operations (Mem0-aligned)
+memory = task.get_memory()
+memory.add(messages, agent_id="planner")
+memory.search("keyword", agent_id="planner")
+memory.get_all(agent_id="researcher")
 """
 
-from typing import Optional
+# Task Management API
+from .core.task import create_task, get_task, list_tasks, Task, TaskInfo, ChatSession, TaskMemory
 
-# Core classes - the main API
-from .core import (
-    TeamManager, Agent, UserAgent, CollaborationResult,
-    TeamBuilder
-)
-
-# Configuration and utilities
-from .config import create_prompt_loader
+# Core types for advanced usage
+from .core.models import TaskResult
 from .core.exceptions import ConfigurationError
 
-# Event system
-from .event import Event, InMemoryEventBus, EventMonitor, CollaborationMetrics
-
-# Memory system
-from .memory import MemoryManager
-
-# Tool system
-from .tool import Tool, ToolRegistry
-
 # Version info
-__version__ = "0.7.0"
+__version__ = "0.8.0"
 
-# Main exports for easy importing
+# Clean Task-Centric API
 __all__ = [
-    # Core classes
-    "TeamManager",
-    "Agent", 
-    "UserAgent",
-    "CollaborationResult",
-    "TeamBuilder",
+    # Task Management
+    "create_task",     # Create new task
+    "get_task",        # Get existing task
+    "list_tasks",      # List all tasks
     
-    # Configuration
-    "create_prompt_loader",
+    # Core Classes
+    "Task",            # Main task class
+    "TaskInfo",        # Task information
+    "ChatSession",     # Chat interface
+    "TaskMemory",      # Memory interface
+    
+    # Result types
+    "TaskResult",
     "ConfigurationError",
-    
-    # Event system
-    "Event",
-    "InMemoryEventBus",
-    "EventMonitor",
-    "CollaborationMetrics",
-    
-    # Memory system
-    "MemoryManager",
-    
-    # Tool system
-    "Tool",
-    "ToolRegistry",
-    
     
     # Package info
     "__version__",

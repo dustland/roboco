@@ -12,10 +12,11 @@ from uuid import uuid4
 import logging
 from contextlib import asynccontextmanager
 
-from roboco.memory.stores import InMemoryContextStore
-from roboco.event.bus import InMemoryEventBus
-from roboco.core.team_manager import TeamManager
-from roboco.config.loaders import ConfigLoader
+# TODO: Fix this import after server refactoring
+# from roboco.memory.stores import InMemoryContextStore
+from ..event.bus import InMemoryEventBus
+from ..core.team_manager import TeamManager
+from ..config.loaders import ConfigLoader
 from .models import SessionInfo, SessionConfig, SessionStatus
 
 logger = logging.getLogger(__name__)

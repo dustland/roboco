@@ -40,7 +40,7 @@ class EventBus(ABC):
         Subscribe a handler to a specific event type.
 
         Args:
-            event_type: The type of event to subscribe to (e.g., MessageSentEvent or "agent.message.sent").
+            event_type: The type of event to subscribe to (e.g., Event or "task.started").
                         If a class is provided, it will subscribe to that class and its subclasses.
                         If a string is provided, it will subscribe to events with that exact event_type.
             handler: The callable (sync or async) that will be invoked when the event occurs.
@@ -138,7 +138,7 @@ class InMemoryEventBus(EventBus):
             except Exception as e:
                 # Log the error, but don't let one handler break others
                 print(f"Error executing event handler {getattr(handler, '__name__', str(handler))} for event {event.event_type}: {e}")
-                # Optionally, publish an ErrorOccurredEvent
+                # Optionally, publish an error event
 
     def subscribe(self, event_type: Union[Type[E], str], handler: EventHandler[E]) -> None:
         if handler not in self._subscriptions[event_type]:

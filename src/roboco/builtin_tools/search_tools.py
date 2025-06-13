@@ -5,7 +5,7 @@ Search Tools - Decorator-based implementation using the new Tool system.
 import os
 import httpx
 from typing import Annotated, Optional
-from roboco.tool.base import Tool, tool
+from ..tool.base import Tool, tool
 
 # Global search manager instance
 _search_manager = None
@@ -112,11 +112,6 @@ class SearchTool(Tool):
         except Exception as e:
             return f"❌ Failed to extract content: {str(e)}"
 
-# Create a default instance for backward compatibility
-def create_search_tool(search_manager=None):
-    """Create a search tool instance."""
-    return SearchTool(search_manager)
-
 # Export the tool class
-__all__ = ['SearchTool', 'create_search_tool', 'set_search_manager', 'get_search_manager']
+__all__ = ['SearchTool', 'set_search_manager', 'get_search_manager']
 

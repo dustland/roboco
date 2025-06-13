@@ -3,8 +3,7 @@
 Demo script showcasing Roboco's multi-agent collaboration framework.
 
 This demo demonstrates real-world scenarios where teams of AI agents collaborate
-to solve complex tasks, showcasing the framework's capabilities rather than
-testing individual subsystems.
+to solve complex tasks, showcasing the new Task-centric API design.
 """
 
 import os
@@ -16,7 +15,8 @@ from pathlib import Path
 project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root / "src"))
 
-from roboco.core.cli import run_task, resume_task
+# Import the new Task-centric API
+import roboco
 
 
 async def demo_research_and_planning():
@@ -27,8 +27,17 @@ async def demo_research_and_planning():
     config_path = str(Path(__file__).parent / "config" / "team.yaml")
     
     try:
+        # Create a task using the new API
+        task = roboco.create_task(
+            config_path=config_path,
+            description="AI Productivity Tool Launch Planning"
+        )
+        
+        print(f"✅ Created task: {task.task_id}")
+        print(f"📋 Status: {task.status}")
+        
         # Scenario: Planning a new product launch
-        task = """
+        task_description = """
         Our company wants to launch a new AI-powered productivity tool for remote teams.
         
         Please work together to:
@@ -44,28 +53,31 @@ async def demo_research_and_planning():
         print("👥 Team: Planner, Researcher, Writer (team.yaml)")
         print("🚀 Starting collaboration...\n")
         
-        result = await run_task(
-            config_path=config_path,
-            task_description=task,
-            max_rounds=15
-        )
+        # Start the collaboration using the new API
+        result = await task.start(task_description)
         
         if result and result.success:
             print(f"✅ Collaboration completed successfully!")
-            print(f"📊 Participants: {', '.join(result.participants)}")
-            print(f"💬 Total exchanges: {len(result.chat_history)}")
+            print(f"📊 Task ID: {task.task_id}")
+            print(f"💬 Total exchanges: {len(result.conversation_history)}")
             print(f"📝 Summary: {result.summary}")
             
             # Show key insights from the collaboration
             print(f"\n🔍 Key Collaboration Insights:")
-            print(f"   - Task ID: {result.task_id}")
+            print(f"   - Task managed through Task object")
             print(f"   - Config: team.yaml")
-            print(f"   - Agents worked together across {len(result.chat_history)} conversation rounds")
+            print(f"   - Agents worked together across {len(result.conversation_history)} conversation rounds")
             print(f"   - Each agent contributed their specialized expertise")
             
-            return result.task_id
+            # Demonstrate memory access
+            memory = task.get_memory()
+            if memory:
+                memories = memory.get_all(limit=5)
+                print(f"   - Stored {len(memories)} memories during collaboration")
+            
+            return task
         else:
-            print(f"❌ Collaboration failed: {result.error_message if result else 'Unknown error'}")
+            print(f"❌ Collaboration failed: {result.summary if result else 'Unknown error'}")
             return None
             
     except Exception as e:
@@ -83,8 +95,16 @@ async def demo_content_creation_workflow():
     config_path = str(Path(__file__).parent / "config" / "config.yaml")
     
     try:
+        # Create task with the new API
+        task = roboco.create_task(
+            config_path=config_path,
+            description="Remote Teams Guide Creation"
+        )
+        
+        print(f"✅ Created task: {task.task_id}")
+        
         # Scenario: Creating educational content
-        task = """
+        task_description = """
         Create a comprehensive guide about "Building Effective Remote Teams" for a business blog.
         
         Work together to:
@@ -101,16 +121,12 @@ async def demo_content_creation_workflow():
         print("👥 Team: Planner, Researcher, Writer (config.yaml)")
         print("📝 Collaborative writing workflow starting...\n")
         
-        result = await run_task(
-            config_path=config_path,
-            task_description=task,
-            max_rounds=20
-        )
+        # Start collaboration
+        result = await task.start(task_description)
         
         if result and result.success:
             print(f"✅ Content creation completed!")
-            print(f"👥 Team collaboration: {len(result.participants)} agents")
-            print(f"🔄 Workflow rounds: {len(result.chat_history)}")
+            print(f"🔄 Workflow rounds: {len(result.conversation_history)}")
             
             # Demonstrate the collaborative process
             print(f"\n📋 Workflow Analysis:")
@@ -120,9 +136,14 @@ async def demo_content_creation_workflow():
             print(f"   - Writing phase: Created cohesive content")
             print(f"   - Review phase: Refined and polished output")
             
-            return result.task_id
+            # Show task info
+            info = task.get_info()
+            print(f"   - Final status: {info.status}")
+            print(f"   - Created: {info.created_at}")
+            
+            return task
         else:
-            print(f"❌ Content creation failed: {result.error_message if result else 'Unknown error'}")
+            print(f"❌ Content creation failed: {result.summary if result else 'Unknown error'}")
             return None
             
     except Exception as e:
@@ -138,8 +159,16 @@ async def demo_problem_solving_collaboration():
     config_path = str(Path(__file__).parent / "config" / "default.yaml")
     
     try:
+        # Create task
+        task = roboco.create_task(
+            config_path=config_path,
+            description="Web Application Performance Troubleshooting"
+        )
+        
+        print(f"✅ Created task: {task.task_id}")
+        
         # Scenario: Technical problem solving
-        task = """
+        task_description = """
         A software development team is experiencing performance issues with their web application.
         Users are reporting slow page load times and occasional timeouts.
         
@@ -157,15 +186,12 @@ async def demo_problem_solving_collaboration():
         print("👥 Team: Planner, Researcher, Writer (default.yaml)")
         print("🔧 Problem-solving collaboration starting...\n")
         
-        result = await run_task(
-            config_path=config_path,
-            task_description=task,
-            max_rounds=18
-        )
+        # Start collaboration
+        result = await task.start(task_description)
         
         if result and result.success:
             print(f"✅ Problem-solving session completed!")
-            print(f"🧠 Collaborative analysis: {len(result.chat_history)} discussion rounds")
+            print(f"🧠 Collaborative analysis: {len(result.conversation_history)} discussion rounds")
             
             # Show how agents collaborated on problem-solving
             print(f"\n🔍 Collaboration Highlights:")
@@ -174,9 +200,9 @@ async def demo_problem_solving_collaboration():
             print(f"   - Knowledge synthesis: Combined research with practical solutions")
             print(f"   - Comprehensive output: Actionable troubleshooting plan created")
             
-            return result.task_id
+            return task
         else:
-            print(f"❌ Problem-solving failed: {result.error_message if result else 'Unknown error'}")
+            print(f"❌ Problem-solving failed: {result.summary if result else 'Unknown error'}")
             return None
             
     except Exception as e:
@@ -192,6 +218,14 @@ async def demo_task_continuation():
     config_path = str(Path(__file__).parent / "config" / "team.yaml")
     
     try:
+        # Create initial task
+        task = roboco.create_task(
+            config_path=config_path,
+            description="Employee Onboarding Program Design"
+        )
+        
+        print(f"✅ Created task: {task.task_id}")
+        
         initial_task = """
         Design a comprehensive employee onboarding program for a tech startup.
         
@@ -205,45 +239,66 @@ async def demo_task_continuation():
         
         print("🎯 Task: Employee Onboarding Program Design (Phase 1)")
         print("👥 Team: Planner, Researcher, Writer (team.yaml)")
-        print("⏱️  Starting initial phase with limited rounds...\n")
+        print("⏱️  Starting initial phase...\n")
         
-        # Run initial phase with limited rounds
-        result1 = await run_task(
-            config_path=config_path,
-            task_description=initial_task,
-            max_rounds=8
-        )
+        # Start initial phase
+        result1 = await task.start(initial_task)
         
         if result1 and result1.success:
             print(f"✅ Phase 1 completed!")
-            print(f"📋 Foundation established in {len(result1.chat_history)} rounds")
+            print(f"📊 Initial work: {len(result1.conversation_history)} exchanges")
             
-            # Continue the task with additional work
-            print(f"\n🔄 Continuing task {result1.task_id} with Phase 2...")
+            # Demonstrate task retrieval and continuation
+            print(f"\n🔄 Demonstrating task continuation...")
             
-            # Resume the task with additional rounds
-            result2 = await resume_task(
-                task_id=result1.task_id,
-                max_rounds=12
-            )
-            
-            if result2 and result2.success:
-                print(f"✅ Phase 2 completed!")
-                print(f"🔗 Seamless continuation: Agents built on previous work")
-                print(f"📈 Total project: {len(result2.chat_history)} conversation rounds")
+            # Retrieve the same task (simulating resumption)
+            retrieved_task = roboco.get_task(task.task_id)
+            if retrieved_task:
+                print(f"✅ Retrieved task: {retrieved_task.task_id}")
+                print(f"📋 Status: {retrieved_task.status}")
                 
-                print(f"\n🎯 Task Continuation Success:")
-                print(f"   - Config: team.yaml")
-                print(f"   - Memory persistence: Agents remembered Phase 1 work")
-                print(f"   - Context continuity: Smooth transition between phases")
-                print(f"   - Collaborative evolution: Ideas developed across sessions")
+                # Continue with phase 2
+                continuation_task = """
+                Continue the employee onboarding program design.
                 
-                return result2.task_id
+                Phase 2: Detailed implementation
+                1. Build on the foundation from Phase 1
+                2. Create detailed timelines and checklists
+                3. Design evaluation metrics
+                4. Prepare implementation guidelines
+                
+                Reference the work completed in Phase 1.
+                """
+                
+                print("🚀 Starting Phase 2 (continuation)...")
+                result2 = await retrieved_task.start(continuation_task)
+                
+                if result2 and result2.success:
+                    print(f"✅ Phase 2 completed!")
+                    print(f"🔗 Continuation successful")
+                    print(f"📈 Total project: {len(result2.conversation_history)} conversation rounds")
+                    
+                    print(f"\n🎯 Task Continuation Success:")
+                    print(f"   - Config: team.yaml")
+                    print(f"   - Memory persistence: Agents remembered Phase 1 work")
+                    print(f"   - Context continuity: Smooth transition between phases")
+                    print(f"   - Collaborative evolution: Ideas developed across sessions")
+                    
+                    # Show memory persistence
+                    memory = retrieved_task.get_memory()
+                    if memory:
+                        all_memories = memory.get_all(limit=10)
+                        print(f"   - Total memories across phases: {len(all_memories)}")
+                    
+                    return retrieved_task
+                else:
+                    print(f"❌ Phase 2 failed")
+                    return task
             else:
-                print(f"❌ Phase 2 failed: {result2.error_message if result2 else 'Unknown error'}")
-                return result1.task_id
+                print(f"❌ Could not retrieve task for continuation")
+                return task
         else:
-            print(f"❌ Phase 1 failed: {result1.error_message if result1 else 'Unknown error'}")
+            print(f"❌ Phase 1 failed: {result1.summary if result1 else 'Unknown error'}")
             return None
             
     except Exception as e:
@@ -256,27 +311,55 @@ async def demo_framework_capabilities():
     print("\n=== Framework Capabilities Overview ===\n")
     
     print("🤖 Roboco Framework Demonstration")
-    print("   Multi-agent collaboration for complex tasks\n")
+    print("   Multi-agent collaboration with new Task-centric API\n")
     
     # Track successful demos
     completed_demos = []
+    completed_tasks = []
     
     # Run different collaboration scenarios
-    task1_id = await demo_research_and_planning()
-    if task1_id:
+    task1 = await demo_research_and_planning()
+    if task1:
         completed_demos.append("Research & Planning")
+        completed_tasks.append(task1)
     
-    task2_id = await demo_content_creation_workflow()
-    if task2_id:
+    task2 = await demo_content_creation_workflow()
+    if task2:
         completed_demos.append("Content Creation")
+        completed_tasks.append(task2)
     
-    task3_id = await demo_problem_solving_collaboration()
-    if task3_id:
+    task3 = await demo_problem_solving_collaboration()
+    if task3:
         completed_demos.append("Problem Solving")
+        completed_tasks.append(task3)
     
-    task4_id = await demo_task_continuation()
-    if task4_id:
+    task4 = await demo_task_continuation()
+    if task4:
         completed_demos.append("Task Continuation")
+        completed_tasks.append(task4)
+    
+    # Demonstrate task management capabilities
+    if completed_tasks:
+        print(f"\n=== Task Management Demo ===")
+        
+        # List all tasks
+        all_tasks = roboco.list_tasks()
+        print(f"📋 Total tasks in system: {len(all_tasks)}")
+        
+        for task in completed_tasks:
+            info = task.get_info()
+            print(f"   - {info.task_id}: {info.status} - {info.description}")
+            
+            # Show memory if available
+            memory = task.get_memory()
+            if memory:
+                memories = memory.get_all(limit=3)
+                print(f"     📚 Memories: {len(memories)} stored")
+            
+            # Show chat history
+            chat = task.get_chat()
+            history = chat.get_chat_history()
+            print(f"     💬 Chat history: {len(history)} messages")
     
     # Summary of framework capabilities demonstrated
     print("\n" + "="*60)
@@ -286,27 +369,28 @@ async def demo_framework_capabilities():
         for demo in completed_demos:
             print(f"   ✅ {demo}")
         
-        print(f"\n🔧 Framework Features Showcased:")
-        print(f"   • Multi-agent collaboration and coordination")
-        print(f"   • Intelligent task distribution and specialization")
-        print(f"   • Memory persistence across task sessions")
-        print(f"   • Seamless task continuation and resumption")
-        print(f"   • Configurable team compositions and workflows")
-        print(f"   • Multiple configuration files for different scenarios")
-        print(f"   • Event-driven collaboration monitoring")
+        print(f"\n🔧 New API Features Showcased:")
+        print(f"   • Task-centric design with clean object-oriented API")
+        print(f"   • Integrated memory operations (no task_id parameters needed)")
+        print(f"   • Built-in event handling and chat session management")
+        print(f"   • Task persistence and retrieval capabilities")
+        print(f"   • Automatic memory scoping to tasks")
+        print(f"   • Simplified task lifecycle management")
+        print(f"   • No more global functions - everything through Task objects")
         
         print(f"\n📊 Collaboration Statistics:")
         print(f"   • Scenarios completed: {len(completed_demos)}")
+        print(f"   • Tasks created: {len(completed_tasks)}")
         print(f"   • Configuration files tested: team.yaml, config.yaml, default.yaml")
         print(f"   • Agent teams coordinated: {len(completed_demos)} different configurations")
         print(f"   • Task persistence: Demonstrated across multiple sessions")
         
-        print(f"\n🚀 Ready for Production:")
-        print(f"   • Framework handles complex, multi-step workflows")
-        print(f"   • Flexible configuration system for different use cases")
-        print(f"   • Agents collaborate naturally and effectively")
-        print(f"   • Memory and context preserved across sessions")
-        print(f"   • Scalable to different team sizes and compositions")
+        print(f"\n🚀 API Benefits Demonstrated:")
+        print(f"   • Intuitive: Task objects contain all related functionality")
+        print(f"   • Clean: No more task_id parameters everywhere")
+        print(f"   • Discoverable: IDE autocomplete shows all capabilities")
+        print(f"   • Integrated: Memory, chat, events all in one place")
+        print(f"   • Scalable: Easy to add new task-scoped functionality")
         
     else:
         print("   ❌ No demos completed successfully")
@@ -346,9 +430,14 @@ async def interactive_scenario_demo():
                 completed = await scenario_func()
                 print(f"\n📈 Completed {completed} out of 4 scenarios")
             else:
-                task_id = await scenario_func()
-                if task_id:
-                    print(f"\n✅ Scenario completed! Task ID: {task_id}")
+                task = await scenario_func()
+                if task:
+                    print(f"\n✅ Scenario completed! Task ID: {task.task_id}")
+                    
+                    # Show additional task info
+                    info = task.get_info()
+                    print(f"   Status: {info.status}")
+                    print(f"   Description: {info.description}")
                 else:
                     print(f"\n❌ Scenario failed")
         else:
@@ -360,7 +449,7 @@ async def interactive_scenario_demo():
 async def main():
     """Main demo function."""
     print("🤖 Welcome to Roboco Framework Demo!")
-    print("   Showcasing Multi-Agent Collaboration Capabilities\n")
+    print("   Showcasing Multi-Agent Collaboration with New Task-Centric API\n")
     
     # Check for OpenAI API key
     if not os.getenv("OPENAI_API_KEY"):
@@ -390,6 +479,11 @@ async def main():
         if completed_scenarios > 0:
             print(f"\n🎉 Framework demonstration completed!")
             print(f"   Successfully showcased {completed_scenarios} collaboration scenarios")
+            print(f"\n💡 Key Takeaways:")
+            print(f"   • New Task-centric API is much cleaner and more intuitive")
+            print(f"   • Memory operations are automatically scoped to tasks")
+            print(f"   • Task objects provide integrated access to all functionality")
+            print(f"   • No more global functions or task_id parameters needed")
             print(f"\n📁 Check the workspace/ directory for:")
             print(f"   • Task outputs and artifacts")
             print(f"   • Memory database (if configured)")

@@ -14,7 +14,7 @@ try:
 except ImportError:
     HAS_JINJA2 = False
 
-from roboco.core.exceptions import ConfigurationError
+from ..core.exceptions import ConfigurationError
 
 
 class PromptLoader:
