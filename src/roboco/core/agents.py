@@ -25,20 +25,26 @@ class Agent(ConversableAgent):
         )
         # Add any Roboco-specific initializations here if needed in the future
 
-class ToolExecutorAgent(ConversableAgent):
+class UserAgent(ConversableAgent):
     """
-    An agent specifically designed to execute tools (functions) on behalf of other agents.
-    It typically does not use an LLM to generate replies but executes registered functions.
-    It directly extends autogen's ConversableAgent.
+    A user proxy agent that handles both human interaction and tool execution,
+    following AG2/AutoGen design patterns. This agent can:
+    
+    1. Serve as a proxy for human users (with human_input_mode="ALWAYS" or "TERMINATE")
+    2. Execute tools and functions on behalf of other agents (with human_input_mode="NEVER")
+    3. Handle code execution when configured appropriately
+    
+    This matches the typical UserProxyAgent pattern in AG2 where a single agent
+    handles both user interface concerns and tool execution capabilities.
     """
     def __init__(
         self,
         name: str,
-        system_message: Optional[str] = "Tool execution agent.", # Minimal system message
-        human_input_mode: str = "NEVER",
-        code_execution_config: Optional[Dict[str, Any] | bool] = False, # No arbitrary code execution
-        default_auto_reply: Optional[str] = "Tools executed successfully.", # Provide default content
-        llm_config: Optional[LLMConfig | Dict[str, Any] | bool] = False, # No LLM needed by default
+        system_message: Optional[str] = "A human admin.",
+        human_input_mode: str = "NEVER",  # Default to tool execution mode
+        code_execution_config: Optional[Dict[str, Any] | bool] = False,
+        default_auto_reply: Optional[str] = "",
+        llm_config: Optional[LLMConfig | Dict[str, Any] | bool] = False,  # No LLM by default
         **kwargs,
     ):
         super().__init__(

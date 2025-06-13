@@ -1,167 +1,139 @@
-# SuperWriter Team Configuration
-# Professional collaborative writing system implementing 13-step workflow
-
 agents:
   - name: planner
-    class: "roboco.core.agents.Agent"
-    prompt_file: "planner.md"
+    class: roboco.core.agents.Agent
+    prompt_file: planner.md
     tools: []
     llm_config:
       config_list:
-        - model: "gpt-4o-mini"
+        - model: gpt-4o-mini
           api_key: null
-
   - name: researcher
-    class: "roboco.core.agents.Agent"
-    prompt_file: "researcher.md"
+    class: roboco.core.agents.Agent
+    prompt_file: researcher.md
     tools:
-      - web_search
+      - search_tools
     llm_config:
       config_list:
-        - model: "gpt-4o-mini"
+        - model: gpt-4o-mini
           api_key: null
-
   - name: writer
-    class: "roboco.core.agents.Agent"
-    prompt_file: "writer.md"
+    class: roboco.core.agents.Agent
+    prompt_file: writer.md
     tools: []
     llm_config:
       config_list:
-        - model: "gpt-4o-mini"
+        - model: gpt-4o-mini
           api_key: null
-
   - name: reviewer
-    class: "roboco.core.agents.Agent"
-    prompt_file: "reviewer.md"
+    class: roboco.core.agents.Agent
+    prompt_file: reviewer.md
     tools: []
     llm_config:
       config_list:
-        - model: "gpt-4o-mini"
+        - model: gpt-4o-mini
           api_key: null
-
-tools:
-  - name: web_search
-    class: "roboco.builtin_tools.search_tools.WebSearchTool"
-    config:
-      api_key: null # Uses SERPAPI_KEY environment variable
-
 memory:
   vector_store:
-    provider: "chroma"
+    provider: chroma
     config:
-      collection_name: "superwriter_research"
-      path: "./workspace/memory_db"
+      collection_name: superwriter_research
+      path: ./workspace/memory_db
   llm:
-    provider: "openai"
+    provider: openai
     config:
-      model: "gpt-4o-mini"
+      model: gpt-4o-mini
       temperature: 0.1
       max_tokens: 2048
   embedder:
-    provider: "openai"
+    provider: openai
     config:
-      model: "text-embedding-3-small"
-  version: "v1.1"
-
+      model: text-embedding-3-small
+  version: v1.1
 team:
-  max_rounds: 50 # Increased for complex workflow
-  speaker_selection_method: "round_robin"
+  max_rounds: 50
+  speaker_selection_method: round_robin
   allow_repeat_speaker: true
   enable_function_calls: true
-  human_input_mode: "NEVER" # Change to "TERMINATE" for production
-
+  human_input_mode: NEVER
 events:
-  bus_type: "memory"
-  persistence: true # Enable persistence for progress tracking
-
-  # Auto-emit events for significant artifacts based on memory metadata patterns
+  bus_type: memory
+  persistence: true
   auto_emit_patterns:
-    - metadata_filter: { "artifact_type": "document", "status": "final" }
-      event_name: "document_created"
-
-    - metadata_filter: { "artifact_type": "plan", "status": "approved" }
-      event_name: "plan_created"
-
-    - metadata_filter: { "artifact_type": "research", "status": "complete" }
-      event_name: "research_completed"
-
-    - metadata_filter: { "artifact_type": "section", "status": "approved" }
-      event_name: "section_completed"
-
-# Workflow configuration for 13-step process
+    - metadata_filter:
+        artifact_type: document
+        status: final
+      event_name: document_created
+    - metadata_filter:
+        artifact_type: plan
+        status: approved
+      event_name: plan_created
+    - metadata_filter:
+        artifact_type: research
+        status: complete
+      event_name: research_completed
+    - metadata_filter:
+        artifact_type: section
+        status: approved
+      event_name: section_completed
 workflow:
   phases:
-    - name: "requirements_gathering"
-      agents: ["planner"]
-      completion_criteria: "requirements_finalized"
-
-    - name: "execution_planning"
-      agents: ["planner"]
-      completion_criteria: "execution_plan_created"
-
-    - name: "research"
-      agents: ["researcher", "reviewer"]
-      completion_criteria: "sources_sufficient"
-
-    - name: "writing"
-      agents: ["writer", "reviewer"]
-      completion_criteria: "sections_approved"
-
-    - name: "compilation"
-      agents: ["writer", "reviewer"]
-      completion_criteria: "document_approved"
-
+    - name: requirements_gathering
+      agents:
+        - planner
+      completion_criteria: requirements_finalized
+    - name: execution_planning
+      agents:
+        - planner
+      completion_criteria: execution_plan_created
+    - name: research
+      agents:
+        - researcher
+        - reviewer
+      completion_criteria: sources_sufficient
+    - name: writing
+      agents:
+        - writer
+        - reviewer
+      completion_criteria: sections_approved
+    - name: compilation
+      agents:
+        - writer
+        - reviewer
+      completion_criteria: document_approved
   handoff_patterns:
-    # Requirements phase
-    - from: "user"
-      to: "planner"
-      trigger: "raw_request"
-
-    # Planning phase
-    - from: "planner"
-      to: "planner"
-      trigger: "survey_completed"
-
-    # Research phase
-    - from: "planner"
-      to: "researcher"
-      trigger: "execution_plan_ready"
-
-    - from: "researcher"
-      to: "reviewer"
-      trigger: "sources_gathered"
-
-    - from: "reviewer"
-      to: "researcher"
-      trigger: "sources_insufficient"
-
-    # Writing phase
-    - from: "reviewer"
-      to: "writer"
-      trigger: "sources_sufficient"
-
-    - from: "writer"
-      to: "reviewer"
-      trigger: "section_drafted"
-
-    - from: "reviewer"
-      to: "writer"
-      trigger: "section_needs_revision"
-
-    - from: "reviewer"
-      to: "researcher"
-      trigger: "more_sources_needed"
-
-    # Compilation phase
-    - from: "writer"
-      to: "reviewer"
-      trigger: "document_compiled"
-
-    - from: "reviewer"
-      to: "writer"
-      trigger: "document_needs_revision"
-
-    # Final delivery
-    - from: "reviewer"
-      to: "user"
-      trigger: "document_approved"
+    - from: user
+      to: planner
+      trigger: raw_request
+    - from: planner
+      to: planner
+      trigger: survey_completed
+    - from: planner
+      to: researcher
+      trigger: execution_plan_ready
+    - from: researcher
+      to: reviewer
+      trigger: sources_gathered
+    - from: reviewer
+      to: researcher
+      trigger: sources_insufficient
+    - from: reviewer
+      to: writer
+      trigger: sources_sufficient
+    - from: writer
+      to: reviewer
+      trigger: section_drafted
+    - from: reviewer
+      to: writer
+      trigger: section_needs_revision
+    - from: reviewer
+      to: researcher
+      trigger: more_sources_needed
+    - from: writer
+      to: reviewer
+      trigger: document_compiled
+    - from: reviewer
+      to: writer
+      trigger: document_needs_revision
+    - from: reviewer
+      to: user
+      trigger: document_approved

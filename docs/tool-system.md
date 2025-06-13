@@ -1,281 +1,428 @@
-# Tool System Design Document
+# Roboco Tool System - Decorator-based AG2 Integration
 
-## 1. Introduction
+The Roboco tool system provides a clean, decorator-based approach to tool development with automatic AG2 function generation and registration. This design eliminates code duplication while maintaining full compatibility with AG2's native function system.
 
-The Roboco Tool System forms the foundation for extending agent capabilities within the Roboco ecosystem. This design document outlines how the system enables agents to interact with external systems through a standardized, secure, and discoverable framework. By abstracting tool implementation details, the system allows agents to focus on problem-solving while providing robust mechanisms for tool lifecycle management.
+## Architecture Overview
 
-### 1.1 Purpose and Value Proposition
+The tool system consists of three main components:
 
-The tool system addresses the fundamental challenge of extending agent capabilities beyond their core functionality. Rather than requiring agents to implement specialized functionality directly, the system provides:
+1. **`@tool` Decorator**: Marks methods as tool functions with metadata
+2. **`Tool` Base Class**: Provides automatic discovery and AG2 integration
+3. **`ToolRegistry`**: Manages tool instances and provides AG2 functions
 
-- A protocol-based interface for agent-tool interaction
-- Centralized discovery mechanism for available capabilities
-- Security enforcement at the protocol level
-- Observable and monitorable tool execution
+## Core Components
 
-The value lies in enabling agents to dynamically adapt to available capabilities while maintaining a clean separation between agent reasoning and tool implementation.
+### @tool Decorator
 
-### 1.2 Design Philosophy
+The `@tool` decorator marks methods as tool functions and provides metadata for AG2 integration:
 
-The system follows three core philosophical principles:
-
-1. **Capability Abstraction**: Tools encapsulate domain-specific knowledge and operations, allowing agents to remain focused on high-level reasoning rather than implementation details.
-
-2. **Protocol-Centric Interaction**: All tool interactions occur through the standardized Model Context Protocol (MCP), ensuring consistency regardless of tool complexity or location.
-
-3. **Observability as First-Class Concern**: Comprehensive monitoring is built into the system architecture rather than added as an afterthought, enabling operational excellence.
-
-## 2. Architectural Principles
-
-### 2.1 Foundational Principles
-
-The tool system architecture is built on five core principles that guide design decisions:
-
-**Protocol-First Architecture**
-All tool interactions are mediated through the Model Context Protocol (MCP), creating a consistent communication layer that abstracts implementation details. This approach ensures that agents interact with all tools through a uniform interface, regardless of whether the tool is running locally or as a remote service.
-
-**Separation of Concerns**
-Agents specialize in reasoning and decision-making, while tools encapsulate specific capabilities. This separation allows each component to evolve independently - agents can be upgraded without affecting tools, and new tools can be introduced without modifying agent logic.
-
-```mermaid
-graph TD
-    A[Agent] -->|1. Discovers| R[Tool Registry]
-    A -->|2. Executes| E[Execution Engine]
-    E -->|3. Invokes| T[Physical Tools]
-    E -->|4. Reports| M[Monitoring Subsystem]
+```python
+@tool(name="web_search", description="Search the web for information")
+async def search(
+    self,
+    task_id: str,
+    agent_id: str,
+    query: Annotated[str, "Search query"],
+    max_results: Annotated[int, "Max results"] = 10
+) -> str:
+    # Implementation
 ```
 
-## 3. Tool Integration Patterns
+**Key Features:**
 
-The framework is designed to support a flexible range of tool types:
+- Automatic function discovery via reflection
+- Metadata preservation for AG2 type checking
+- Clean separation of concerns
 
-- **Local Tools**: Functions executed directly within the agent's process. Ideal for low-latency, trusted operations.
-- **Remote Tools**: Services accessed over the network via the Model Context Protocol (MCP). This allows for a distributed and scalable tool architecture.
-- **Managed Services**: Third-party, enterprise-grade services (e.g., SaaS APIs) integrated via secure connectors.
+### Tool Base Class
 
-## 4. System Integration
+The `Tool` base class provides automatic AG2 integration:
 
-The Tool System is a core pillar of the Roboco framework and is deeply integrated with other subsystems:
+```python
+class WebSearchTool(Tool):
+    def __init__(self, api_key: str):
+        super().__init__()
+        self.api_key = api_key
 
-- **Event System**: Every phase of a tool's lifecycle—`ToolCallInitiated`, `ToolCallCompleted`, `ToolCallFailed`—generates a structured event on the central **Event Bus**. This provides the foundation for real-time monitoring, auditing, and debugging.
+    @tool(name="web_search", description="Search the web for information")
+    async def search(
+        self,
+        task_id: str,
+        agent_id: str,
+        query: Annotated[str, "Search query"],
+        max_results: Annotated[int, "Max results"] = 10
+    ) -> str:
+        # Search implementation
+        results = await self._perform_search(query, max_results)
+        return self._format_results(results)
 
-- **Context Management**: The framework provides a set of built-in tools for state manipulation, most notably `get_context` and `set_context`. These system tools are managed by the Execution Engine and generate events just like any other tool, making agent state changes fully observable and traceable actions.
+    async def _perform_search(self, query: str, max_results: int):
+        # Private helper method
+        pass
 
-## 5. Security and Governance
-
-Security is a paramount concern and is enforced through a multi-layered approach:
-
-- **Authentication**: Agents and tools must authenticate via mechanisms like OAuth 2.0 or API Keys before they can interact.
-- **Authorization**: Fine-grained policies, managed in the Tool Registry, define which agents are permitted to execute which tools.
-- **Auditing**: A comprehensive, immutable log of all tool executions is maintained for security analysis and compliance.
-- **Sandboxing**: High-risk tools can be designated to run in isolated, sandboxed environments to mitigate potential security threats.
-
-The Execution Engine handles the end-to-end lifecycle of tool invocation, providing critical services that abstract complexity from agents:
-
-**Core Capabilities**
-
-- **Protocol Translation**: Bridges agent requests to tool-specific interfaces
-- **Execution Mode Management**: Supports both synchronous and asynchronous patterns
-- **State Management**: Maintains context for long-running operations
-- **Error Handling**: Standardizes error reporting and recovery mechanisms
-
-**Design Rationale**
-The engine is designed to:
-
-- Abstract execution complexity from agents
-- Ensure consistent behavior across tool types
-- Provide fault isolation between tool executions
-- Enable cross-tool transaction management
-
-### 3.3 Monitoring Subsystem: The Observability Backbone
-
-This subsystem provides comprehensive observability into tool operations:
-
-**Core Features**
-
-- **Health Assessment**: Continuous monitoring of tool operational status
-- **Performance Telemetry**: Latency, throughput, and error rate metrics
-- **Usage Analytics**: Insights into tool adoption patterns
-- **Audit Trail**: Immutable logs of all tool invocations
-
-**Design Rationale**
-Monitoring is integrated as a first-class concern to:
-
-- Enable proactive issue detection
-- Provide data-driven insights for optimization
-- Support service level objectives (SLOs)
-- Facilitate root cause analysis
-
-## 4. Integration Patterns
-
-### 4.1 Tool Integration Taxonomy
-
-The system supports three fundamental integration patterns, each with distinct characteristics:
-
-**Local Tools**
-These execute within the agent's runtime environment, offering minimal latency at the cost of resource sharing. Typical use cases include file operations and local data processing where speed is critical.
-
-**Remote Tools**
-Operating through the MCP protocol, these tools run in separate environments. This pattern is ideal for resource-intensive operations or when tools need to be shared across multiple agents.
-
-**Managed Services**
-These represent enterprise-grade capabilities provided as professional services. The system integrates with these through standardized APIs while maintaining the same security and observability standards as internal tools.
-
-### 4.2 Security Framework
-
-The security architecture employs a defense-in-depth strategy:
-
-**Core Mechanisms**
-
-- **Authentication**: OAuth 2.0 and API key support with token rotation
-- **Authorization**: Attribute-based access control with policy engines
-- **Auditing**: Immutable logs of all tool invocations with context
-- **Isolation**: Sandboxed execution for untrusted tools
-
-**Design Rationale**
-Security is protocol-embedded to ensure:
-
-- Consistent enforcement across tool types
-- Minimal overhead for tool developers
-- Centralized policy management
-- Comprehensive audit trails
-
-## 5. Agent-Tool Interaction
-
-### 5.1 Workflow Architecture
-
-The agent-tool interaction follows a carefully designed workflow:
-
-```mermaid
-sequenceDiagram
-    Agent->>Registry: Discover tools
-    Registry->>Agent: Return capabilities
-    Agent->>Engine: Execute tool (params)
-    Engine->>Tool: Invoke capability
-    Tool->>Engine: Return results
-    Engine->>Agent: Deliver normalized output
+    def _format_results(self, results):
+        # Private helper method
+        pass
 ```
 
-**Key Design Features**
+**Key Methods:**
 
-- **Discovery Phase**: Enables agents to adapt to available capabilities
-- **Execution Abstraction**: Shields agents from implementation details
-- **Result Normalization**: Presents outputs in agent-consumable format
-- **Error Standardization**: Provides consistent error handling
+- `discover_tools()`: Automatically finds @tool decorated methods
+- `create_ag2_functions()`: Generates AG2-compatible wrapper functions
+- `_emit_tool_event()`: Override for custom monitoring
 
-### 5.2 Quality Attributes
+### ToolRegistry
 
-The system ensures rigorous quality standards through:
+The `ToolRegistry` manages tool instances and provides AG2 functions:
 
-**Reliability Mechanisms**
+```python
+# Create registry
+registry = ToolRegistry()
 
-- Redundant components with automatic failover
-- Graceful degradation during partial failures
-- Automated recovery from transient errors
+# Register tool instances
+registry.register_tool_instance("search_tools", WebSearchTool(api_key="..."))
+registry.register_tool_instance("memory_tools", MemoryTool(memory_manager))
 
-**Performance Optimization**
+# Get AG2 functions for specific categories
+functions = registry.get_tools_for_categories(["search_tools", "memory_tools"])
 
-- Local caching of frequently accessed tools
-- Request batching for high-volume operations
-- Adaptive load balancing based on real-time metrics
+# Register with AG2 agents
+for func_name, func in functions.items():
+    register_function(func, caller=agent, executor=executor)
+```
 
-**Security Enforcement**
+## Built-in Tools
 
-- End-to-end encryption for sensitive data
-- Context-aware access control decisions
-- Automated security policy updates
+### Memory Tools
 
-## 6. Deployment Architecture
+Provides persistent memory capabilities:
 
-### 6.1 Deployment Strategies
+```python
+class MemoryTool(Tool):
+    @tool(name="add_memory", description="Add content to persistent memory")
+    async def add_memory(self, task_id: str, agent_id: str, content: str) -> str:
+        # Store content with intelligent extraction
 
-The system supports multiple deployment topologies to accommodate different operational requirements:
+    @tool(name="search_memory", description="Search memories using semantic similarity")
+    async def search_memory(self, task_id: str, agent_id: str, query: str, limit: int = 5) -> str:
+        # Search and return relevant memories
 
-**Centralized Deployment**
-Ideal for development environments and small-scale deployments, this model uses a single registry and execution engine. While operationally simpler, it presents a single point of failure.
+    @tool(name="list_memories", description="List recent memories")
+    async def list_memories(self, task_id: str, agent_id: str, limit: int = 10) -> str:
+        # List recent memories from current session
+```
 
-**Federated Model**
-For large-scale deployments, this approach uses multiple synchronized registries. It provides geographic distribution and fault tolerance at the cost of increased operational complexity.
+### Basic Tools
 
-**Hybrid Approach**
-This recommended model combines a central registry with distributed execution engines. It balances control with scalability, allowing execution resources to scale independently.
+File system and utility operations:
 
-### 6.2 Scaling Considerations
+```python
+class BasicTool(Tool):
+    @tool(name="read_file", description="Read file contents")
+    async def read_file(self, task_id: str, agent_id: str, path: str) -> str:
+        # Read file safely within workspace
 
-The architecture supports elastic scaling through:
+    @tool(name="write_file", description="Write content to file")
+    async def write_file(self, task_id: str, agent_id: str, path: str, content: str) -> str:
+        # Write file safely within workspace
 
-**Horizontal Scaling Patterns**
+    @tool(name="list_directory", description="List directory contents")
+    async def list_directory(self, task_id: str, agent_id: str, path: str = ".") -> str:
+        # List directory contents safely
+```
 
-- Stateless execution workers behind load balancers
-- Registry sharding based on tool categories
-- Distributed caching layers for discovery requests
+### Search Tools
 
-**Capacity Management**
+Web search and content extraction:
 
-- Predictive scaling based on usage patterns
-- Queue-based load leveling with backpressure signaling
-- Resource allocation based on priority tiers
+```python
+class SearchTool(Tool):
+    @tool(name="web_search", description="Search the web for information")
+    async def web_search(self, task_id: str, agent_id: str, query: str, max_results: int = 10) -> str:
+        # Perform web search using configured engines
 
-## 7. Monitoring and Maintenance
+    @tool(name="extract_url", description="Extract content from URL")
+    async def extract_url(self, task_id: str, agent_id: str, url: str, max_length: int = 8000) -> str:
+        # Extract clean content using Jina Reader API
+```
 
-### 7.1 Observability Framework
+## Security Features
 
-The monitoring subsystem provides comprehensive insights through:
+### Access Control
 
-**Key Metrics**
+Use the `@secure_tool` decorator for access control:
 
-- Tool health scores with weighted indicators
-- Success rates segmented by error type
-- Latency distributions across percentiles
-- Resource consumption trends
+```python
+@secure_tool(allowed_agents=["admin_agent"], security_level="admin")
+@tool(name="delete_database", description="Delete database (admin only)")
+async def delete_database(self, task_id: str, agent_id: str, database_name: str) -> str:
+    # Admin-only operation
+```
 
-**Operational Insights**
+### Workspace Isolation
 
-- Dependency impact analysis
-- Capacity utilization forecasting
-- Anomaly detection for abnormal patterns
-- Root cause analysis workflows
+Built-in tools enforce workspace boundaries:
 
-### 7.2 Maintenance Operations
+```python
+def _resolve_path(self, path: str) -> Path:
+    """Resolve path relative to workspace and validate security."""
+    target_path = (self.workspace_path / path).resolve()
 
-Lifecycle management includes:
+    # Security check: ensure path is within workspace
+    try:
+        target_path.relative_to(self.workspace_path)
+    except ValueError:
+        raise PermissionError(f"Access denied: Path '{path}' is outside workspace")
 
-**Update Management**
+    return target_path
+```
 
-- Zero-downtime deployments with blue-green patterns
-- Version compatibility matrices
-- Automated rollback mechanisms
+## Monitoring and Observability
 
-**Dependency Management**
+### Automatic Event Emission
 
-- Vulnerability scanning for third-party components
-- Automated patching with testing gates
-- Impact analysis before dependency updates
+Tools automatically emit execution events:
 
-## 8. Future Extensions
+```python
+def _emit_tool_event(self, **event_data):
+    """Override for custom monitoring."""
+    # Log to your monitoring system
+    logger.info(f"Tool executed: {event_data['tool_name']}", extra=event_data)
 
-### 8.1 Evolution Roadmap
+    # Send to metrics system
+    metrics.increment(f"tool.{event_data['tool_name']}.executions")
+    metrics.timing(f"tool.{event_data['tool_name']}.duration", event_data['execution_time'])
+```
 
-The system is designed for extensibility with planned enhancements:
+### Event Data Structure
 
-**Capability Composition**
-Workflows that combine multiple tools into higher-order capabilities, enabling agents to accomplish complex tasks through coordinated tool sequences.
+```python
+{
+    'tool_name': 'web_search',
+    'task_id': 'task_123',
+    'agent_id': 'researcher',
+    'parameters': {'query': 'AI research', 'max_results': 10},
+    'result': 'Search results...',
+    'execution_time': 1.23,
+    'success': True,
+    'error_message': None
+}
+```
 
-**Quality-of-Service Tiers**
-Differentiated service levels for tools based on criticality, allowing prioritization of mission-critical capabilities during resource contention.
+## Integration with Team Manager
 
-**Marketplace Integration**
-A curated ecosystem where tool developers can publish capabilities and agents can discover specialized functionality on demand.
+The team manager automatically registers tools based on configuration:
 
-### 8.2 Extension Points
+```yaml
+# team.yaml
+agents:
+  - name: researcher
+    role: ConversableAgent
+    tools: ["search_tools", "memory_tools"]
 
-The architecture provides well-defined extension mechanisms:
+  - name: writer
+    role: ConversableAgent
+    tools: ["basic_tools", "memory_tools"]
 
-**Authentication Providers**
-Pluggable modules for integrating enterprise identity systems or specialized authentication requirements.
+  - name: executor
+    role: UserAgent # Executes tool functions and handles user interaction
+```
 
-**Protocol Adapters**
-Framework for bridging legacy systems into the tool ecosystem without modifying core protocols.
+The team manager handles:
 
-**Analytics Plugins**
-Extensible framework for adding custom analytics and monitoring capabilities tailored to specific operational needs.
+- Tool instance creation and configuration
+- AG2 function registration with proper caller/executor separation
+- Security enforcement through UserAgent pattern
+
+## Creating Custom Tools
+
+### Simple Tool Example
+
+```python
+from roboco.tool.base import Tool, tool
+from typing import Annotated
+
+class WeatherTool(Tool):
+    def __init__(self, api_key: str):
+        super().__init__()
+        self.api_key = api_key
+
+    @tool(name="get_weather", description="Get current weather for a location")
+    async def get_weather(
+        self,
+        task_id: str,
+        agent_id: str,
+        location: Annotated[str, "City name or coordinates"]
+    ) -> str:
+        # Weather API implementation
+        weather_data = await self._fetch_weather(location)
+        return f"Weather in {location}: {weather_data['description']}, {weather_data['temperature']}°C"
+
+    async def _fetch_weather(self, location: str):
+        # Private helper method
+        pass
+```
+
+### Advanced Tool with Security
+
+```python
+from roboco.tool.base import Tool, tool, secure_tool
+from typing import Annotated
+
+class DatabaseTool(Tool):
+    @tool(name="query_database", description="Query the database")
+    async def query_database(
+        self,
+        task_id: str,
+        agent_id: str,
+        query: Annotated[str, "SQL query to execute"]
+    ) -> str:
+        # Safe database query
+        pass
+
+    @secure_tool(security_level="admin")
+    @tool(name="backup_database", description="Create database backup")
+    async def backup_database(
+        self,
+        task_id: str,
+        agent_id: str,
+        backup_name: Annotated[str, "Name for the backup"]
+    ) -> str:
+        # Admin-only backup operation
+        pass
+```
+
+## Best Practices
+
+### 1. Method Signatures
+
+Always use this signature pattern:
+
+```python
+async def tool_method(
+    self,
+    task_id: str,      # Required: Task context
+    agent_id: str,     # Required: Agent context
+    param1: Annotated[Type, "Description"],  # Tool parameters
+    param2: Annotated[Type, "Description"] = default_value
+) -> str:  # Always return string for LLM consumption
+```
+
+### 2. Error Handling
+
+Provide user-friendly error messages:
+
+```python
+@tool(name="example_tool", description="Example tool")
+async def example_tool(self, task_id: str, agent_id: str, param: str) -> str:
+    try:
+        result = await self._do_work(param)
+        return f"✅ Success: {result}"
+    except ValueError as e:
+        return f"❌ Invalid input: {str(e)}"
+    except Exception as e:
+        return f"❌ Operation failed: {str(e)}"
+```
+
+### 3. Result Formatting
+
+Format results for LLM readability:
+
+```python
+def _format_search_results(self, results):
+    if not results:
+        return "🔍 No results found."
+
+    formatted = [f"🔍 Found {len(results)} results:\n"]
+    for i, result in enumerate(results, 1):
+        formatted.append(f"{i}. **{result['title']}**")
+        formatted.append(f"   {result['snippet']}")
+        formatted.append(f"   🔗 {result['url']}\n")
+
+    return "\n".join(formatted)
+```
+
+### 4. Configuration Management
+
+Use configuration for flexibility:
+
+```python
+class CustomTool(Tool):
+    def __init__(self, **config):
+        super().__init__(**config)
+        self.api_key = config.get('api_key')
+        self.base_url = config.get('base_url', 'https://api.example.com')
+        self.timeout = config.get('timeout', 30)
+```
+
+## Migration from Legacy System
+
+### Old Approach (Deprecated)
+
+```python
+# Old: Separate methods for AG2 integration
+class OldTool:
+    def search(self, query: str) -> str:
+        # Implementation
+
+    def create_ag2_function(self):
+        # Separate AG2 wrapper creation
+        def ag2_wrapper(query: str) -> str:
+            return self.search(query)
+        return ag2_wrapper
+```
+
+### New Approach
+
+```python
+# New: Single method with decorator
+class NewTool(Tool):
+    @tool(name="search", description="Search functionality")
+    async def search(
+        self,
+        task_id: str,
+        agent_id: str,
+        query: Annotated[str, "Search query"]
+    ) -> str:
+        # Single implementation, automatic AG2 integration
+```
+
+## Performance Considerations
+
+### Function Caching
+
+The registry caches AG2 functions for performance:
+
+```python
+# Functions are cached after first discovery
+registry.register_tool_instance("category", tool_instance)
+# Subsequent calls use cached functions
+functions = registry.get_tools_for_categories(["category"])
+```
+
+### Lazy Loading
+
+Tools are only instantiated when needed:
+
+```python
+# Tool instances created on-demand
+def create_tool_factory(config):
+    def factory():
+        return CustomTool(**config)
+    return factory
+
+registry.register_tool_factory("custom_tools", create_tool_factory(config))
+```
+
+## Conclusion
+
+The decorator-based tool system provides:
+
+- **Clean Architecture**: Single method per tool function
+- **Automatic Integration**: AG2 functions generated automatically
+- **Type Safety**: Full type annotation support
+- **Security**: Built-in access control and workspace isolation
+- **Monitoring**: Automatic event emission and observability
+- **Flexibility**: Easy customization and extension
+
+This design eliminates the complexity of the previous system while maintaining full compatibility with AG2's native function registration.

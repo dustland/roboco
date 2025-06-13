@@ -26,29 +26,12 @@ agents:
           api_key: null
 
   - name: executor
-    class: "roboco.core.agents.ToolExecutorAgent"
+    class: "roboco.core.agents.UserAgent"
     system_message: "You are a task executor who can use tools to accomplish specific actions. Focus on methodical execution and providing clear status updates."
     llm_config:
       config_list:
         - model: "gpt-4o-mini"
           api_key: null
-
-# Tool configuration
-tools:
-  - name: web_search
-    class: "roboco.builtin_tools.search_tools.WebSearchTool"
-    config:
-      api_key: null # Will use environment variable
-    allowed_agents:
-      - planner
-      - writer
-
-  - name: filesystem
-    class: "roboco.builtin_tools.basic_tools.FileSystemTool"
-    config: {}
-    allowed_agents:
-      - executor
-      - writer
 
 # Event configuration
 events:

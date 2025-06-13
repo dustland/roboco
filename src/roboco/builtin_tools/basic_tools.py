@@ -1,270 +1,233 @@
-from typing import Any, Dict, AsyncGenerator, Type, Optional, List
+"""
+Basic Tools - Decorator-based implementation using the new Tool system.
+"""
 
-from pydantic import BaseModel, Field
+import os
+import asyncio
+from pathlib import Path
+from typing import Annotated
+from roboco.tool.base import Tool, tool
 
-from roboco.tool.interfaces import AbstractTool
-from roboco.config.models import ToolParameterConfig
-
-class EchoToolParams(BaseModel):
-    """Parameters for invoking the EchoTool."""
-    message: str = Field(..., description="The message to be echoed back.")
-    prefix: str = Field(default="", description="An optional prefix to add to the echoed message at invocation time.")
-
-class EchoToolInstanceConfig(BaseModel):
-    """Configuration parameters for an instance of EchoTool."""
-    name: str = Field(default="echo_tool", description="The name of this tool instance.")
-    description: str = Field(default="Echoes back a message.", description="The description of this tool instance.")
-    default_prefix: str = Field(default="", description="A default prefix configured on the tool instance itself, used if no prefix is provided at invocation.")
-
-class EchoTool(AbstractTool):
-    """
-    A simple tool that echoes back a message, potentially with a prefix.
-    The tool's behavior can be customized via instance configuration (e.g., a default prefix)
-    and invocation parameters (e.g., the message and an overriding prefix).
-    """
-    _name: str
-    _description: str
-    _default_prefix: str
-
-    def __init__(self, name: str = "echo_tool", description: str = "Echoes back a message.", default_prefix: str = ""):
-        self._name = name
-        self._description = description
-        self._default_prefix = default_prefix
-
-    @property
-    def name(self) -> str:
-        return self._name
-
-    @property
-    def description(self) -> str:
-        return self._description
-
-    @classmethod
-    def get_config_schema(cls) -> Optional[Type[BaseModel]]:
-        return EchoToolInstanceConfig
-
-    def get_invocation_schema(self) -> List[ToolParameterConfig]:
-        """Return the schema for tool invocation parameters."""
-        return [
-            ToolParameterConfig(
-                name="message",
-                type="string",
-                description="The message to be echoed back.",
-                required=True
-            ),
-            ToolParameterConfig(
-                name="prefix",
-                type="string",
-                description="An optional prefix to add to the echoed message at invocation time.",
-                required=False,
-                default=""
-            )
-        ]
-
-    async def run(self, **kwargs: Any) -> Dict[str, Any]:
-        params = EchoToolParams(**kwargs)
-        prefix_to_use = params.prefix if params.prefix else self._default_prefix
-        result = f"{prefix_to_use}{params.message}"
-        return {"echoed_message": result, "status": "success"}
-
-    async def stream(self, **kwargs: Any) -> AsyncGenerator[Dict[str, Any], None]:
-        params = EchoToolParams(**kwargs)
-        prefix_to_use = params.prefix if params.prefix else self._default_prefix
-        
-        if prefix_to_use:
-            yield {"type": "prefix", "content": prefix_to_use, "is_final": False}
-        
-        if params.message:
-            yield {"type": "message_part", "content": params.message, "is_final": False}
-        
-        final_echoed_message = f"{prefix_to_use}{params.message}"
-        yield {"type": "final_result", "full_echo": final_echoed_message, "status": "success", "is_final": True}
-
-class FileSystemTool(AbstractTool):
-    """
-    A tool for basic file system operations.
+class BasicTool(Tool):
+    """Basic file system and utility tools using the new decorator-based system."""
     
-    Provides secure file operations like reading, writing, and listing files
-    within a restricted workspace.
-    """
+    # Define required dependencies
+    REQUIRED_DEPENDENCIES = {
+        "workspace_path": "Path to the workspace directory for file operations"
+    }
     
-    def __init__(self, workspace_path: str = "./workspace", **kwargs):
-        """
-        Initialize filesystem tool.
-        
-        Args:
-            workspace_path: Base path for file operations (for security)
-        """
-        self.workspace_path = workspace_path
-        
-    @property
-    def name(self) -> str:
-        return "filesystem"
+    def __init__(self, workspace_path: str = "./workspace"):
+        super().__init__()
+        self.workspace_path = Path(workspace_path).resolve()
+        # Ensure workspace exists
+        self.workspace_path.mkdir(parents=True, exist_ok=True)
     
-    @property
-    def description(self) -> str:
-        return "Perform file system operations like reading, writing, and listing files"
-    
-    def get_invocation_schema(self) -> List[ToolParameterConfig]:
-        """Return the schema for tool invocation parameters."""
-        return [
-            ToolParameterConfig(
-                name="operation",
-                type="string",
-                description="Operation to perform: read, write, list, exists",
-                required=True
-            ),
-            ToolParameterConfig(
-                name="path",
-                type="string", 
-                description="File or directory path relative to workspace",
-                required=True
-            ),
-            ToolParameterConfig(
-                name="content",
-                type="string",
-                description="Content to write (only for write operation)",
-                required=False,
-                default=""
-            )
-        ]
-    
-    @classmethod
-    def get_config_schema(cls) -> Dict[str, Any]:
-        return {
-            "type": "object",
-            "properties": {
-                "workspace_path": {
-                    "type": "string",
-                    "description": "Base workspace path for file operations",
-                    "default": "./workspace"
-                }
-            }
-        }
-    
-    async def run(self, input_data: Any, config: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-        """Execute file system operation."""
-        import os
-        from pathlib import Path
+    def _resolve_path(self, path: str) -> Path:
+        """Resolve path relative to workspace and validate security."""
+        # Convert to Path and resolve
+        target_path = (self.workspace_path / path).resolve()
         
-        operation = input_data.get("operation")
-        path = input_data.get("path")
-        content = input_data.get("content", "")
-        
-        if not operation or not path:
-            return {
-                "success": False,
-                "error": "Operation and path are required"
-            }
-        
-        # Secure path resolution within workspace
+        # Security check: ensure path is within workspace
         try:
-            workspace = Path(self.workspace_path).resolve()
-            target_path = (workspace / path).resolve()
-            
-            # Ensure target is within workspace
-            if not str(target_path).startswith(str(workspace)):
-                return {
-                    "success": False,
-                    "error": "Path outside workspace not allowed"
-                }
-            
-            if operation == "read":
-                if target_path.exists() and target_path.is_file():
-                    try:
-                        with open(target_path, 'r', encoding='utf-8') as f:
-                            content = f.read()
-                        return {
-                            "success": True,
-                            "operation": "read",
-                            "path": str(path),
-                            "content": content,
-                            "size": len(content)
-                        }
-                    except Exception as e:
-                        return {
-                            "success": False,
-                            "error": f"Failed to read file: {e}"
-                        }
-                else:
-                    return {
-                        "success": False,
-                        "error": "File does not exist or is not a file"
-                    }
-            
-            elif operation == "write":
-                try:
-                    # Create parent directories if needed
-                    target_path.parent.mkdir(parents=True, exist_ok=True)
-                    with open(target_path, 'w', encoding='utf-8') as f:
-                        f.write(content)
-                    return {
-                        "success": True,
-                        "operation": "write", 
-                        "path": str(path),
-                        "size": len(content)
-                    }
-                except Exception as e:
-                    return {
-                        "success": False,
-                        "error": f"Failed to write file: {e}"
-                    }
-            
-            elif operation == "list":
-                try:
-                    if target_path.exists():
-                        if target_path.is_dir():
-                            files = []
-                            for item in target_path.iterdir():
-                                files.append({
-                                    "name": item.name,
-                                    "type": "directory" if item.is_dir() else "file",
-                                    "size": item.stat().st_size if item.is_file() else None
-                                })
-                            return {
-                                "success": True,
-                                "operation": "list",
-                                "path": str(path),
-                                "files": files
-                            }
-                        else:
-                            return {
-                                "success": False,
-                                "error": "Path is not a directory"
-                            }
-                    else:
-                        return {
-                            "success": False,
-                            "error": "Directory does not exist"
-                        }
-                except Exception as e:
-                    return {
-                        "success": False,
-                        "error": f"Failed to list directory: {e}"
-                    }
-            
-            elif operation == "exists":
-                return {
-                    "success": True,
-                    "operation": "exists",
-                    "path": str(path),
-                    "exists": target_path.exists(),
-                    "type": "directory" if target_path.is_dir() else "file" if target_path.is_file() else None
-                }
-            
-            else:
-                return {
-                    "success": False,
-                    "error": f"Unknown operation: {operation}"
-                }
-                
-        except Exception as e:
-            return {
-                "success": False,
-                "error": f"Filesystem operation failed: {e}"
-            }
+            target_path.relative_to(self.workspace_path)
+        except ValueError:
+            raise PermissionError(f"Access denied: Path '{path}' is outside workspace")
+        
+        return target_path
     
-    async def stream(self, input_data: Any, config: Optional[Dict[str, Any]] = None) -> AsyncGenerator[Dict[str, Any], None]:
-        """Stream filesystem operation results."""
-        result = await self.run(input_data, config)
-        yield result
+    @tool(name="echo_message", description="Echo back a message, potentially with a prefix")
+    async def echo_message(
+        self,
+        task_id: str,
+        agent_id: str,
+        message: Annotated[str, "The message to echo back"],
+        prefix: Annotated[str, "Optional prefix to add to the message"] = ""
+    ) -> str:
+        """Echo back a message with optional prefix."""
+        if prefix:
+            return f"{prefix}: {message}"
+        return message
+    
+    @tool(name="read_file", description="Read the contents of a file within the workspace")
+    async def read_file(
+        self,
+        task_id: str,
+        agent_id: str,
+        path: Annotated[str, "Path to the file to read (relative to workspace)"]
+    ) -> str:
+        """Read file contents safely within workspace."""
+        try:
+            file_path = self._resolve_path(path)
+            
+            if not file_path.exists():
+                return f"❌ File not found: {path}"
+            
+            if not file_path.is_file():
+                return f"❌ Path is not a file: {path}"
+            
+            # Read file with proper encoding detection
+            try:
+                content = file_path.read_text(encoding='utf-8')
+            except UnicodeDecodeError:
+                # Try with different encoding if UTF-8 fails
+                content = file_path.read_text(encoding='latin-1')
+            
+            return f"📄 Contents of {path}:\n\n{content}"
+            
+        except PermissionError as e:
+            return f"❌ Permission denied: {str(e)}"
+        except Exception as e:
+            return f"❌ Error reading file: {str(e)}"
+    
+    @tool(name="write_file", description="Write content to a file within the workspace")
+    async def write_file(
+        self,
+        task_id: str,
+        agent_id: str,
+        path: Annotated[str, "Path to the file to write (relative to workspace)"],
+        content: Annotated[str, "Content to write to the file"]
+    ) -> str:
+        """Write content to file safely within workspace."""
+        try:
+            file_path = self._resolve_path(path)
+            
+            # Create parent directories if they don't exist
+            file_path.parent.mkdir(parents=True, exist_ok=True)
+            
+            # Write content
+            file_path.write_text(content, encoding='utf-8')
+            
+            file_size = file_path.stat().st_size
+            return f"✅ Successfully wrote {len(content)} characters ({file_size} bytes) to {path}"
+            
+        except PermissionError as e:
+            return f"❌ Permission denied: {str(e)}"
+        except Exception as e:
+            return f"❌ Error writing file: {str(e)}"
+    
+    @tool(name="list_directory", description="List the contents of a directory within the workspace")
+    async def list_directory(
+        self,
+        task_id: str,
+        agent_id: str,
+        path: Annotated[str, "Directory path to list (relative to workspace)"] = "."
+    ) -> str:
+        """List directory contents safely within workspace."""
+        try:
+            dir_path = self._resolve_path(path)
+            
+            if not dir_path.exists():
+                return f"❌ Directory not found: {path}"
+            
+            if not dir_path.is_dir():
+                return f"❌ Path is not a directory: {path}"
+            
+            # Get directory contents
+            items = []
+            for item in sorted(dir_path.iterdir()):
+                relative_path = item.relative_to(self.workspace_path)
+                if item.is_dir():
+                    items.append(f"📁 {relative_path}/")
+                else:
+                    size = item.stat().st_size
+                    items.append(f"📄 {relative_path} ({size} bytes)")
+            
+            if not items:
+                return f"📂 Directory {path} is empty"
+            
+            return f"📂 Contents of {path}:\n\n" + "\n".join(items)
+            
+        except PermissionError as e:
+            return f"❌ Permission denied: {str(e)}"
+        except Exception as e:
+            return f"❌ Error listing directory: {str(e)}"
+    
+    @tool(name="file_exists", description="Check if a file or directory exists within the workspace")
+    async def file_exists(
+        self,
+        task_id: str,
+        agent_id: str,
+        path: Annotated[str, "Path to check (relative to workspace)"]
+    ) -> str:
+        """Check if a file or directory exists within workspace."""
+        try:
+            file_path = self._resolve_path(path)
+            
+            if file_path.exists():
+                if file_path.is_file():
+                    size = file_path.stat().st_size
+                    return f"✅ File exists: {path} ({size} bytes)"
+                elif file_path.is_dir():
+                    item_count = len(list(file_path.iterdir()))
+                    return f"✅ Directory exists: {path} ({item_count} items)"
+                else:
+                    return f"✅ Path exists: {path} (special file type)"
+            else:
+                return f"❌ Path does not exist: {path}"
+                
+        except PermissionError as e:
+            return f"❌ Permission denied: {str(e)}"
+        except Exception as e:
+            return f"❌ Error checking path: {str(e)}"
+    
+    @tool(name="create_directory", description="Create a directory within the workspace")
+    async def create_directory(
+        self,
+        task_id: str,
+        agent_id: str,
+        path: Annotated[str, "Directory path to create (relative to workspace)"]
+    ) -> str:
+        """Create a directory safely within workspace."""
+        try:
+            dir_path = self._resolve_path(path)
+            
+            if dir_path.exists():
+                if dir_path.is_dir():
+                    return f"ℹ️ Directory already exists: {path}"
+                else:
+                    return f"❌ Path exists but is not a directory: {path}"
+            
+            # Create directory and any necessary parent directories
+            dir_path.mkdir(parents=True, exist_ok=True)
+            
+            return f"✅ Successfully created directory: {path}"
+            
+        except PermissionError as e:
+            return f"❌ Permission denied: {str(e)}"
+        except Exception as e:
+            return f"❌ Error creating directory: {str(e)}"
+    
+    @tool(name="delete_file", description="Delete a file within the workspace")
+    async def delete_file(
+        self,
+        task_id: str,
+        agent_id: str,
+        path: Annotated[str, "Path to the file to delete (relative to workspace)"]
+    ) -> str:
+        """Delete a file safely within workspace."""
+        try:
+            file_path = self._resolve_path(path)
+            
+            if not file_path.exists():
+                return f"❌ File not found: {path}"
+            
+            if not file_path.is_file():
+                return f"❌ Path is not a file: {path}"
+            
+            # Delete the file
+            file_path.unlink()
+            
+            return f"✅ Successfully deleted file: {path}"
+            
+        except PermissionError as e:
+            return f"❌ Permission denied: {str(e)}"
+        except Exception as e:
+            return f"❌ Error deleting file: {str(e)}"
+
+# Create a default instance for backward compatibility
+def create_basic_tool(workspace_path: str = "./workspace"):
+    """Create a basic tool instance."""
+    return BasicTool(workspace_path)
+
+# Export the tool class
+__all__ = ['BasicTool', 'create_basic_tool']

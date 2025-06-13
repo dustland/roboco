@@ -1,437 +1,164 @@
 """
-Memory Tools
-
-Built-in tools that provide agents access to the memory system.
-These tools expose MemoryManager functionality through the tool interface.
+Memory Tools - Decorator-based implementation using the new Tool system.
 """
 
-from typing import Dict, Any, List, Optional
-import json
+import os
+from typing import Annotated, Optional
+from roboco.tool.base import Tool, tool
 
-from roboco.tool.interfaces import AbstractTool
-from roboco.config.models import ToolParameterConfig
-from roboco.memory.manager import MemoryManager
+# Global memory manager instance
+_memory_manager = None
 
+def set_memory_manager(manager):
+    """Set the global memory manager instance."""
+    global _memory_manager
+    _memory_manager = manager
 
-class AddMemoryTool(AbstractTool):
-    """Tool for adding memories to the memory system."""
+def get_memory_manager():
+    """Get the global memory manager instance."""
+    return _memory_manager
+
+class MemoryTool(Tool):
+    """Memory management capabilities using the new decorator-based system."""
     
-    def __init__(self, memory_manager: MemoryManager, task_id: Optional[str] = None):
-        self.memory_manager = memory_manager
-        self.task_id = task_id
-
-    @property
-    def name(self) -> str:
-        return "add_memory"
-
-    @property
-    def description(self) -> str:
-        return "Add new content to memory with automatic intelligent extraction"
-
-    def get_invocation_schema(self) -> List[ToolParameterConfig]:
-        return [
-            ToolParameterConfig(
-                name="content",
-                type="string",
-                description="The content to store in memory",
-                required=True
-            ),
-            ToolParameterConfig(
-                name="agent_id",
-                type="string",
-                description="Agent identifier for this memory",
-                required=False,
-                default=None
-            ),
-            ToolParameterConfig(
-                name="task_id",
-                type="string",
-                description="Task/session identifier for this memory",
-                required=False,
-                default=None
-            ),
-            ToolParameterConfig(
-                name="metadata",
-                type="object",
-                description="Optional metadata to associate with the memory",
-                required=False,
-                default=None
-            )
-        ]
-
-    @classmethod
-    def get_config_schema(cls) -> Dict[str, Any]:
-        return {
-            "type": "object",
-            "properties": {},
-            "description": "Memory tool requires no additional configuration"
-        }
-
-    async def run(self, input_data: Any, config: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-        """Add content to memory."""
-        try:
-            # Use provided task_id or fall back to tool's task_id
-            task_id = input_data.get("task_id") or self.task_id
-            
-            result = self.memory_manager.add_memory(
-                content=input_data.get("content"),
-                agent_id=input_data.get("agent_id"),
-                task_id=task_id,
-                metadata=input_data.get("metadata")
-            )
-            
-            if result.get("success", True):
-                return {"success": True, "message": "Memory added successfully", "result": result}
-            else:
-                return {"success": False, "error": result.get('error', 'Unknown error')}
-                
-        except Exception as e:
-            return {"success": False, "error": f"Error adding memory: {str(e)}"}
-
-    async def stream(self, input_data: Any, config: Optional[Dict[str, Any]] = None):
-        """Stream memory addition result."""
-        result = await self.run(input_data, config)
-        yield result
-
-
-class SearchMemoryTool(AbstractTool):
-    """Tool for searching memories."""
+    def __init__(self, memory_manager=None):
+        super().__init__()
+        self.memory_manager = memory_manager or get_memory_manager()
+        if not self.memory_manager:
+            raise ValueError("Memory manager is required")
     
-    def __init__(self, memory_manager: MemoryManager, task_id: Optional[str] = None):
-        self.memory_manager = memory_manager
-        self.task_id = task_id
-
-    @property
-    def name(self) -> str:
-        return "search_memory"
-
-    @property
-    def description(self) -> str:
-        return "Search memories using semantic similarity matching"
-
-    def get_invocation_schema(self) -> List[ToolParameterConfig]:
-        return [
-            ToolParameterConfig(
-                name="query",
-                type="string",
-                description="The search query",
-                required=True
-            ),
-            ToolParameterConfig(
-                name="task_id",
-                type="string",
-                description="Task/session identifier to filter by",
-                required=False,
-                default=None
-            ),
-            ToolParameterConfig(
-                name="agent_id",
-                type="string",
-                description="Agent identifier to filter by",
-                required=False,
-                default=None
-            ),
-            ToolParameterConfig(
-                name="limit",
-                type="integer",
-                description="Maximum number of results to return",
-                required=False,
-                default=5
-            )
-        ]
-
-    @classmethod
-    def get_config_schema(cls) -> Dict[str, Any]:
-        return {
-            "type": "object",
-            "properties": {},
-            "description": "Memory tool requires no additional configuration"
-        }
-
-    async def run(self, input_data: Any, config: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-        """Search for relevant memories."""
-        try:
-            # Use provided task_id or fall back to tool's task_id
-            task_id = input_data.get("task_id") or self.task_id
-            agent_id = input_data.get("agent_id")
-            
-            # If no filtering parameters provided, use task_id for session isolation
-            if not task_id and not agent_id:
-                task_id = self.task_id
-            
-            memories = self.memory_manager.search_memory(
-                query=input_data.get("query"),
-                task_id=task_id,
-                agent_id=agent_id,
-                limit=input_data.get("limit", 5)
-            )
-            
-            if not memories:
-                return {"success": True, "message": "No relevant memories found", "memories": []}
-            
-            return {
-                "success": True,
-                "message": f"Found {len(memories)} relevant memories",
-                "memories": memories
-            }
-            
-        except Exception as e:
-            return {"success": False, "error": f"Error searching memories: {str(e)}"}
-
-    async def stream(self, input_data: Any, config: Optional[Dict[str, Any]] = None):
-        """Stream memory search results."""
-        result = await self.run(input_data, config)
-        yield result
-
-
-class ListMemoriesTool(AbstractTool):
-    """Tool for listing memories with optional filtering."""
-    
-    def __init__(self, memory_manager: MemoryManager, task_id: Optional[str] = None):
-        self.memory_manager = memory_manager
-        self.task_id = task_id
-
-    @property
-    def name(self) -> str:
-        return "list_memories"
-
-    @property
-    def description(self) -> str:
-        return "List memories with optional filtering"
-
-    def get_invocation_schema(self) -> List[ToolParameterConfig]:
-        return [
-            ToolParameterConfig(
-                name="task_id",
-                type="string",
-                description="Task/session identifier to filter by",
-                required=False,
-                default=None
-            ),
-            ToolParameterConfig(
-                name="agent_id",
-                type="string",
-                description="Agent identifier to filter by",
-                required=False,
-                default=None
-            ),
-            ToolParameterConfig(
-                name="limit",
-                type="integer",
-                description="Maximum number of results to return",
-                required=False,
-                default=10
-            )
-        ]
-
-    @classmethod
-    def get_config_schema(cls) -> Dict[str, Any]:
-        return {
-            "type": "object",
-            "properties": {},
-            "description": "Memory tool requires no additional configuration"
-        }
-
-    async def run(self, input_data: Any, config: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-        """List memories with optional filtering."""
-        try:
-            # Use provided task_id or fall back to tool's task_id
-            task_id = input_data.get("task_id") or self.task_id
-            agent_id = input_data.get("agent_id")
-            
-            # If no filtering parameters provided, use task_id for session isolation
-            if not task_id and not agent_id:
-                task_id = self.task_id
-            
-            memories = self.memory_manager.list_memories(
-                task_id=task_id,
-                agent_id=agent_id,
-                limit=input_data.get("limit", 10)
-            )
-            
-            if not memories:
-                return {"success": True, "message": "No memories found", "memories": []}
-            
-            return {
-                "success": True,
-                "message": f"Found {len(memories)} memories",
-                "memories": memories
-            }
-            
-        except Exception as e:
-            return {"success": False, "error": f"Error listing memories: {str(e)}"}
-
-    async def stream(self, input_data: Any, config: Optional[Dict[str, Any]] = None):
-        """Stream memory listing results."""
-        result = await self.run(input_data, config)
-        yield result
-
-
-class GetMemoryTool:
-    """Tool for retrieving a specific memory by ID."""
-    
-    def __init__(self, memory_manager: MemoryManager):
-        self.memory_manager = memory_manager
-        self.name = "get_memory"
-        self.description = "Retrieve a specific memory by its ID"
-
-    def __call__(self, memory_id: str) -> str:
-        """Get a specific memory by ID."""
-        try:
-            memory = self.memory_manager.get_memory(memory_id)
-            
-            if not memory:
-                return f"Memory with ID {memory_id} not found."
-            
-            result = f"Memory ID: {memory['id']}\n"
-            result += f"Content: {memory['content']}\n"
-            if memory.get('user_id'):
-                result += f"User: {memory['user_id']}\n"
-            if memory.get('agent_id'):
-                result += f"Agent: {memory['agent_id']}\n"
-            if memory.get('task_id'):
-                result += f"Session: {memory['task_id']}\n"
-            if memory.get('metadata'):
-                result += f"Metadata: {memory['metadata']}\n"
-            if memory.get('created_at'):
-                result += f"Created: {memory['created_at']}\n"
-            if memory.get('updated_at'):
-                result += f"Updated: {memory['updated_at']}\n"
-            
-            return result
-            
-        except Exception as e:
-            return f"Error retrieving memory: {str(e)}"
-
-
-class UpdateMemoryTool:
-    """Tool for updating existing memories."""
-    
-    def __init__(self, memory_manager: MemoryManager):
-        self.memory_manager = memory_manager
-        self.name = "update_memory"
-        self.description = "Update the content of an existing memory"
-
-    def __call__(self, memory_id: str, content: str) -> str:
-        """Update a memory's content."""
-        try:
-            result = self.memory_manager.update_memory(memory_id, content)
-            
-            if result.get("success", True):
-                return f"Memory {memory_id} updated successfully."
-            else:
-                return f"Failed to update memory: {result.get('error', 'Unknown error')}"
-                
-        except Exception as e:
-            return f"Error updating memory: {str(e)}"
-
-
-class DeleteMemoryTool:
-    """Tool for deleting memories."""
-    
-    def __init__(self, memory_manager: MemoryManager):
-        self.memory_manager = memory_manager
-        self.name = "delete_memory"
-        self.description = "Delete a specific memory by its ID"
-
-    def __call__(self, memory_id: str) -> str:
-        """Delete a memory by ID."""
-        try:
-            result = self.memory_manager.delete_memory(memory_id)
-            
-            if result.get("success", False):
-                return f"Memory {memory_id} deleted successfully."
-            else:
-                return f"Failed to delete memory: {result.get('error', 'Memory not found')}"
-                
-        except Exception as e:
-            return f"Error deleting memory: {str(e)}"
-
-
-class ClearMemoriesTool:
-    """Tool for clearing multiple memories."""
-    
-    def __init__(self, memory_manager: MemoryManager):
-        self.memory_manager = memory_manager
-        self.name = "clear_memories"
-        self.description = "Clear memories with optional filtering by user, agent, or session"
-
-    def __call__(
+    @tool(name="add_memory", description="Add content to persistent memory with automatic intelligent extraction")
+    async def add_memory(
         self,
-        user_id: Optional[str] = None,
-        agent_id: Optional[str] = None,
-        task_id: Optional[str] = None,
-        confirm: bool = False
+        task_id: str,
+        agent_id: str,
+        content: Annotated[str, "Content to store in memory"]
     ) -> str:
-        """Clear memories with optional filtering."""
-        if not confirm:
-            return "Warning: This will permanently delete memories. Set confirm=True to proceed."
-        
+        """Store content in persistent memory with intelligent extraction."""
         try:
-            result = self.memory_manager.clear_memories(
-                user_id=user_id,
-                agent_id=agent_id,
-                task_id=task_id
+            # Use task_id as run_id for Mem0 compatibility
+            result = await self.memory_manager.add(
+                content=content,
+                run_id=task_id,
+                metadata={"agent_id": agent_id}
             )
             
-            if result.get("success", False):
-                filters = []
-                if user_id:
-                    filters.append(f"user_id={user_id}")
-                if agent_id:
-                    filters.append(f"agent_id={agent_id}")
-                if task_id:
-                    filters.append(f"task_id={task_id}")
-                
-                filter_str = f" (filters: {', '.join(filters)})" if filters else " (all memories)"
-                return f"Memories cleared successfully{filter_str}."
+            if isinstance(result, dict) and 'id' in result:
+                memory_id = result['id']
+                return f"✅ Memory added successfully with ID: {memory_id}"
             else:
-                return f"Failed to clear memories: {result.get('error', 'Unknown error')}"
+                return f"✅ Memory added successfully: {str(result)}"
                 
         except Exception as e:
-            return f"Error clearing memories: {str(e)}"
-
-
-class MemoryStatsTool:
-    """Tool for getting memory system statistics."""
+            return f"❌ Failed to add memory: {str(e)}"
     
-    def __init__(self, memory_manager: MemoryManager):
-        self.memory_manager = memory_manager
-        self.name = "memory_stats"
-        self.description = "Get statistics about the memory system"
-
-    def __call__(self) -> str:
-        """Get memory system statistics."""
+    @tool(name="search_memory", description="Search memories using semantic similarity matching")
+    async def search_memory(
+        self,
+        task_id: str,
+        agent_id: str,
+        query: Annotated[str, "Search query for finding relevant memories"],
+        limit: Annotated[int, "Maximum number of memories to return"] = 5
+    ) -> str:
+        """Search for relevant memories using semantic similarity."""
         try:
-            stats = self.memory_manager.get_stats()
+            # Use task_id as run_id for Mem0 compatibility
+            results = await self.memory_manager.search(
+                query=query,
+                run_id=task_id,
+                limit=limit
+            )
             
-            result = "Memory System Statistics:\n"
-            result += f"Total Memories: {stats.get('total_memories', 0)}\n"
-            result += f"Backend: {stats.get('backend', 'unknown')}\n"
-            result += f"Version: {stats.get('version', 'unknown')}\n"
+            if not results:
+                return "🔍 No relevant memories found for your query."
             
-            if 'error' in stats:
-                result += f"Warning: {stats['error']}\n"
+            # Format results for display
+            formatted_results = []
+            for i, memory in enumerate(results, 1):
+                if isinstance(memory, dict):
+                    content = memory.get('memory', memory.get('content', str(memory)))
+                    score = memory.get('score', 'N/A')
+                    formatted_results.append(f"{i}. {content} (relevance: {score})")
+                else:
+                    formatted_results.append(f"{i}. {str(memory)}")
             
-            return result
+            return f"🔍 Found {len(results)} relevant memories:\n\n" + "\n".join(formatted_results)
             
         except Exception as e:
-            return f"Error getting memory stats: {str(e)}"
-
-
-def create_memory_tools(memory_manager: MemoryManager, task_id: Optional[str] = None) -> List[AbstractTool]:
-    """
-    Create memory tools with optional task_id for session isolation.
+            return f"❌ Failed to search memories: {str(e)}"
     
-    Args:
-        memory_manager: The memory manager instance
-        task_id: Optional task identifier for memory isolation
-        
-    Returns:
-        List of memory tools
-    """
-    return [
-        AddMemoryTool(memory_manager, task_id),
-        SearchMemoryTool(memory_manager, task_id),
-        ListMemoriesTool(memory_manager, task_id)
-    ] 
+    @tool(name="list_memories", description="List recent memories from the current task session")
+    async def list_memories(
+        self,
+        task_id: str,
+        agent_id: str,
+        limit: Annotated[int, "Maximum number of memories to list"] = 10
+    ) -> str:
+        """List recent memories from the current task session."""
+        try:
+            # Use task_id as run_id for Mem0 compatibility
+            memories = await self.memory_manager.get_all(
+                run_id=task_id,
+                limit=limit
+            )
+            
+            if not memories:
+                return f"📝 No memories found for task: {task_id}"
+            
+            # Format memories for display
+            formatted_memories = []
+            for i, memory in enumerate(memories, 1):
+                if isinstance(memory, dict):
+                    content = memory.get('memory', memory.get('content', str(memory)))
+                    created_at = memory.get('created_at', 'Unknown time')
+                    formatted_memories.append(f"{i}. {content} (created: {created_at})")
+                else:
+                    formatted_memories.append(f"{i}. {str(memory)}")
+            
+            return f"📝 Recent memories for task {task_id}:\n\n" + "\n".join(formatted_memories)
+            
+        except Exception as e:
+            return f"❌ Failed to list memories: {str(e)}"
+    
+    @tool(name="get_memory_stats", description="Get statistics about the memory system")
+    async def get_memory_stats(
+        self,
+        task_id: str,
+        agent_id: str
+    ) -> str:
+        """Get statistics about the memory system."""
+        try:
+            # Get task-specific memory count
+            task_memories = await self.memory_manager.get_all(run_id=task_id)
+            task_count = len(task_memories) if task_memories else 0
+            
+            # Get total memory count (if supported)
+            try:
+                all_memories = await self.memory_manager.get_all()
+                total_count = len(all_memories) if all_memories else 0
+            except:
+                total_count = "Unknown"
+            
+            stats = [
+                f"📊 Memory System Statistics:",
+                f"",
+                f"Current Task ({task_id}):",
+                f"  • Memories: {task_count}",
+                f"",
+                f"System Total:",
+                f"  • Total memories: {total_count}",
+                f"  • Memory provider: {type(self.memory_manager).__name__}"
+            ]
+            
+            return "\n".join(stats)
+            
+        except Exception as e:
+            return f"❌ Failed to get memory stats: {str(e)}"
+
+# Create a default instance for backward compatibility
+def create_memory_tool(memory_manager=None):
+    """Create a memory tool instance."""
+    return MemoryTool(memory_manager)
+
+# Export the tool class
+__all__ = ['MemoryTool', 'create_memory_tool', 'set_memory_manager', 'get_memory_manager'] 

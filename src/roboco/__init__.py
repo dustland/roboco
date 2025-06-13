@@ -5,7 +5,7 @@ A production-ready framework for building collaborative AI agent teams.
 Built on AG2 (AutoGen) with configuration-based team setup.
 
 Usage:
-    from roboco import TeamManager, Agent, ToolExecutorAgent
+    from roboco import TeamManager, Agent, UserAgent
     
     # Direct usage
     team = TeamManager("path/to/team.yaml")
@@ -28,7 +28,7 @@ from typing import Optional
 
 # Core classes - the main API
 from .core import (
-    TeamManager, Agent, ToolExecutorAgent, CollaborationResult,
+    TeamManager, Agent, UserAgent, CollaborationResult,
     TeamBuilder
 )
 
@@ -43,7 +43,7 @@ from .event import Event, InMemoryEventBus, EventMonitor, CollaborationMetrics
 from .memory import MemoryManager
 
 # Tool system
-from .tool import AbstractTool, InMemoryToolRegistry
+from .tool import Tool, ToolRegistry
 
 # Version info
 __version__ = "0.7.0"
@@ -53,7 +53,7 @@ __all__ = [
     # Core classes
     "TeamManager",
     "Agent", 
-    "ToolExecutorAgent",
+    "UserAgent",
     "CollaborationResult",
     "TeamBuilder",
     
@@ -71,8 +71,9 @@ __all__ = [
     "MemoryManager",
     
     # Tool system
-    "AbstractTool",
-    "InMemoryToolRegistry",
+    "Tool",
+    "ToolRegistry",
+    
     
     # Package info
     "__version__",

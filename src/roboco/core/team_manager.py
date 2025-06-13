@@ -1,22 +1,23 @@
+"""
+Team Manager - Collaborative Team Management
+
+This module provides a high-level API for managing collaborative teams
+of agents with flexible configuration and tool integration.
+"""
+
 import yaml
-import os
-import importlib
 from typing import Dict, Any, List, Optional
-from pathlib import Path
 from datetime import datetime
 
 from autogen import ConversableAgent
 from autogen.agentchat import initiate_group_chat
+
 from autogen.agentchat.group.patterns import AutoPattern
-
-from .agents import Agent, ToolExecutorAgent
 from .task_manager import TaskManager
-from roboco.tool import create_tool_function_for_ag2
-from roboco.config import create_prompt_loader
-from roboco.core.exceptions import ConfigurationError
-from roboco.event import InMemoryEventBus, Event
-
 from .models import CollaborationResult
+from roboco.core.exceptions import ConfigurationError
+from roboco.event.bus import InMemoryEventBus
+from roboco.event.events import Event
 
 from dotenv import load_dotenv
 
@@ -28,7 +29,7 @@ class CollaborationStartedEvent(Event):
     def __init__(self, team_name: str, task: str, participants: List[str]):
         super().__init__(
             event_type="collaboration.started",
-            payload={
+            data={
                 "team_name": team_name,
                 "task": task,
                 "participants": participants
@@ -40,7 +41,7 @@ class CollaborationCompletedEvent(Event):
     def __init__(self, team_name: str, task: str, participants: List[str], success: bool, summary: str):
         super().__init__(
             event_type="collaboration.completed",
-            payload={
+            data={
                 "team_name": team_name,
                 "task": task,
                 "participants": participants,
@@ -62,37 +63,39 @@ class TeamManager:
     """
 
     def __init__(self, config_path: str, event_bus: Optional[InMemoryEventBus] = None, task_id: Optional[str] = None):
-        """
-        Initialize the team manager.
+        """Initialize the team manager with configuration.
         
         Args:
-            config_path: Path to the team configuration file
-            event_bus: Optional event bus for coordination
-            task_id: Optional existing task ID to continue
+            config_path: Path to team configuration file
+            event_bus: Optional event bus for monitoring
+            task_id: Optional task ID for memory context
         """
+        # Load configuration
         self.config_path = config_path
         self.config = self._load_config()
         
-        # Get config directory for prompt loader
-        config_dir = Path(config_path).parent
-        self.prompt_loader = create_prompt_loader(str(Path(config_path).parent))
-        
-        # Initialize task management
-        workspace_path = Path(config_path).parent / "workspace"
-        self.task_manager = TaskManager(str(workspace_path))
+        # Initialize components
+        self.agents = {}
+        self.pattern = None
+        self.memory_manager = None
+        self.tool_registry = None
         self.task_id = task_id
         
-        # Initialize event bus
+        # Set up event bus
         self.event_bus = event_bus or InMemoryEventBus()
         
-        # Initialize components
-        self.agents: Dict[str, ConversableAgent] = {}
-        self.tools: Dict[str, Any] = {}
-        self.memory_manager = None
-        self.pattern = None  # Will hold the AutoPattern for group chat
+        # Set up task manager
+        self.task_manager = TaskManager()
         
-        # Initialize the team
-        self._initialize_team()
+        # Initialize team components
+        self._initialize_memory()
+        self._initialize_tools()
+        self._initialize_agents()
+        self._setup_group_chat()
+        
+        # Set up memory tools context if task_id is provided
+        if task_id:
+            self._reinitialize_memory_tools()
 
     def _load_config(self) -> Dict[str, Any]:
         """Load and validate team configuration."""
@@ -125,31 +128,36 @@ class TeamManager:
         return merged_vars
 
     def _load_agent_prompt(self, agent_config: Dict[str, Any]) -> str:
-        """
-        Load and process agent prompt from file.
-        
-        Args:
-            agent_config: Agent configuration dictionary
-            
-        Returns:
-            Processed prompt text
-        """
-        prompt_file = agent_config.get("prompt_file")
-        if not prompt_file:
-            # Fallback to system_message if no prompt_file specified
-            return agent_config.get("system_message", "You are a helpful AI Assistant.")
-        
-        # Get merged variables for this agent
+        """Load agent prompt from file or configuration."""
+        # Get merged variables (global + agent-specific)
         variables = self._get_merged_variables(agent_config)
         
-        # Load and process the prompt if prompt loader is available
-        if self.prompt_loader:
+        # Add task_id to variables if available
+        if self.task_id:
+            variables['task_id'] = self.task_id
+        
+        # Check if prompt is specified as a file
+        if "prompt_file" in agent_config:
+            prompt_file = agent_config["prompt_file"]
             try:
-                return self.prompt_loader.load_prompt(prompt_file, variables)
+                prompt_content = self.prompt_loader.load_prompt(prompt_file, variables)
+                
+                # Add task_id instruction if available
+                if self.task_id:
+                    prompt_content += f"\n\nIMPORTANT: Your current task ID is '{self.task_id}'. Use this task_id when calling memory tools."
+                
+                return prompt_content
             except Exception as e:
-                raise ConfigurationError(f"Error loading prompt for agent {agent_config.get('name', 'unknown')}: {e}")
-        else:
-            raise ConfigurationError(f"Cannot load prompt file {prompt_file}: no prompts directory found")
+                raise ConfigurationError(f"Error loading prompt file '{prompt_file}': {e}")
+        
+        # Use system_message directly
+        system_message = agent_config.get("system_message", "You are a helpful AI assistant.")
+        
+        # Add task_id instruction if available
+        if self.task_id:
+            system_message += f"\n\nIMPORTANT: Your current task ID is '{self.task_id}'. Use this task_id when calling memory tools."
+        
+        return system_message
 
     def _initialize_team(self):
         """Initialize all team components from configuration."""
@@ -159,98 +167,172 @@ class TeamManager:
         self._setup_group_chat()
 
     def _initialize_tools(self):
-        """Initialize tools from configuration."""
-
-        # Memory tools are initialized separately by agents that need them
+        """Initialize tool registry and register all tools."""
+        from roboco.tool.base import ToolRegistry
+        from roboco.builtin_tools import MemoryTool, BasicTool, SearchTool
         
-        # Load configured tools
-        tools_config = self.config.get("tools", [])
+        # Create tool registry
+        self.tool_registry = ToolRegistry()
         
-        for tool_config in tools_config:
-            try:
-                # Import the tool class
-                module_path, class_name = tool_config["class"].rsplit(".", 1)
-                module = importlib.import_module(module_path)
-                tool_class = getattr(module, class_name)
-                
-                # Create tool instance
-                tool_instance_config = tool_config.get("config", {})
-                tool_instance = tool_class(**tool_instance_config)
-                
-                # Store tool
-                tool_name = tool_config["name"]
-                self.tools[tool_name] = tool_instance
-                
-            except Exception as e:
-                raise ConfigurationError(f"Error initializing tool {tool_config.get('name', 'unknown')}: {e}")
+        # Register memory tools (required for all agents)
+        if self.memory_manager:
+            memory_tool = MemoryTool(memory_manager=self.memory_manager)
+            self.tool_registry.register("memory", memory_tool)
+        
+        # Register basic tools
+        workspace_path = self.config.get("workspace_path", "./workspace")
+        basic_tool = BasicTool(workspace_path=workspace_path)
+        self.tool_registry.register("basic", basic_tool)
+        
+        # Register search tools if available
+        search_manager = self._create_search_manager()
+        if search_manager:
+            search_tool = SearchTool(search_manager=search_manager)
+            self.tool_registry.register("search", search_tool)
+        
+        print(f"🧰 Initialized tool registry with {len(self.tool_registry.list())} tools")
 
     def _initialize_agents(self):
         """Initialize agents from configuration."""
         agents_config = self.config.get("agents", [])
-        
         if not agents_config:
-            raise ConfigurationError("No agents configured in the team")
+            raise ConfigurationError("No agents configured")
         
+        # Initialize agents
+        self.agents = {}
+        
+        # Create each agent
         for agent_config in agents_config:
             try:
-                # Import the agent class
-                module_path, class_name = agent_config["class"].rsplit(".", 1)
-                module = importlib.import_module(module_path)
-                agent_class = getattr(module, class_name)
+                # Get agent name
+                agent_name = agent_config.get("name")
+                if not agent_name:
+                    raise ConfigurationError("Agent configuration missing 'name'")
                 
-                # Load agent prompt
+                # Get agent role
+                agent_role = agent_config.get("role")
+                if not agent_role:
+                    raise ConfigurationError(f"Agent {agent_name} configuration missing 'role'")
+                
+                # Get agent class
+                agent_class = agent_config.get("class", "ConversableAgent")
+                
+                # Get agent system message
                 system_message = self._load_agent_prompt(agent_config)
                 
-                # Prepare agent tools as functions
-                agent_tools = agent_config.get("tools", [])
-                agent_functions = []
+                # Create agent based on class
+                if agent_class == "ConversableAgent":
+                    from autogen import ConversableAgent
+                    llm_config = agent_config.get("llm_config", {})
+                    agent = ConversableAgent(
+                        name=agent_name,
+                        system_message=system_message,
+                        llm_config=llm_config,
+                        human_input_mode="NEVER"
+                    )
                 
-                # Add memory tools if memory manager is available
-                if self.memory_manager:
-                    from roboco.builtin_tools.memory_tools import create_memory_tools
-                    memory_tools = create_memory_tools(self.memory_manager, task_id=self.task_id)
-                    
-                    for memory_tool in memory_tools:
-                        tool_function = create_tool_function_for_ag2(memory_tool)
-                        self.tools[memory_tool.name] = memory_tool
-                        agent_functions.append(tool_function)
+                elif agent_class == "AssistantAgent":
+                    from autogen import AssistantAgent
+                    llm_config = agent_config.get("llm_config", {})
+                    agent = AssistantAgent(
+                        name=agent_name,
+                        system_message=system_message,
+                        llm_config=llm_config,
+                        human_input_mode="NEVER"
+                    )
                 
-                # Add agent-specific tools
-                for tool_name in agent_tools:
-                    if tool_name in self.tools:
-                        tool_instance = self.tools[tool_name]
-                        tool_function = create_tool_function_for_ag2(tool_instance)
-                        agent_functions.append(tool_function)
-                    else:
-                        raise ConfigurationError(f"Tool '{tool_name}' not found for agent '{agent_config['name']}'")
+                elif agent_class == "UserProxyAgent":
+                    from autogen import UserProxyAgent
+                    agent = UserProxyAgent(
+                        name=agent_name,
+                        system_message=system_message,
+                        human_input_mode="NEVER",
+                        max_consecutive_auto_reply=10
+                    )
                 
-                # Create agent with functions
-                agent_name = agent_config["name"]
-                llm_config = agent_config.get("llm_config")
+                elif agent_class == "UserAgent":
+                    from roboco.core.agents import UserAgent
+                    agent = UserAgent(
+                        name=agent_name,
+                        system_message=system_message,
+                        human_input_mode="NEVER"
+                    )
                 
-                # Process LLM config if provided
-                if llm_config:
-                    llm_config = llm_config.copy()
-                    
-                    # Set API key from environment if not specified
-                    if "config_list" in llm_config:
-                        for config in llm_config["config_list"]:
-                            if "api_key" not in config or config["api_key"] is None:
-                                config["api_key"] = os.getenv("OPENAI_API_KEY")
+                else:
+                    raise ConfigurationError(f"Unknown agent class: {agent_class}")
                 
-                # Create agent instance
-                agent = agent_class(
-                    name=agent_name,
-                    system_message=system_message,
-                    llm_config=llm_config,
-                    functions=agent_functions if agent_functions else None,  # Only pass functions if there are any
-                    human_input_mode="NEVER"  # Set to NEVER by default, will be overridden later if needed
-                )
-                
+                # Store agent
                 self.agents[agent_name] = agent
                 
+                print(f"🤖 Created agent '{agent_name}' with role '{agent_role}'")
+            
             except Exception as e:
                 raise ConfigurationError(f"Error initializing agent {agent_config.get('name', 'unknown')}: {e}")
+        
+        # ENFORCE: Must have a UserAgent
+        executor = self._get_tool_executor()
+        if executor is None:
+            raise ConfigurationError("No UserAgent found in team configuration. Every team must have a UserAgent to act as the user proxy and tool executor.")
+        
+        print(f"🔧 Using {executor.name} as tool executor for all agents")
+        
+        # Register tools for each agent
+        for agent_config in agents_config:
+            agent_name = agent_config["name"]
+            agent = self.agents[agent_name]
+            
+            # Skip tool registration for the executor itself
+            if agent == executor:
+                continue
+            
+            # Always include memory tools for all agents
+            tools_to_register = ["memory"]
+            
+            # Add any additional tools specified in config
+            agent_tools = agent_config.get("tools", [])
+            tools_to_register.extend(agent_tools)
+            
+            # Get functions for all tools
+            ag2_functions = self.tool_registry.get_functions_for_tools(tools_to_register)
+            
+            # Register each function with AG2
+            from autogen import register_function
+            for func_name, func in ag2_functions.items():
+                register_function(
+                    func,
+                    caller=agent,
+                    executor=executor,
+                    description=f"Tool: {func_name}"
+                )
+            
+            print(f"🛠️ Registered {len(ag2_functions)} tools for agent '{agent_name}': {tools_to_register}")
+
+    def _get_tool_executor(self):
+        """Find the UserAgent to use as executor for tool functions."""
+        for agent in self.agents.values():
+            if hasattr(agent, '__class__') and 'UserAgent' in agent.__class__.__name__:
+                return agent
+        return None
+
+    def _create_search_manager(self):
+        """Create a search manager instance."""
+        try:
+            from roboco.search import SearchManager
+            import os
+            
+            api_key = os.getenv("SERPAPI_API_KEY")
+            if api_key:
+                search_manager = SearchManager(
+                    default_backend="serpapi",
+                    serpapi={"api_key": api_key}
+                )
+                return search_manager
+            else:
+                print(f"⚠️ No SERPAPI_API_KEY found - search tools may not work")
+                return None
+        except ImportError:
+            print(f"⚠️ Search module not available - search tools disabled")
+            return None
 
     def _setup_group_chat(self):
         """Setup the group chat for collaboration using modern AG2 AutoPattern."""
@@ -339,36 +421,11 @@ class TeamManager:
             raise ConfigurationError(f"Error initializing memory system: {e}")
 
     def _reinitialize_memory_tools(self):
-        """Reinitialize memory tools with the correct task_id after task creation."""
-        if not self.memory_manager or not self.task_id:
-            return
-        
-        from roboco.builtin_tools.memory_tools import create_memory_tools
-        from roboco.tool.bridge import create_tool_function_for_ag2
-        
-        # Create memory tools with the correct task_id
-        memory_tools = create_memory_tools(self.memory_manager, task_id=self.task_id)
-        
-        # Add memory tools to each agent
-        for agent_name, agent in self.agents.items():
-            if hasattr(agent, '_function_map'):
-                # Add memory tools to the agent's function map
-                for memory_tool in memory_tools:
-                    tool_function = create_tool_function_for_ag2(memory_tool)
-                    self.tools[memory_tool.name] = memory_tool
-                    
-                    # Add to agent's function map
-                    if not hasattr(agent, '_function_map'):
-                        agent._function_map = {}
-                    agent._function_map[memory_tool.name] = tool_function
-                    
-                    # Also add to the agent's functions list if it exists
-                    if hasattr(agent, '_functions') and agent._functions:
-                        agent._functions.append(tool_function)
-                    elif hasattr(agent, '_functions'):
-                        agent._functions = [tool_function]
-        
-        print(f"🧠 Memory tools reinitialized with task_id: {self.task_id}")
+        """Memory tools context is already updated with task_id during initialization."""
+        # Task_id is already included in system messages during agent creation
+        # and memory tools receive it through prompt instructions
+        if self.task_id:
+            print(f"🧠 Memory tools context ready with task_id: {self.task_id}")
 
     async def run(
         self, 
@@ -413,7 +470,7 @@ class TeamManager:
             )
             print(f"🔄 Continuing task session: {self.task_id}")
         
-        # Reinitialize memory tools with the correct task_id
+        # Memory tools context is already ready with task_id
         self._reinitialize_memory_tools()
         
         # Get team configuration
@@ -461,18 +518,16 @@ class TeamManager:
                 if "'NoneType' object has no attribute 'strip'" in str(ae):
                     print(f"🐛 Detected AG2 bug with None message content. Attempting workaround...")
                     
-                    # Try with a more explicit message format
-                    formatted_task = {
-                        "role": "user",
-                        "content": str(task) if task else "Please begin the task."
-                    }
-                    
                     try:
-                        result, context, last_agent = initiate_group_chat(
-                            pattern=self.pattern,
-                            messages=[formatted_task],  # Pass as list
+                        # Use a different approach - start with the first agent directly
+                        first_agent = list(self.agents.values())[0]
+                        result = first_agent.initiate_chat(
+                            self.pattern,
+                            message=task if task else "Please begin the task.",
                             max_rounds=max_rounds or team_config.get("max_rounds", 10)
                         )
+                        context = result
+                        last_agent = first_agent
                         print(f"✅ AG2 bug workaround successful")
                     except Exception as retry_error:
                         print(f"❌ AG2 bug workaround failed: {retry_error}")

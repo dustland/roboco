@@ -1,19 +1,15 @@
-# This file makes the 'tools' directory a Python package.
-
 """
 Roboco Built-in Tools
 
-This module contains tools that come built-in with the Roboco framework.
-These tools provide core functionality for common tasks like context management,
-file operations, and basic utilities.
+Simple built-in tools that can be registered like any other tool.
 """
 
-from .basic_tools import EchoTool, FileSystemTool
-from .search_tools import WebSearchTool, SerpSearchTool
+from .memory_tools import MemoryTool
+from .basic_tools import BasicTool
+from .search_tools import SearchTool
 
 __all__ = [
-    "EchoTool",
-    "FileSystemTool",
-    "WebSearchTool",
-    "SerpSearchTool",  # Alias for backward compatibility
-]
+    'MemoryTool',
+    'BasicTool', 
+    'SearchTool',
+] 

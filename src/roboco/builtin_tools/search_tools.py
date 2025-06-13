@@ -1,192 +1,122 @@
 """
-Web Search Tools for RoboCo
-
-Thin wrapper around the roboco.search module that provides tool interfaces
-for the agent system.
+Search Tools - Decorator-based implementation using the new Tool system.
 """
 
-from typing import Dict, List, Optional, Any, AsyncGenerator
+import os
+import httpx
+from typing import Annotated, Optional
+from roboco.tool.base import Tool, tool
 
-from roboco.tool.interfaces import AbstractTool
-from roboco.config.models import ToolParameterConfig
-from roboco.search import SearchManager
+# Global search manager instance
+_search_manager = None
 
+def set_search_manager(manager):
+    """Set the global search manager instance."""
+    global _search_manager
+    _search_manager = manager
 
-class WebSearchTool(AbstractTool):
-    """
-    Web search tool that provides a clean interface to multiple search backends.
+def get_search_manager():
+    """Get the global search manager instance."""
+    return _search_manager
+
+class SearchTool(Tool):
+    """Search and web content extraction tools using the new decorator-based system."""
     
-    This is the main search tool that should be used by agents. It automatically
-    handles backend selection and provides a consistent interface regardless of
-    the underlying search provider.
-    """
+    def __init__(self, search_manager=None):
+        super().__init__()
+        self.search_manager = search_manager or get_search_manager()
     
-    def __init__(self, api_key: Optional[str] = None, backend: str = "serpapi", **backend_configs):
-        """
-        Initialize web search tool.
-        
-        Args:
-            api_key: Search API key (primarily for SerpAPI)
-            backend: Default search backend to use
-            **backend_configs: Additional configuration for search backends
-        """
-        # Set up backend configurations
-        if api_key:
-            backend_configs.setdefault("serpapi", {})["api_key"] = api_key
-        
-        # Initialize search manager
-        self.search_manager = SearchManager(
-            default_backend=backend,
-            **backend_configs
-        )
-
-    @property
-    def name(self) -> str:
-        return "web_search"
-
-    @property
-    def description(self) -> str:
-        return "Search the web for information on any topic using multiple search engines"
-
-    def get_invocation_schema(self) -> List[ToolParameterConfig]:
-        return [
-            ToolParameterConfig(
-                name="query",
-                type="string",
-                description="The search query to execute",
-                required=True
-            ),
-            ToolParameterConfig(
-                name="engine",
-                type="string",
-                description="Search engine to use (google, bing, yahoo, baidu, yandex, duckduckgo)",
-                required=False,
-                default="google"
-            ),
-            ToolParameterConfig(
-                name="max_results",
-                type="integer",
-                description="Maximum number of results to return (1-20)",
-                required=False,
-                default=10
-            ),
-            ToolParameterConfig(
-                name="country",
-                type="string",
-                description="Country code for localized results (e.g., 'us', 'cn', 'jp')",
-                required=False,
-                default="us"
-            ),
-            ToolParameterConfig(
-                name="language",
-                type="string",
-                description="Language code for results (e.g., 'en', 'zh', 'ja')",
-                required=False,
-                default="en"
-            ),
-            ToolParameterConfig(
-                name="backend",
-                type="string",
-                description="Search backend to use (serpapi)",
-                required=False,
-                default="serpapi"
-            )
-        ]
-
-    @classmethod
-    def get_config_schema(cls) -> Dict[str, Any]:
-        return {
-            "type": "object",
-            "properties": {
-                "api_key": {
-                    "type": "string",
-                    "description": "Search API key for authentication"
-                },
-                "backend": {
-                    "type": "string",
-                    "description": "Default search backend (serpapi)",
-                    "default": "serpapi"
-                }
-            }
-        }
-
-    async def run(self, input_data: Any, config: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-        """
-        Execute web search.
-        
-        Args:
-            input_data: Dictionary containing search parameters
-            config: Optional configuration overrides
-            
-        Returns:
-            Dictionary containing search results and metadata
-        """
-        # Extract parameters
-        query = input_data.get("query")
-        if not query:
-            raise ValueError("Query parameter is required")
-        
-        search_params = {
-            "engine": input_data.get("engine", "google"),
-            "max_results": input_data.get("max_results", 10),
-            "country": input_data.get("country", "us"),
-            "language": input_data.get("language", "en"),
-        }
-        
-        backend = input_data.get("backend")
-        
+    @tool(name="web_search", description="Search the web for information on any topic using multiple search engines")
+    async def web_search(
+        self,
+        task_id: str,
+        agent_id: str,
+        query: Annotated[str, "Search query to find information"],
+        max_results: Annotated[int, "Maximum number of results to return"] = 10
+    ) -> str:
+        """Search the web for information using configured search engines."""
         try:
-            # Execute search
-            response = await self.search_manager.search(
-                query=query,
-                backend=backend,
-                **search_params
-            )
+            if not self.search_manager:
+                return "❌ Search system not configured. Please set up a search manager."
             
-            # Convert SearchResponse to dictionary format expected by tools
-            return {
-                "query": response.query,
-                "engine": response.engine,
-                "results": [
-                    {
-                        "title": result.title,
-                        "url": result.url,
-                        "snippet": result.snippet,
-                        "position": result.position,
-                        "relevance_score": result.relevance_score,
-                        "language": result.language,
-                        "date": result.date,
-                        "displayed_link": result.displayed_link,
-                        "summary": result.summary,
-                    }
-                    for result in response.results
-                ],
-                "total_results": response.total_results,
-                "response_time": response.response_time,
-                "timestamp": response.timestamp,
-                "success": response.success,
-                "error": response.error,
-                "backend_used": backend or self.search_manager.default_backend
-            }
+            # Perform the search
+            results = await self.search_manager.search(query, max_results=max_results)
+            
+            if not results:
+                return f"🔍 No results found for query: '{query}'"
+            
+            # Format results for display
+            formatted_results = []
+            for i, result in enumerate(results[:max_results], 1):
+                title = result.get('title', 'No title')
+                url = result.get('url', 'No URL')
+                snippet = result.get('snippet', result.get('description', 'No description'))
+                
+                # Truncate long snippets
+                if len(snippet) > 200:
+                    snippet = snippet[:200] + "..."
+                
+                formatted_results.append(f"{i}. **{title}**\n   {snippet}\n   🔗 {url}")
+            
+            return f"🔍 Found {len(results)} results for '{query}':\n\n" + "\n\n".join(formatted_results)
             
         except Exception as e:
-            return {
-                "query": query,
-                "engine": search_params.get("engine", "google"),
-                "results": [],
-                "total_results": 0,
-                "error": str(e),
-                "success": False,
-                "timestamp": None,
-                "backend_used": backend or self.search_manager.default_backend
-            }
+            return f"❌ Search failed: {str(e)}"
+    
+    @tool(name="extract_url", description="Extract and clean content from a URL using Jina Reader API")
+    async def extract_url(
+        self,
+        task_id: str,
+        agent_id: str,
+        url: Annotated[str, "The URL to extract content from"],
+        max_length: Annotated[int, "Maximum length of extracted content in characters"] = 8000
+    ) -> str:
+        """Extract and clean content from a URL using Jina Reader API."""
+        try:
+            # Use Jina Reader API to extract clean content
+            jina_url = f"https://r.jina.ai/{url}"
+            
+            # Prepare headers with API key if available
+            headers = {}
+            
+            # Try to get Jina API key from environment
+            jina_api_key = os.getenv("JINA_API_KEY")
+            if jina_api_key:
+                headers["Authorization"] = f"Bearer {jina_api_key}"
+                print(f"🔑 Using Jina API key for higher rate limits")
+            else:
+                print(f"ℹ️ No JINA_API_KEY found, using free tier (lower rate limits)")
+            
+            # Make request to Jina Reader
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                response = await client.get(jina_url, headers=headers)
+                response.raise_for_status()
+                
+                content = response.text
+                
+                # Truncate if too long
+                if len(content) > max_length:
+                    content = content[:max_length] + "\n\n[Content truncated...]"
+                
+                return f"📄 Extracted content from {url}:\n\n{content}"
+                
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 429:
+                return f"❌ Rate limit exceeded. Please try again later or set JINA_API_KEY for higher limits."
+            elif e.response.status_code == 404:
+                return f"❌ URL not found or cannot be accessed: {url}"
+            else:
+                return f"❌ HTTP error {e.response.status_code}: {e.response.text}"
+        except httpx.TimeoutException:
+            return f"❌ Request timed out while extracting content from {url}"
+        except Exception as e:
+            return f"❌ Failed to extract content: {str(e)}"
 
-    async def stream(self, input_data: Any, config: Optional[Dict[str, Any]] = None) -> AsyncGenerator[Any, None]:
-        """Stream search results."""
-        result = await self.run(input_data, config)
-        yield result
+# Create a default instance for backward compatibility
+def create_search_tool(search_manager=None):
+    """Create a search tool instance."""
+    return SearchTool(search_manager)
 
+# Export the tool class
+__all__ = ['SearchTool', 'create_search_tool', 'set_search_manager', 'get_search_manager']
 
-# Aliases for backward compatibility
-SerpSearchTool = WebSearchTool
-SerpWebSearchTool = WebSearchTool 

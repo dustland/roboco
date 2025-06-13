@@ -122,9 +122,6 @@ flowchart TB
         Tool["Tool System"]:::sub
         Event["Event System"]:::sub
     end
-
-    classDef agent fill:#e1f5fe
-    classDef sub fill:#f3e5f5
 ```
 
 **Core Components:**

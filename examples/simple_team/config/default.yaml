@@ -1,78 +1,66 @@
-# Simple Team Configuration
-# Basic multi-agent collaboration
-
 agents:
   - name: planner
-    class: "roboco.core.agents.Agent"
-    prompt_file: "planner.md"
+    class: roboco.core.agents.Agent
+    prompt_file: planner.md
     tools:
-      - web_search
+      - search_tools
     llm_config:
       config_list:
-        - model: "gpt-4o-mini"
+        - model: gpt-4o-mini
           api_key: null
-
   - name: researcher
-    class: "roboco.core.agents.Agent"
-    prompt_file: "researcher.md"
+    class: roboco.core.agents.Agent
+    prompt_file: researcher.md
     tools:
-      - web_search
+      - search_tools
     llm_config:
       config_list:
-        - model: "gpt-4o-mini"
+        - model: gpt-4o-mini
           api_key: null
-
   - name: writer
-    class: "roboco.core.agents.Agent"
-    prompt_file: "writer.md"
+    class: roboco.core.agents.Agent
+    prompt_file: writer.md
     tools: []
     llm_config:
       config_list:
-        - model: "gpt-4o-mini"
+        - model: gpt-4o-mini
           api_key: null
-
-tools:
-  - name: web_search
-    class: "roboco.builtin_tools.search_tools.WebSearchTool"
-    config:
-      api_key: null # Uses SERPAPI_KEY environment variable
-
 memory:
   vector_store:
-    provider: "chroma"
+    provider: chroma
     config:
-      collection_name: "simple_team_memory"
-      path: "./workspace/memory_db"
+      collection_name: simple_team_memory
+      path: ./workspace/memory_db
   llm:
-    provider: "openai"
+    provider: openai
     config:
-      model: "gpt-4o-mini"
+      model: gpt-4o-mini
       temperature: 0.1
       max_tokens: 2048
   embedder:
-    provider: "openai"
+    provider: openai
     config:
-      model: "text-embedding-3-small"
-  version: "v1.1"
-
+      model: text-embedding-3-small
+  version: v1.1
 team:
   max_rounds: 20
-  speaker_selection_method: "auto"
+  speaker_selection_method: auto
   allow_repeat_speaker: true
   enable_function_calls: true
-  human_input_mode: "NEVER" # Change to "TERMINATE" for production
-
+  human_input_mode: NEVER
 events:
-  bus_type: "memory"
+  bus_type: memory
   persistence: true
-
-  # Auto-emit events for significant artifacts based on memory metadata patterns
   auto_emit_patterns:
-    - metadata_filter: { "artifact_type": "plan", "status": "approved" }
-      event_name: "plan_created"
-
-    - metadata_filter: { "artifact_type": "research", "status": "complete" }
-      event_name: "research_completed"
-
-    - metadata_filter: { "artifact_type": "document", "status": "final" }
-      event_name: "document_created"
+    - metadata_filter:
+        artifact_type: plan
+        status: approved
+      event_name: plan_created
+    - metadata_filter:
+        artifact_type: research
+        status: complete
+      event_name: research_completed
+    - metadata_filter:
+        artifact_type: document
+        status: final
+      event_name: document_created
