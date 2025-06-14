@@ -6,7 +6,7 @@ agents:
       - search_tools
     llm_config:
       config_list:
-        - model: gpt-4o-mini
+        - model: deepseek-chat
           api_key: null
   - name: researcher
     class: roboco.core.agents.Agent
@@ -15,7 +15,7 @@ agents:
       - search_tools
     llm_config:
       config_list:
-        - model: gpt-4o-mini
+        - model: deepseek-chat
           api_key: null
   - name: writer
     class: roboco.core.agents.Agent
@@ -23,7 +23,7 @@ agents:
     tools: []
     llm_config:
       config_list:
-        - model: gpt-4o-mini
+        - model: deepseek-chat
           api_key: null
 memory:
   vector_store:
@@ -32,9 +32,9 @@ memory:
       collection_name: simple_team_memory
       path: ./workspace/memory_db
   llm:
-    provider: openai
+    provider: deepseek
     config:
-      model: gpt-4o-mini
+      model: deepseek-chat
       temperature: 0.1
       max_tokens: 2048
   embedder:

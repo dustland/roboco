@@ -9,7 +9,11 @@ to solve complex tasks, showcasing the new Task-centric API design.
 import os
 import sys
 import asyncio
+import logging
 from pathlib import Path
+
+# Configure logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 # Add the src directory to Python path
 project_root = Path(__file__).parent.parent.parent

@@ -11,10 +11,15 @@ This is where the "thinking" happens.
 """
 
 import logging
+import os
 from typing import Dict, List, Optional, Any, Union, Callable
 from dataclasses import dataclass, field
 from datetime import datetime
 import json
+import asyncio
+import openai
+
+from ..memory import create_memory_backend, MemoryBackend, MemoryQuery, MemoryType
 
 logger = logging.getLogger(__name__)
 
@@ -73,8 +78,9 @@ class Message:
 @dataclass
 class BrainConfig:
     """Brain configuration for reasoning and LLM integration."""
-    model: str = "gpt-4"
+    model: str = "deepseek-chat"
     api_key: Optional[str] = None
+    base_url: Optional[str] = "https://api.deepseek.com"
     temperature: float = 0.7
     max_tokens: Optional[int] = None
     timeout: int = 30
@@ -101,13 +107,25 @@ class Brain:
     def __init__(self, agent: "Agent", config: Optional[BrainConfig] = None):
         self.agent = agent
         self.config = config or BrainConfig()
-        self._llm_client = None
+        
+        # Initialize LLM client with DeepSeek support
+        api_key = self.config.api_key or os.getenv("DEEPSEEK_API_KEY") or os.getenv("OPENAI_API_KEY")
+        
+        if self.config.base_url and "deepseek" in self.config.base_url:
+            # Use DeepSeek API
+            self._llm_client = openai.AsyncOpenAI(
+                api_key=api_key,
+                base_url=self.config.base_url
+            )
+        else:
+            # Use OpenAI API
+            self._llm_client = openai.AsyncOpenAI(api_key=api_key)
         
         # Thinking state
         self._reasoning_context: Dict[str, Any] = {}
         self._thinking_history: List[Dict[str, Any]] = []
         
-        logger.debug(f"Initialized Brain for agent: {self.agent.name}")
+        logger.debug(f"Initialized Brain for agent: {self.agent.name} with model: {self.config.model}")
     
     async def think(
         self,
@@ -134,15 +152,24 @@ class Brain:
                 "agent": self.agent.name
             }
             
-            # For now, return a thoughtful response
-            # TODO: Integrate actual LLM reasoning
-            last_message = messages[-1] if messages else None
+            # Prepare messages for the LLM
+            llm_messages = [msg.to_openai_format() for msg in messages]
+            if self.agent.system_message:
+                llm_messages.insert(0, {"role": "system", "content": self.agent.system_message})
+
+            # Actual LLM reasoning
+            logger.info(f"🧠 {self.agent.name} is thinking. Sending {len(llm_messages)} messages to {self.config.model}...")
+            llm_response = await self._llm_client.chat.completions.create(
+                model=self.config.model,
+                messages=llm_messages,
+                temperature=self.config.temperature,
+                max_tokens=self.config.max_tokens,
+                # TODO: Add tool/function calling logic
+            )
+            logger.info(f"🧠 {self.agent.name} received response from {self.config.model}.")
             
-            if last_message:
-                response_content = f"🧠 {self.agent.name} thinking about: {last_message.content}"
-            else:
-                response_content = f"🧠 {self.agent.name} ready to think and respond"
-            
+            response_content = llm_response.choices[0].message.content
+
             # Create thoughtful response
             response = Message(
                 content=response_content,
@@ -150,7 +177,8 @@ class Brain:
                 role="assistant",
                 metadata={
                     "thinking_step": thinking_step,
-                    "brain_generated": True
+                    "brain_generated": True,
+                    "llm_usage": dict(llm_response.usage),
                 }
             )
             

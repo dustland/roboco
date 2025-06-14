@@ -9,14 +9,23 @@ This is a backwards compatibility layer that wraps our new elegant architecture.
 
 import json
 import uuid
+import secrets
+import string
 from datetime import datetime
 from typing import Dict, List, Optional, Any, Callable, Union
 from pathlib import Path
 from dataclasses import dataclass, asdict
 from enum import Enum
+import logging
 
 from .team import Team, TeamConfig, create_team
 from .agent import Agent, create_assistant_agent
+from .memory import Memory
+from .event import EventBus, Event
+from .brain import ChatHistory
+from ..utils.id import generate_short_id
+
+logger = logging.getLogger(__name__)
 
 
 class TaskStatus(Enum):
@@ -27,25 +36,6 @@ class TaskStatus(Enum):
     COMPLETED = "completed"
     FAILED = "failed"
 
-
-class TaskResult:
-    """Result of a task execution."""
-    def __init__(
-        self, 
-        summary: str,
-        chat_history: List[Dict[str, Any]],
-        participants: List[str],
-        success: bool = True,
-        error_message: Optional[str] = None,
-        task_id: Optional[str] = None
-    ):
-        self.summary = summary
-        self.chat_history = chat_history
-        self.conversation_history = chat_history  # Alias for backwards compatibility
-        self.participants = participants
-        self.success = success
-        self.error_message = error_message
-        self.task_id = task_id
 
 
 @dataclass
@@ -102,6 +92,14 @@ class ChatSession:
         return {"success": True, "message_id": len(self._history)}
 
 
+@dataclass
+class TaskResult:
+    """Result of a completed task."""
+    success: bool
+    summary: str
+    conversation_history: ChatHistory
+
+
 class Task:
     """
     Main Task class for managing multi-agent collaboration.
@@ -116,11 +114,14 @@ class Task:
             config = TaskConfig(**config)
         
         self.config = config
-        self.task_id = str(uuid.uuid4())
-        self.config_path = config_path or ""
         self.description = config.description
-        self.status = TaskStatus.CREATED.value
-        self.created_at = datetime.now().isoformat()
+        self.status: str = "created"
+        
+        # Generate a short, URL-friendly ID
+        self.task_id = generate_short_id()
+        
+        self.config_path = config_path or ""
+        self.created_at = datetime.now()
         self.updated_at = self.created_at
         self.metadata: Dict[str, Any] = config.metadata.copy()
         
@@ -135,7 +136,7 @@ class Task:
         """Update task status and save state."""
         old_status = self.status
         self.status = status
-        self.updated_at = datetime.now().isoformat()
+        self.updated_at = datetime.now()
         
         # Call registered handlers for status change
         self._call_handlers("task.status_changed", {
@@ -154,7 +155,7 @@ class Task:
             except Exception as e:
                 print(f"Warning: Event handler failed: {e}")
     
-    async def start(self, description: Optional[str] = None) -> TaskResult:
+    async def start(self, description: Optional[str] = None) -> 'TaskResult':
         """Start or resume the task collaboration."""
         if description:
             self.description = description
@@ -193,57 +194,36 @@ class Task:
                 initial_message=self.description
             )
             
-            # Convert to old format for backwards compatibility
-            history_dicts = []
-            for msg in chat_history.messages:
-                history_dicts.append({
-                    "role": msg.role,
-                    "content": msg.content,
-                    "sender": msg.sender,
-                    "timestamp": msg.timestamp.isoformat()
-                })
-            
-            # Create result
+            summary = f"Task completed: {self.description}"
+            if chat_history.messages:
+                # A simple summary from the last message
+                summary = chat_history.messages[-1].content
+
+            # Create and return a TaskResult
             result = TaskResult(
-                summary=f"Task completed: {self.description}",
-                chat_history=history_dicts,
-                participants=list(self._team.get_agent_names()),
                 success=True,
-                task_id=self.task_id
+                summary=summary,
+                conversation_history=chat_history
             )
-            
+
             self._update_status('completed')
-            
-            # Call completion handlers
-            self._call_handlers("task.completed", {
-                "task_id": self.task_id,
-                "result": "success",
-                "timestamp": datetime.now().isoformat()
-            })
-            
+            self._call_handlers("task.completed", asdict(result))
+
             return result
             
         except Exception as e:
+            logger.error(f"Task failed: {e}", exc_info=True)
             self._update_status('failed')
-            
-            # Call failure handlers
-            self._call_handlers("task.failed", {
-                "task_id": self.task_id,
-                "error": str(e),
-                "timestamp": datetime.now().isoformat()
-            })
+            self._call_handlers("task.failed", {"error": str(e)})
             
             return TaskResult(
-                summary=f"Task failed: {str(e)}",
-                chat_history=[],
-                participants=[],
                 success=False,
-                error_message=str(e),
-                task_id=self.task_id
+                summary=f"Task failed: {e}",
+                conversation_history=self._team.chat_history if self._team else ChatHistory()
             )
     
     def stop(self) -> bool:
-        """Stop the task collaboration."""
+        """Stop the task if it is running."""
         if self.status != 'running':
             return False
         
@@ -300,8 +280,8 @@ class Task:
             description=self.description,
             config_path=self.config_path,
             status=self.status,
-            created_at=self.created_at,
-            updated_at=self.updated_at,
+            created_at=self.created_at.isoformat(),
+            updated_at=self.updated_at.isoformat(),
             metadata=self.metadata
         )
     

@@ -14,7 +14,7 @@ agents:
     system_message: "You are a planning specialist who helps break down complex tasks into manageable steps. Focus on creating clear, actionable plans with timelines and resource requirements."
     llm_config:
       config_list:
-        - model: "gpt-4o-mini"
+        - model: "deepseek-chat"
           api_key: null # Will be set from environment
 
   - name: writer
@@ -22,7 +22,7 @@ agents:
     system_message: "You are a professional writer who creates clear, well-structured content. Focus on clarity, accuracy, and engaging presentation of information."
     llm_config:
       config_list:
-        - model: "gpt-4o-mini"
+        - model: "deepseek-chat"
           api_key: null
 
   - name: executor
@@ -30,7 +30,7 @@ agents:
     system_message: "You are a task executor who can use tools to accomplish specific actions. Focus on methodical execution and providing clear status updates."
     llm_config:
       config_list:
-        - model: "gpt-4o-mini"
+        - model: "deepseek-chat"
           api_key: null
 
 # Event configuration
@@ -46,9 +46,9 @@ memory:
       collection_name: "roboco_team"
       path: "./workspace/memory_db"
   llm:
-    provider: "openai"
+    provider: "deepseek"
     config:
-      model: "gpt-4o-mini"
+      model: "deepseek-chat"
       temperature: 0.1
       max_tokens: 2048
   embedder:

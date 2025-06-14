@@ -41,7 +41,7 @@ agent.search_memory("query")
 """
 
 # Task Management API
-from .core.task import create_task, get_task, list_tasks, Task, TaskInfo, ChatSession, TaskResult
+from .core.task import create_task, get_task, list_tasks, Task, TaskInfo, ChatSession
 
 # Core types for advanced usage
 from .core.exceptions import ConfigurationError
@@ -62,7 +62,6 @@ __all__ = [
     "ChatSession",     # Chat interface
     
     # Result types
-    "TaskResult",
     "ConfigurationError",
     
     # Package info

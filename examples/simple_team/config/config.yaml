@@ -17,11 +17,11 @@ core:
 # LLM Settings
 llm:
   # Default model to use when none is specified
-  default_model: "gpt-4o"
+  default_model: "deepseek-chat"
 
   # Global defaults that apply when not specified in model configurations
   defaults:
-    api_key: "${OPENAI_API_KEY}" # Set in environment or .env file
+    api_key: "${DEEPSEEK_API_KEY}" # Set in environment or .env file
     max_tokens: 8192
     temperature: 0.2
     terminate_msg: "TERMINATE"
