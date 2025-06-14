@@ -230,6 +230,12 @@ class Agent:
         # Update conversation count
         self._conversation_count += 1
         
+        # Debug: Log what we're returning
+        if response:
+            logger.debug(f"🔍 Agent {self.name} returning response: '{response.content[:100]}...'")
+        else:
+            logger.debug(f"🔍 Agent {self.name} returning None response")
+        
         return response
     
     async def _generate_system_reply(self, message: Message) -> Optional[Message]:

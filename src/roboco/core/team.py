@@ -10,6 +10,7 @@ import json
 from typing import Dict, List, Optional, Any, Callable, Union
 from dataclasses import dataclass
 from enum import Enum
+from pathlib import Path
 
 from .agent import Agent
 from .brain import Message, ChatHistory
@@ -94,6 +95,72 @@ class Team:
         if self._tool_executor:
             logger.info(f"Tool executor: {self._tool_executor.name}")
     
+    @classmethod
+    def from_config(cls, config_dir: str) -> "Team":
+        """
+        Create a Team from a configuration directory.
+        
+        Args:
+            config_dir: Directory containing team.yaml and prompts/
+            
+        Returns:
+            Configured Team ready to run
+        """
+        from ..config import load_team_config
+        from ..config.team_loader import TeamLoader
+        
+        config_path = Path(config_dir)
+        team_yaml = config_path / "team.yaml"
+        
+        if not team_yaml.exists():
+            raise FileNotFoundError(f"team.yaml not found in {config_dir}")
+        
+        # Load team configuration
+        team_config = load_team_config(str(team_yaml))
+        
+        # Create agents from config
+        loader = TeamLoader(str(config_path))
+        agent_configs = loader.create_agents(team_config)
+        
+        # Convert to Agent objects
+        agents = []
+        for agent_config, tools in agent_configs:
+            # Create agent from config
+            agent = Agent(config=agent_config)
+            
+            # Add tools to agent (placeholder - tools would be loaded separately)
+            if tools:
+                logger.info(f"Agent {agent.name} has tools: {tools}")
+            
+            agents.append(agent)
+        
+        # Map speaker selection method
+        selection_method_map = {
+            "auto": SpeakerSelectionMethod.ROUND_ROBIN,  # Default to round robin
+            "round_robin": SpeakerSelectionMethod.ROUND_ROBIN,
+            "random": SpeakerSelectionMethod.RANDOM,
+            "llm_based": SpeakerSelectionMethod.LLM_BASED,
+            "manual": SpeakerSelectionMethod.MANUAL,
+            "custom": SpeakerSelectionMethod.CUSTOM
+        }
+        
+        speaker_selection = selection_method_map.get(
+            team_config.speaker_selection_method, 
+            SpeakerSelectionMethod.ROUND_ROBIN
+        )
+        
+        # Create team config for the Team class
+        team_config_dict = {
+            "name": team_config.name,
+            "max_rounds": team_config.max_rounds,
+            "speaker_selection": speaker_selection,
+            "allow_repeat_speaker": True,  # Default
+            "enable_memory": True,  # Default
+            "termination_keywords": team_config.auto_terminate_keywords or ["TERMINATE"]
+        }
+        
+        return cls(config=team_config_dict, agents=agents)
+    
     def _validate_agents(self):
         """Validate team configuration."""
         if not self.agents:
@@ -133,12 +200,12 @@ class Team:
         """Get an agent by name."""
         return self.agents.get(name)
     
-    async def start_conversation(
+    async def run(
         self, 
         initial_message: str,
         initial_speaker: Optional[str] = None
     ) -> ChatHistory:
-        """Start a team conversation."""
+        """Run a team conversation (AG2 GroupChat style)."""
         if self.is_active:
             raise RuntimeError("Team conversation is already active")
         
@@ -146,7 +213,17 @@ class Team:
         self.current_round = 0
         
         try:
-            # Select initial speaker
+            # Add user message to history first
+            user_msg = Message(
+                content=initial_message,
+                sender="User",
+                recipient="Team",
+                role="user"
+            )
+            self.chat_history.add_message(user_msg)
+            logger.info(f"👤 User: {initial_message}")
+            
+            # Select initial speaker (first agent to respond)
             if initial_speaker:
                 self.current_speaker = self.get_agent(initial_speaker)
                 if not self.current_speaker:
@@ -154,36 +231,23 @@ class Team:
             else:
                 self.current_speaker = self._select_next_speaker(None)
             
-            # Create initial message
-            initial_msg = Message(
-                content=initial_message,
-                sender="System",
-                recipient=self.current_speaker.name,
-                role="system"
-            )
-            
-            self.chat_history.add_message(initial_msg)
-            
-            # Start conversation loop
-            await self._conversation_loop(initial_msg)
+            # Start team conversation loop
+            await self._team_conversation_loop(user_msg)
             
             return self.chat_history
             
         finally:
             self.is_active = False
     
-    async def _conversation_loop(self, initial_message: Message):
-        """Main conversation loop."""
-        current_message = initial_message
+    async def _team_conversation_loop(self, user_message: Message):
+        """Team conversation loop - AG2 GroupChat style."""
         
-        while (self.current_round < self.config.max_rounds and 
-               not self._should_terminate(current_message)):
+        while self.current_round < self.config.max_rounds:
+            # Current speaker generates response to the conversation
+            logger.debug(f"🎯 Round {self.current_round + 1}: {self.current_speaker.name} responding")
             
-            # Send message to current speaker
-            response = await self.current_speaker.receive_message(
-                current_message, 
-                request_reply=True
-            )
+            # Get response from current speaker (pass full conversation context)
+            response = await self.current_speaker.generate_reply(user_message)
             
             if not response:
                 logger.info("No response generated, ending conversation")
@@ -191,24 +255,30 @@ class Team:
             
             # Add response to history
             self.chat_history.add_message(response)
+            logger.info(f"🤖 {self.current_speaker.name}: {response.content}")
             
             # Check for termination
             if self._should_terminate(response):
                 logger.info("Termination condition met")
                 break
             
-            # Select next speaker
+            # For single agent teams, we're done after one response
+            if len(self.agent_list) == 1:
+                logger.debug("Single agent team - conversation complete")
+                break
+            
+            # Select next speaker for multi-agent teams
             next_speaker = self._select_next_speaker(self.current_speaker)
-            if not next_speaker:
+            if not next_speaker or next_speaker == self.current_speaker:
                 logger.info("No next speaker available, ending conversation")
                 break
             
-            # Update state
+            # Update state for next round
             self.current_speaker = next_speaker
-            current_message = response
             self.current_round += 1
             
-            logger.debug(f"Round {self.current_round}: {next_speaker.name} speaking")
+            # For multi-agent, the response becomes the new message to respond to
+            user_message = response
     
     def _select_next_speaker(self, current_speaker: Optional[Agent]) -> Optional[Agent]:
         """Select the next speaker based on configuration."""

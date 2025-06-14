@@ -159,7 +159,7 @@ class Brain:
                 llm_messages.insert(0, {"role": "system", "content": self.agent.system_message})
 
             # Get available tools for this agent (LLM tools only)
-            tool_schemas = self.agent.tools.get_schemas() if self.config.enable_tool_calling else []
+            tool_schemas = self.agent.get_tool_schemas() if self.config.enable_tool_calling else []
             
             logger.info(f"🧠 {self.agent.name} thinking with {self.config.model}...")
             if tool_schemas:
@@ -189,6 +189,10 @@ class Brain:
             
             response_message = llm_response.choices[0].message
             response_content = response_message.content or ""
+            
+            # Debug: Log what we actually received
+            logger.debug(f"🔍 Response content length: {len(response_content)}")
+            logger.debug(f"🔍 Response content preview: {response_content[:100]}...")
 
             # Check if LLM wants to call tools
             if hasattr(response_message, 'tool_calls') and response_message.tool_calls:
@@ -241,6 +245,7 @@ class Brain:
             self._thinking_history.append(thinking_step)
             
             logger.debug(f"Brain generated response for {self.agent.name}")
+            logger.debug(f"🔍 Returning message with content: '{response.content[:100]}...'")
             return response
             
         except Exception as e:

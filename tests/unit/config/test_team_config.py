@@ -136,7 +136,7 @@ class TestTeamConfigLoading:
         # Load team config and test agent creation
         loader = TeamLoader(str(temp_dir))
         config = loader.load_team_config(str(config_file))
-        agents = loader.load_agents_from_team_config(config)
+        agents = loader.create_agents(config)
         
         assert len(agents) == 1
         agent_config, tools = agents[0]
@@ -164,7 +164,7 @@ class TestTeamConfigLoading:
         
         loader = TeamLoader(str(temp_dir))
         config = loader.load_team_config(str(config_file))
-        agents = loader.load_agents_from_team_config(config)
+        agents = loader.create_agents(config)
         
         agent_config, tools = agents[0]
         # Should use system_message when prompt file fails

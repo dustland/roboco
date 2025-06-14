@@ -2,10 +2,13 @@
 Configuration system for Roboco.
 
 Public API:
-- load_team_config: Load team configuration from YAML files
-- validate_team_config: Validate team configuration
-- MemoryConfig: Memory system configuration (used by memory backends)
-- TeamConfig, LLMProviderConfig: Core config models
+- load_team_config: Load team configuration from YAML files (if needed)
+- MemoryConfig: Memory system configuration (used by memory backends)  
+- TeamConfig, LLMProviderConfig: Core config models (if needed)
+
+Recommended usage:
+    from roboco.core.team import Team
+    team = Team.from_config("config_dir")
 """
 
 from .models import (
@@ -15,17 +18,15 @@ from .models import (
 )
 from .team_loader import (
     load_team_config,
-    validate_team_config
 )
 
 # Note: AgentConfig imported in individual modules to avoid circular imports
 
 __all__ = [
-    # Main API (matching design document)
+    # Main API (for advanced usage - prefer Team.from_config())
     "load_team_config",
-    "validate_team_config",
     
-    # Core config models used by other modules
+    # Core config models (for advanced usage)
     "TeamConfig",
     "LLMProviderConfig", 
     "MemoryConfig",

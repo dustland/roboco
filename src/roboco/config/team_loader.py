@@ -92,9 +92,9 @@ class TeamLoader:
         
         return team_config
     
-    def load_agents_from_team_config(self, team_config: TeamConfig) -> List[Tuple[Any, List[str]]]:
+    def create_agents(self, team_config: TeamConfig) -> List[Tuple[Any, List[str]]]:
         """
-        Load agent configurations from team config.
+        Create agent configurations from team config.
         
         Args:
             team_config: Team configuration
@@ -102,6 +102,9 @@ class TeamLoader:
         Returns:
             List of (AgentConfig, tools) tuples
         """
+        # Store team config for access in _create_agent_config
+        self.team_config = team_config
+        
         results = []
         
         for agent_data in team_config.agents:
@@ -134,6 +137,7 @@ class TeamLoader:
     def _create_agent_config(self, agent_data: Dict[str, Any]) -> Any:
         """Create AgentConfig from raw agent data."""
         from ..core.agent import AgentRole, AgentConfig
+        from ..core.brain import BrainConfig
         
         # Required fields
         name = agent_data.get('name')
@@ -184,6 +188,16 @@ class TeamLoader:
         if not system_message:
             system_message = "You are a helpful AI assistant."
         
+        # Create brain config with team's LLM provider settings
+        brain_config = None
+        if hasattr(self, 'team_config') and self.team_config and self.team_config.llm_provider:
+            llm_provider = self.team_config.llm_provider
+            brain_config = BrainConfig(
+                model=llm_provider.model or "deepseek-chat",
+                api_key=llm_provider.api_key,
+                base_url=llm_provider.base_url or "https://api.deepseek.com"
+            )
+        
         # Create AgentConfig
         agent_config = AgentConfig(
             name=name,
@@ -191,6 +205,7 @@ class TeamLoader:
             system_message=system_message,
             description=agent_data.get('description', ''),
             prompt_file=prompt_file,
+            brain_config=brain_config,
             enable_code_execution=agent_data.get('enable_code_execution', False),
             enable_human_interaction=agent_data.get('enable_human_interaction', False),
             enable_memory=agent_data.get('enable_memory', True),
@@ -272,7 +287,7 @@ def validate_team_config(config_path: str) -> Dict[str, Any]:
     try:
         team_config = load_team_config(config_path)
         loader = TeamLoader()
-        agents = loader.load_agents_from_team_config(team_config)
+        agents = loader.create_agents(team_config)
         
         return {
             "valid": True,
