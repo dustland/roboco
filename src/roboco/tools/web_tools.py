@@ -6,11 +6,12 @@ Built-in integrations:
 - browser-use: AI-first browser automation (better than Playwright for agents)
 """
 
-import logging
+from ..utils.logger import get_logger
+from ..core.tool import Tool, tool, ToolResult
 from typing import Dict, List, Optional, Any, Union
 from dataclasses import dataclass
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 @dataclass
@@ -35,33 +36,32 @@ class BrowserAction:
     error: Optional[str] = None
 
 
-class FirecrawlTool:
+class WebTool(Tool):
     """
-    Firecrawl integration for superior web content extraction.
+    Web content extraction and browser automation tool.
     
-    Why Firecrawl over Jina:
-    - Better content extraction quality
-    - Handles JavaScript-heavy sites
-    - Built-in markdown conversion
-    - Rate limiting and reliability
+    Combines Firecrawl for content extraction and browser-use for automation.
     """
     
-    def __init__(self, api_key: Optional[str] = None):
-        self.api_key = api_key
-        self._client = None
-        self._init_client()
+    def __init__(self, firecrawl_api_key: Optional[str] = None):
+        super().__init__("web")
+        self.firecrawl_api_key = firecrawl_api_key
+        self._firecrawl_client = None
+        self._browser = None
+        self._init_clients()
     
-    def _init_client(self):
-        """Initialize Firecrawl client."""
+    def _init_clients(self):
+        """Initialize Firecrawl and browser-use clients."""
+        # Initialize Firecrawl
         try:
             from firecrawl import FirecrawlApp
             
-            if not self.api_key:
+            if not self.firecrawl_api_key:
                 import os
-                self.api_key = os.getenv("FIRECRAWL_API_KEY")
+                self.firecrawl_api_key = os.getenv("FIRECRAWL_API_KEY")
             
-            if self.api_key:
-                self._client = FirecrawlApp(api_key=self.api_key)
+            if self.firecrawl_api_key:
+                self._firecrawl_client = FirecrawlApp(api_key=self.firecrawl_api_key)
                 logger.info("Firecrawl client initialized")
             else:
                 logger.warning("Firecrawl API key not found. Set FIRECRAWL_API_KEY environment variable.")
@@ -70,122 +70,8 @@ class FirecrawlTool:
             logger.warning("Firecrawl not installed. Install with: pip install firecrawl-py")
         except Exception as e:
             logger.error(f"Failed to initialize Firecrawl: {e}")
-    
-    async def extract_content(self, url: str, options: Optional[Dict[str, Any]] = None) -> WebContent:
-        """Extract content from a URL using Firecrawl."""
-        if not self._client:
-            return WebContent(
-                url=url,
-                title="",
-                content="",
-                markdown="",
-                metadata={},
-                success=False,
-                error="Firecrawl client not available"
-            )
         
-        try:
-            # Default options for better extraction
-            crawl_options = {
-                "formats": ["markdown", "html"],
-                "includeTags": ["title", "meta"],
-                "excludeTags": ["nav", "footer", "aside"],
-                "waitFor": 2000,  # Wait for JS to load
-                **(options or {})
-            }
-            
-            result = self._client.scrape_url(url, crawl_options)
-            
-            if result.get("success"):
-                data = result.get("data", {})
-                
-                return WebContent(
-                    url=url,
-                    title=data.get("title", ""),
-                    content=data.get("content", ""),
-                    markdown=data.get("markdown", ""),
-                    metadata=data.get("metadata", {}),
-                    success=True
-                )
-            else:
-                return WebContent(
-                    url=url,
-                    title="",
-                    content="",
-                    markdown="",
-                    metadata={},
-                    success=False,
-                    error=result.get("error", "Unknown error")
-                )
-                
-        except Exception as e:
-            logger.error(f"Firecrawl extraction failed for {url}: {e}")
-            return WebContent(
-                url=url,
-                title="",
-                content="",
-                markdown="",
-                metadata={},
-                success=False,
-                error=str(e)
-            )
-    
-    async def crawl_site(self, url: str, options: Optional[Dict[str, Any]] = None) -> List[WebContent]:
-        """Crawl multiple pages from a site."""
-        if not self._client:
-            return []
-        
-        try:
-            crawl_options = {
-                "limit": 10,
-                "formats": ["markdown"],
-                "excludePaths": ["/admin", "/login"],
-                **(options or {})
-            }
-            
-            result = self._client.crawl_url(url, crawl_options)
-            
-            if result.get("success"):
-                pages = result.get("data", [])
-                return [
-                    WebContent(
-                        url=page.get("url", ""),
-                        title=page.get("title", ""),
-                        content=page.get("content", ""),
-                        markdown=page.get("markdown", ""),
-                        metadata=page.get("metadata", {}),
-                        success=True
-                    )
-                    for page in pages
-                ]
-            else:
-                logger.error(f"Crawl failed: {result.get('error')}")
-                return []
-                
-        except Exception as e:
-            logger.error(f"Site crawl failed for {url}: {e}")
-            return []
-
-
-class BrowserUseTool:
-    """
-    browser-use integration for AI-first browser automation.
-    
-    Why browser-use over Playwright:
-    - AI-first design for LLM agents
-    - Natural language control ("click login button")
-    - Self-healing when page layouts change
-    - Built for autonomous operation
-    - Less brittle than selector-based automation
-    """
-    
-    def __init__(self):
-        self._browser = None
-        self._page = None
-        self._init_browser()
-    
-    def _init_browser(self):
-        """Initialize browser-use."""
+        # Initialize browser-use
         try:
             from browser_use import Browser
             
@@ -197,192 +83,209 @@ class BrowserUseTool:
         except Exception as e:
             logger.error(f"Failed to initialize browser-use: {e}")
     
-    async def start_session(self) -> bool:
-        """Start a browser session."""
-        if not self._browser:
-            return False
+    @tool(
+        description="Extract clean content from any URL using Firecrawl",
+        return_description="ToolResult containing extracted web content with title, content, and markdown"
+    )
+    async def extract_content(self, url: str, include_tags: Optional[List[str]] = None, 
+                            exclude_tags: Optional[List[str]] = None) -> ToolResult:
+        """
+        Extract content from a URL using Firecrawl.
         
-        try:
-            await self._browser.start()
-            self._page = await self._browser.new_page()
-            logger.info("Browser session started")
-            return True
+        Args:
+            url: The URL to extract content from (required)
+            include_tags: HTML tags to include in extraction (optional)
+            exclude_tags: HTML tags to exclude from extraction (optional)
             
-        except Exception as e:
-            logger.error(f"Failed to start browser session: {e}")
-            return False
-    
-    async def navigate(self, url: str) -> BrowserAction:
-        """Navigate to a URL."""
-        if not self._page:
-            await self.start_session()
-        
-        try:
-            await self._page.goto(url)
-            
-            return BrowserAction(
-                action=f"navigate_to_{url}",
-                success=True,
-                result={"url": url, "title": await self._page.title()}
+        Returns:
+            ToolResult with WebContent containing extracted data
+        """
+        if not self._firecrawl_client:
+            return ToolResult(
+                success=False,
+                result=None,
+                error="Firecrawl client not available"
             )
+        
+        try:
+            # Prepare options
+            options = {
+                "formats": ["markdown", "html"],
+                "includeTags": include_tags or ["title", "meta"],
+                "excludeTags": exclude_tags or ["nav", "footer", "aside"],
+                "waitFor": 2000,  # Wait for JS to load
+            }
             
+            result = self._firecrawl_client.scrape_url(url, options)
+            
+            if result.get("success"):
+                data = result.get("data", {})
+                
+                web_content = WebContent(
+                    url=url,
+                    title=data.get("title", ""),
+                    content=data.get("content", ""),
+                    markdown=data.get("markdown", ""),
+                    metadata=data.get("metadata", {}),
+                    success=True
+                )
+                
+                return ToolResult(
+                    success=True,
+                    result=web_content,
+                    metadata={"url": url, "extraction_method": "firecrawl"}
+                )
+            else:
+                return ToolResult(
+                    success=False,
+                    result=None,
+                    error=result.get("error", "Unknown error")
+                )
+                
         except Exception as e:
-            logger.error(f"Navigation failed: {e}")
-            return BrowserAction(
-                action=f"navigate_to_{url}",
+            logger.error(f"Content extraction failed for {url}: {e}")
+            return ToolResult(
                 success=False,
                 result=None,
                 error=str(e)
             )
     
-    async def ai_action(self, instruction: str) -> BrowserAction:
+    @tool(
+        description="Crawl multiple pages from a website using Firecrawl",
+        return_description="ToolResult containing list of WebContent objects from crawled pages"
+    )
+    async def crawl_website(self, url: str, limit: int = 10, 
+                          exclude_paths: Optional[List[str]] = None) -> ToolResult:
         """
-        Perform an action using natural language.
+        Crawl multiple pages from a website.
         
-        Examples:
-        - "Click the login button"
-        - "Fill in the email field with user@example.com"
-        - "Scroll down to find more content"
-        - "Take a screenshot of the current page"
+        Args:
+            url: The base URL to start crawling from (required)
+            limit: Maximum number of pages to crawl, defaults to 10
+            exclude_paths: URL paths to exclude from crawling (optional)
+            
+        Returns:
+            ToolResult with list of WebContent objects
         """
-        if not self._page:
-            await self.start_session()
+        if not self._firecrawl_client:
+            return ToolResult(
+                success=False,
+                result=None,
+                error="Firecrawl client not available"
+            )
         
         try:
-            # This would use browser-use's AI capabilities
-            # For now, return a placeholder
-            result = await self._page.ai_action(instruction)
+            options = {
+                "limit": limit,
+                "formats": ["markdown"],
+                "excludePaths": exclude_paths or ["/admin", "/login"],
+            }
             
-            return BrowserAction(
+            result = self._firecrawl_client.crawl_url(url, options)
+            
+            if result.get("success"):
+                pages = result.get("data", [])
+                web_contents = [
+                    WebContent(
+                        url=page.get("url", ""),
+                        title=page.get("title", ""),
+                        content=page.get("content", ""),
+                        markdown=page.get("markdown", ""),
+                        metadata=page.get("metadata", {}),
+                        success=True
+                    )
+                    for page in pages
+                ]
+                
+                return ToolResult(
+                    success=True,
+                    result=web_contents,
+                    metadata={"base_url": url, "pages_crawled": len(web_contents)}
+                )
+            else:
+                return ToolResult(
+                    success=False,
+                    result=None,
+                    error=result.get("error", "Crawl failed")
+                )
+                
+        except Exception as e:
+            logger.error(f"Website crawl failed for {url}: {e}")
+            return ToolResult(
+                success=False,
+                result=None,
+                error=str(e)
+            )
+    
+    @tool(
+        description="Automate browser actions using natural language with browser-use",
+        return_description="ToolResult containing browser action result with success status and data"
+    )
+    async def automate_browser(self, instruction: str, url: Optional[str] = None) -> ToolResult:
+        """
+        Perform browser automation using natural language instructions.
+        
+        Args:
+            instruction: Natural language instruction for browser action (required)
+            url: Optional URL to navigate to first
+            
+        Returns:
+            ToolResult with BrowserAction containing action result
+        """
+        if not self._browser:
+            return ToolResult(
+                success=False,
+                result=None,
+                error="browser-use not available"
+            )
+        
+        try:
+            # Start browser session
+            await self._browser.start()
+            page = await self._browser.new_page()
+            
+            # Navigate to URL if provided
+            if url:
+                await page.goto(url)
+            
+            # Perform AI action
+            result = await page.ai_action(instruction)
+            
+            browser_action = BrowserAction(
                 action=instruction,
                 success=True,
                 result=result
             )
             
-        except Exception as e:
-            logger.error(f"AI action failed: {e}")
-            return BrowserAction(
-                action=instruction,
-                success=False,
-                result=None,
-                error=str(e)
-            )
-    
-    async def extract_data(self, instruction: str) -> BrowserAction:
-        """
-        Extract data using natural language.
-        
-        Examples:
-        - "Get all product names and prices"
-        - "Extract the main article content"
-        - "Find all email addresses on this page"
-        """
-        if not self._page:
-            await self.start_session()
-        
-        try:
-            # This would use browser-use's AI extraction
-            data = await self._page.extract_data(instruction)
+            # Close browser
+            await self._browser.close()
             
-            return BrowserAction(
-                action=f"extract_{instruction}",
+            return ToolResult(
                 success=True,
-                result=data
+                result=browser_action,
+                metadata={"instruction": instruction, "url": url}
             )
             
         except Exception as e:
-            logger.error(f"Data extraction failed: {e}")
-            return BrowserAction(
-                action=f"extract_{instruction}",
-                success=False,
-                result=None,
-                error=str(e)
-            )
-    
-    async def screenshot(self, full_page: bool = False) -> BrowserAction:
-        """Take a screenshot."""
-        if not self._page:
-            await self.start_session()
-        
-        try:
-            screenshot_data = await self._page.screenshot(full_page=full_page)
+            logger.error(f"Browser automation failed: {e}")
             
-            return BrowserAction(
-                action="screenshot",
-                success=True,
-                result={"screenshot": screenshot_data},
-                screenshot=screenshot_data
-            )
-            
-        except Exception as e:
-            logger.error(f"Screenshot failed: {e}")
-            return BrowserAction(
-                action="screenshot",
-                success=False,
-                result=None,
-                error=str(e)
-            )
-    
-    async def close(self):
-        """Close the browser session."""
-        if self._browser:
+            # Ensure browser is closed
             try:
-                await self._browser.close()
-                logger.info("Browser session closed")
-            except Exception as e:
-                logger.error(f"Failed to close browser: {e}")
-
-
-# Convenience functions for easy use
-async def extract_web_content(url: str, api_key: Optional[str] = None) -> WebContent:
-    """Extract content from a URL using Firecrawl."""
-    tool = FirecrawlTool(api_key)
-    return await tool.extract_content(url)
-
-
-async def crawl_website(url: str, limit: int = 10, api_key: Optional[str] = None) -> List[WebContent]:
-    """Crawl a website using Firecrawl."""
-    tool = FirecrawlTool(api_key)
-    return await tool.crawl_site(url, {"limit": limit})
-
-
-async def automate_browser(instruction: str) -> BrowserAction:
-    """Perform browser automation using natural language."""
-    tool = BrowserUseTool()
-    await tool.start_session()
-    try:
-        return await tool.ai_action(instruction)
-    finally:
-        await tool.close()
-
-
-# Tool registration helpers
-def register_web_tools(agent: "Agent"):
-    """Register all web tools with an agent."""
-    from ..core.tool import register_function
-    
-    # Register Firecrawl functions
-    register_function(agent, extract_web_content, "extract_web_content", 
-                     "Extract clean content from any URL using Firecrawl")
-    
-    register_function(agent, crawl_website, "crawl_website",
-                     "Crawl multiple pages from a website")
-    
-    # Register browser automation
-    register_function(agent, automate_browser, "automate_browser",
-                     "Automate browser actions using natural language")
-    
-    logger.info(f"Registered web tools for agent {agent.name}")
+                if self._browser:
+                    await self._browser.close()
+            except:
+                pass
+            
+            return ToolResult(
+                success=False,
+                result=None,
+                error=str(e)
+            )
 
 
 # Export main classes and functions
 __all__ = [
-    "FirecrawlTool",
-    "BrowserUseTool", 
+    "WebTool",
     "WebContent",
     "BrowserAction",
-    "extract_web_content",
-    "crawl_website",
-    "automate_browser",
-    "register_web_tools"
 ] 

@@ -1,117 +1,271 @@
 """
-Search Tools - Decorator-based implementation using the new Tool system.
+Search Tools - Web search capabilities using SerpAPI.
+
+Built-in integration with SerpAPI for comprehensive web search across
+multiple search engines (Google, Bing, DuckDuckGo, etc.).
 """
 
-import os
-import httpx
-from typing import Annotated, Optional
-from ..tool.base import Tool, tool
+from ..utils.logger import get_logger
+from ..core.tool import Tool, tool, ToolResult
+from ..search.serpapi_backend import SerpAPIBackend
+from ..search.interfaces import SearchEngine
+from typing import Dict, List, Optional, Any
+from dataclasses import dataclass
 
-# Global search manager instance
-_search_manager = None
+logger = get_logger(__name__)
 
-def set_search_manager(manager):
-    """Set the global search manager instance."""
-    global _search_manager
-    _search_manager = manager
 
-def get_search_manager():
-    """Get the global search manager instance."""
-    return _search_manager
+@dataclass
+class SearchResult:
+    """Individual search result."""
+    title: str
+    url: str
+    snippet: str
+    position: int
+    relevance_score: float
+    language: str = "en"
+    date: Optional[str] = None
+    displayed_link: Optional[str] = None
+    summary: Optional[str] = None
+
 
 class SearchTool(Tool):
-    """Search and web content extraction tools using the new decorator-based system."""
+    """
+    Web search tool using SerpAPI.
     
-    def __init__(self, search_manager=None):
-        super().__init__()
-        self.search_manager = search_manager or get_search_manager()
+    Provides access to multiple search engines including Google, Bing,
+    DuckDuckGo, Yahoo, Baidu, and Yandex through a unified interface.
+    """
     
-    @tool(name="web_search", description="Search the web for information on any topic using multiple search engines")
-    async def web_search(
-        self,
-        task_id: str,
-        agent_id: str,
-        query: Annotated[str, "Search query to find information"],
-        max_results: Annotated[int, "Maximum number of results to return"] = 10
-    ) -> str:
-        """Search the web for information using configured search engines."""
+    def __init__(self, api_key: Optional[str] = None):
+        super().__init__("search")
+        self.api_key = api_key
+        self._backend = None
+        self._init_backend()
+    
+    def _init_backend(self):
+        """Initialize SerpAPI backend."""
         try:
-            if not self.search_manager:
-                return "❌ Search system not configured. Please set up a search manager."
-            
-            # Perform the search
-            results = await self.search_manager.search(query, max_results=max_results)
-            
-            if not results:
-                return f"🔍 No results found for query: '{query}'"
-            
-            # Format results for display
-            formatted_results = []
-            for i, result in enumerate(results[:max_results], 1):
-                title = result.get('title', 'No title')
-                url = result.get('url', 'No URL')
-                snippet = result.get('snippet', result.get('description', 'No description'))
-                
-                # Truncate long snippets
-                if len(snippet) > 200:
-                    snippet = snippet[:200] + "..."
-                
-                formatted_results.append(f"{i}. **{title}**\n   {snippet}\n   🔗 {url}")
-            
-            return f"🔍 Found {len(results)} results for '{query}':\n\n" + "\n\n".join(formatted_results)
-            
+            self._backend = SerpAPIBackend(self.api_key)
+            logger.info("SerpAPI search backend initialized")
+        except ValueError as e:
+            logger.error(f"Failed to initialize SerpAPI backend: {e}")
         except Exception as e:
-            return f"❌ Search failed: {str(e)}"
+            logger.error(f"Unexpected error initializing search backend: {e}")
     
-    @tool(name="extract_url", description="Extract and clean content from a URL using Jina Reader API")
-    async def extract_url(
-        self,
-        task_id: str,
-        agent_id: str,
-        url: Annotated[str, "The URL to extract content from"],
-        max_length: Annotated[int, "Maximum length of extracted content in characters"] = 8000
-    ) -> str:
-        """Extract and clean content from a URL using Jina Reader API."""
+    @tool(
+        description="Search the web using Google, Bing, DuckDuckGo or other search engines",
+        return_description="ToolResult containing list of search results with titles, URLs, and snippets"
+    )
+    async def web_search(self, query: str, engine: str = "google", 
+                        max_results: int = 10, country: str = "us", 
+                        language: str = "en") -> ToolResult:
+        """
+        Search the web using various search engines.
+        
+        Args:
+            query: Search query to execute (required)
+            engine: Search engine to use - google, bing, duckduckgo, yahoo, baidu, yandex (default: google)
+            max_results: Maximum number of results to return, max 20 (default: 10)
+            country: Country code for localized results (default: us)
+            language: Language code for results (default: en)
+            
+        Returns:
+            ToolResult containing search results and metadata
+        """
+        if not self._backend:
+            return ToolResult(
+                success=False,
+                result=None,
+                error="Search backend not available. Check SERPAPI_KEY environment variable."
+            )
+        
         try:
-            # Use Jina Reader API to extract clean content
-            jina_url = f"https://r.jina.ai/{url}"
+            # Execute search
+            response = await self._backend.search(
+                query=query,
+                engine=engine,
+                max_results=min(max_results, 20),  # Cap at 20
+                country=country,
+                language=language
+            )
             
-            # Prepare headers with API key if available
-            headers = {}
-            
-            # Try to get Jina API key from environment
-            jina_api_key = os.getenv("JINA_API_KEY")
-            if jina_api_key:
-                headers["Authorization"] = f"Bearer {jina_api_key}"
-                print(f"🔑 Using Jina API key for higher rate limits")
+            if response.success:
+                # Convert to our SearchResult format
+                search_results = [
+                    SearchResult(
+                        title=result.title,
+                        url=result.url,
+                        snippet=result.snippet,
+                        position=result.position,
+                        relevance_score=result.relevance_score,
+                        language=result.language,
+                        date=result.date,
+                        displayed_link=result.displayed_link,
+                        summary=result.summary
+                    )
+                    for result in response.results
+                ]
+                
+                return ToolResult(
+                    success=True,
+                    result=search_results,
+                    execution_time=response.response_time,
+                    metadata={
+                        "query": query,
+                        "engine": engine,
+                        "total_results": response.total_results,
+                        "country": country,
+                        "language": language,
+                        "timestamp": response.timestamp
+                    }
+                )
             else:
-                print(f"ℹ️ No JINA_API_KEY found, using free tier (lower rate limits)")
-            
-            # Make request to Jina Reader
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                response = await client.get(jina_url, headers=headers)
-                response.raise_for_status()
+                return ToolResult(
+                    success=False,
+                    result=None,
+                    error=response.error or "Search failed",
+                    execution_time=response.response_time
+                )
                 
-                content = response.text
-                
-                # Truncate if too long
-                if len(content) > max_length:
-                    content = content[:max_length] + "\n\n[Content truncated...]"
-                
-                return f"📄 Extracted content from {url}:\n\n{content}"
-                
-        except httpx.HTTPStatusError as e:
-            if e.response.status_code == 429:
-                return f"❌ Rate limit exceeded. Please try again later or set JINA_API_KEY for higher limits."
-            elif e.response.status_code == 404:
-                return f"❌ URL not found or cannot be accessed: {url}"
-            else:
-                return f"❌ HTTP error {e.response.status_code}: {e.response.text}"
-        except httpx.TimeoutException:
-            return f"❌ Request timed out while extracting content from {url}"
         except Exception as e:
-            return f"❌ Failed to extract content: {str(e)}"
+            logger.error(f"Web search failed for query '{query}': {e}")
+            return ToolResult(
+                success=False,
+                result=None,
+                error=str(e)
+            )
+    
+    @tool(
+        description="Search for news articles using Google News or Bing News",
+        return_description="ToolResult containing list of news search results with articles and publication dates"
+    )
+    async def news_search(self, query: str, engine: str = "google", 
+                         max_results: int = 10, country: str = "us") -> ToolResult:
+        """
+        Search for news articles.
+        
+        Args:
+            query: News search query (required)
+            engine: Search engine to use - google or bing (default: google)
+            max_results: Maximum number of news results (default: 10)
+            country: Country code for localized news (default: us)
+            
+        Returns:
+            ToolResult containing news search results
+        """
+        if not self._backend:
+            return ToolResult(
+                success=False,
+                result=None,
+                error="Search backend not available"
+            )
+        
+        try:
+            # Add news-specific parameters
+            response = await self._backend.search(
+                query=query,
+                engine=engine,
+                max_results=min(max_results, 20),
+                country=country,
+                tbm="nws"  # Google News search
+            )
+            
+            if response.success:
+                return ToolResult(
+                    success=True,
+                    result=response.results,
+                    execution_time=response.response_time,
+                    metadata={
+                        "query": query,
+                        "engine": engine,
+                        "search_type": "news",
+                        "total_results": response.total_results,
+                        "timestamp": response.timestamp
+                    }
+                )
+            else:
+                return ToolResult(
+                    success=False,
+                    result=None,
+                    error=response.error or "News search failed"
+                )
+                
+        except Exception as e:
+            logger.error(f"News search failed for query '{query}': {e}")
+            return ToolResult(
+                success=False,
+                result=None,
+                error=str(e)
+            )
+    
+    @tool(
+        description="Search for images using Google Images or Bing Images",
+        return_description="ToolResult containing list of image search results with URLs and metadata"
+    )
+    async def image_search(self, query: str, engine: str = "google", 
+                          max_results: int = 10, safe_search: str = "moderate") -> ToolResult:
+        """
+        Search for images.
+        
+        Args:
+            query: Image search query (required)
+            engine: Search engine to use - google or bing (default: google)
+            max_results: Maximum number of image results (default: 10)
+            safe_search: Safe search setting - off, moderate, strict (default: moderate)
+            
+        Returns:
+            ToolResult containing image search results
+        """
+        if not self._backend:
+            return ToolResult(
+                success=False,
+                result=None,
+                error="Search backend not available"
+            )
+        
+        try:
+            response = await self._backend.search(
+                query=query,
+                engine=engine,
+                max_results=min(max_results, 20),
+                tbm="isch",  # Google Images search
+                safe=safe_search
+            )
+            
+            if response.success:
+                return ToolResult(
+                    success=True,
+                    result=response.results,
+                    execution_time=response.response_time,
+                    metadata={
+                        "query": query,
+                        "engine": engine,
+                        "search_type": "images",
+                        "safe_search": safe_search,
+                        "total_results": response.total_results,
+                        "timestamp": response.timestamp
+                    }
+                )
+            else:
+                return ToolResult(
+                    success=False,
+                    result=None,
+                    error=response.error or "Image search failed"
+                )
+                
+        except Exception as e:
+            logger.error(f"Image search failed for query '{query}': {e}")
+            return ToolResult(
+                success=False,
+                result=None,
+                error=str(e)
+            )
 
-# Export the tool class
-__all__ = ['SearchTool', 'set_search_manager', 'get_search_manager']
+
+# Export main classes and functions
+__all__ = [
+    "SearchTool",
+    "SearchResult",
+]
 

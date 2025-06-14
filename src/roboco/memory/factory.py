@@ -4,16 +4,16 @@ Memory Backend Factory
 Factory functions for creating memory backend instances based on configuration.
 """
 
-import logging
+from ..utils.logger import get_logger
 from typing import Optional
 from .backend import MemoryBackend
 from .mem0_backend import Mem0Backend
-from ..config.models import MemoryConfig
+# MemoryConfig imported locally to avoid circular imports
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
-def create_memory_backend(config: Optional[MemoryConfig] = None) -> MemoryBackend:
+def create_memory_backend(config = None) -> MemoryBackend:
     """
     Create a memory backend instance based on configuration.
     

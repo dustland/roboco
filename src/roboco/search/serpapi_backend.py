@@ -6,6 +6,8 @@ import os
 from typing import Dict, List, Optional, Any
 from datetime import datetime
 
+from serpapi import GoogleSearch, BingSearch, BaiduSearch, YahooSearch, DuckDuckGoSearch, YandexSearch
+
 from .interfaces import SearchBackend, SearchResult, SearchResponse, SearchEngine
 
 
@@ -26,34 +28,14 @@ class SerpAPIBackend(SearchBackend):
                 "SERPAPI_KEY is required. Set it as environment variable or pass api_key to constructor."
             )
         
-        # Try to import serpapi package
-        try:
-            import serpapi
-            self.serpapi = serpapi
-            self._available = True
-        except ImportError:
-            self._available = False
-            raise ImportError(
-                "serpapi package is required. Install it with: pip install google-search-results"
-            )
-        
-        # Initialize search classes
-        try:
-            from serpapi import (
-                GoogleSearch, BingSearch, BaiduSearch, YahooSearch, 
-                DuckDuckGoSearch, YandexSearch
-            )
-            self._search_classes = {
-                SearchEngine.GOOGLE: GoogleSearch,
-                SearchEngine.BING: BingSearch,
-                SearchEngine.BAIDU: BaiduSearch,
-                SearchEngine.YAHOO: YahooSearch,
-                SearchEngine.DUCKDUCKGO: DuckDuckGoSearch,
-                SearchEngine.YANDEX: YandexSearch
-            }
-        except ImportError as e:
-            self._available = False
-            raise ImportError(f"Failed to import SERP API search classes: {e}")
+        self._search_classes = {
+            SearchEngine.GOOGLE: GoogleSearch,
+            SearchEngine.BING: BingSearch,
+            SearchEngine.BAIDU: BaiduSearch,
+            SearchEngine.YAHOO: YahooSearch,
+            SearchEngine.DUCKDUCKGO: DuckDuckGoSearch,
+            SearchEngine.YANDEX: YandexSearch
+        }
 
     @property
     def name(self) -> str:
@@ -61,7 +43,7 @@ class SerpAPIBackend(SearchBackend):
 
     def is_available(self) -> bool:
         """Check if SerpAPI backend is available."""
-        return self._available and bool(self.api_key)
+        return bool(self.api_key)
 
     async def search(self, query: str, engine: str = "google", 
                     max_results: int = 10, country: str = "us", 
@@ -80,9 +62,6 @@ class SerpAPIBackend(SearchBackend):
         Returns:
             SearchResponse with results and metadata
         """
-        if not self.is_available():
-            raise RuntimeError("SerpAPI backend is not available")
-        
         # Validate engine
         try:
             search_engine = SearchEngine(engine.lower())
@@ -217,24 +196,5 @@ class SerpAPIBackend(SearchBackend):
         if not text:
             return "unknown"
         
-        # Simple language detection based on character sets
-        text = text.lower()
-        
-        # Chinese character detection
-        chinese_chars = sum(1 for char in text if '\u4e00' <= char <= '\u9fff')
-        if chinese_chars > len(text) * 0.1:
-            return "zh"
-        
-        # Japanese character detection
-        japanese_chars = sum(1 for char in text if 
-                           ('\u3040' <= char <= '\u309f') or  # Hiragana
-                           ('\u30a0' <= char <= '\u30ff'))    # Katakana
-        if japanese_chars > len(text) * 0.1:
-            return "ja"
-        
-        # Korean character detection
-        korean_chars = sum(1 for char in text if '\uac00' <= char <= '\ud7af')
-        if korean_chars > len(text) * 0.1:
-            return "ko"
-        
-        return "en" 
+        # Simple heuristic - could be improved with proper language detection
+        return "en"  # Default to English for now 

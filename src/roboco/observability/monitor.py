@@ -7,7 +7,7 @@ Context-aware observability system:
 """
 
 import json
-import logging
+from ..utils.logger import get_logger
 import asyncio
 import sys
 from datetime import datetime
@@ -18,7 +18,7 @@ from pathlib import Path
 
 from ..core.event import global_events, Event
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class ConversationHistory:

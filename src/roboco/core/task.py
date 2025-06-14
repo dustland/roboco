@@ -16,7 +16,7 @@ from typing import Dict, List, Optional, Any, Callable, Union
 from pathlib import Path
 from dataclasses import dataclass, asdict
 from enum import Enum
-import logging
+from ..utils.logger import get_logger
 
 from .team import Team, TeamConfig, create_team
 from .agent import Agent, create_assistant_agent
@@ -25,7 +25,7 @@ from .event import EventBus, Event
 from .brain import ChatHistory
 from ..utils.id import generate_short_id
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class TaskStatus(Enum):

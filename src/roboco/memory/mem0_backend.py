@@ -5,22 +5,21 @@ Intelligent memory backend using Mem0 for semantic search, vector storage,
 and advanced memory operations.
 """
 
-import logging
+from ..utils.logger import get_logger
 import time
 from typing import List, Optional, Dict, Any
 from datetime import datetime
 
 from .backend import MemoryBackend
 from .types import MemoryItem, MemoryQuery, MemorySearchResult, MemoryStats, MemoryType
-from ..config.models import MemoryConfig
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class Mem0Backend(MemoryBackend):
     """Mem0-powered memory backend with semantic search and intelligent storage."""
     
-    def __init__(self, config: MemoryConfig):
+    def __init__(self, config):
         """
         Initialize Mem0 backend.
         

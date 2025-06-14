@@ -10,7 +10,7 @@ The Brain is the core reasoning component of each agent that handles:
 This is where the "thinking" happens.
 """
 
-import logging
+from ..utils.logger import get_logger
 import os
 from typing import Dict, List, Optional, Any, Union, Callable
 from dataclasses import dataclass, field
@@ -21,7 +21,7 @@ import openai
 
 from ..memory import create_memory_backend, MemoryBackend, MemoryQuery, MemoryType
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 @dataclass
@@ -78,7 +78,7 @@ class Message:
 @dataclass
 class BrainConfig:
     """Brain configuration for reasoning and LLM integration."""
-    model: str = "deepseek-chat"
+    model: str = "deepseek-reasoner"  # Default to reasoning model for best thinking
     api_key: Optional[str] = None
     base_url: Optional[str] = "https://api.deepseek.com"
     temperature: float = 0.7
@@ -89,6 +89,9 @@ class BrainConfig:
     enable_reasoning_traces: bool = True
     enable_memory_integration: bool = True
     enable_tool_calling: bool = True
+    
+    # Tool execution override - force tool executors to use tool-capable model
+    tool_executor_model: str = "deepseek-chat"  # Override for tool execution
 
 
 class Brain:
@@ -126,6 +129,7 @@ class Brain:
         self._thinking_history: List[Dict[str, Any]] = []
         
         logger.debug(f"Initialized Brain for agent: {self.agent.name} with model: {self.config.model}")
+        logger.debug(f"Tool executor will use: {self.config.tool_executor_model}")
     
     async def think(
         self,
@@ -136,12 +140,8 @@ class Brain:
         """
         Core thinking method - generates intelligent responses.
         
-        This is where all reasoning happens:
-        - Analyzes input messages
-        - Integrates memory and context
-        - Performs LLM reasoning
-        - Orchestrates tool calls if needed
-        - Generates thoughtful responses
+        Supports both reasoning (DeepSeek-Reasoner) and tool calling (DeepSeek-Chat).
+        Tool execution is handled separately by tool executor agents.
         """
         try:
             # Record thinking process
@@ -149,7 +149,8 @@ class Brain:
                 "timestamp": datetime.now().isoformat(),
                 "input_messages": len(messages),
                 "context": context or {},
-                "agent": self.agent.name
+                "agent": self.agent.name,
+                "model_used": self.config.model
             }
             
             # Prepare messages for the LLM
@@ -157,34 +158,86 @@ class Brain:
             if self.agent.system_message:
                 llm_messages.insert(0, {"role": "system", "content": self.agent.system_message})
 
-            # Actual LLM reasoning
-            logger.info(f"🧠 {self.agent.name} is thinking. Sending {len(llm_messages)} messages to {self.config.model}...")
-            llm_response = await self._llm_client.chat.completions.create(
-                model=self.config.model,
-                messages=llm_messages,
-                temperature=self.config.temperature,
-                max_tokens=self.config.max_tokens,
-                # TODO: Add tool/function calling logic
-            )
-            logger.info(f"🧠 {self.agent.name} received response from {self.config.model}.")
+            # Get available tools for this agent (LLM tools only)
+            tool_schemas = self.agent.tools.get_schemas() if self.config.enable_tool_calling else []
             
-            response_content = llm_response.choices[0].message.content
+            logger.info(f"🧠 {self.agent.name} thinking with {self.config.model}...")
+            if tool_schemas:
+                logger.info(f"🔧 Available tools: {[tool['name'] for tool in tool_schemas]}")
+            
+            # Call LLM with or without tools based on model capability
+            if self.config.model == "deepseek-reasoner":
+                # DeepSeek-Reasoner doesn't support tools
+                llm_response = await self._llm_client.chat.completions.create(
+                    model=self.config.model,
+                    messages=llm_messages,
+                    temperature=self.config.temperature,
+                    max_tokens=self.config.max_tokens
+                )
+            else:
+                # Other models (like deepseek-chat) support tools
+                llm_response = await self._llm_client.chat.completions.create(
+                    model=self.config.model,
+                    messages=llm_messages,
+                    temperature=self.config.temperature,
+                    max_tokens=self.config.max_tokens,
+                    tools=tool_schemas if tool_schemas else None,
+                    tool_choice="auto" if tool_schemas else None
+                )
+            
+            logger.info(f"🧠 {self.agent.name} received response from {self.config.model}")
+            
+            response_message = llm_response.choices[0].message
+            response_content = response_message.content or ""
 
-            # Create thoughtful response
-            response = Message(
-                content=response_content,
-                sender=self.agent.name,
-                role="assistant",
-                metadata={
-                    "thinking_step": thinking_step,
-                    "brain_generated": True,
-                    "llm_usage": dict(llm_response.usage),
-                }
-            )
+            # Check if LLM wants to call tools
+            if hasattr(response_message, 'tool_calls') and response_message.tool_calls:
+                logger.info(f"🔧 {self.agent.name} wants to call {len(response_message.tool_calls)} tools")
+                
+                # Create tool call message
+                tool_calls_data = []
+                for tool_call in response_message.tool_calls:
+                    tool_calls_data.append({
+                        "id": tool_call.id,
+                        "type": "function",
+                        "function": {
+                            "name": tool_call.function.name,
+                            "arguments": tool_call.function.arguments
+                        }
+                    })
+                
+                # Return message with tool calls for executor to handle
+                response = Message(
+                    content=response_content or f"I need to use tools: {[tc.function.name for tc in response_message.tool_calls]}",
+                    sender=self.agent.name,
+                    role="assistant",
+                    tool_calls=tool_calls_data,
+                    metadata={
+                        "thinking_step": thinking_step,
+                        "brain_generated": True,
+                        "llm_usage": dict(llm_response.usage),
+                        "model_used": self.config.model,
+                        "requires_tool_execution": True
+                    }
+                )
+            else:
+                # Regular response without tool calls
+                response = Message(
+                    content=response_content,
+                    sender=self.agent.name,
+                    role="assistant",
+                    metadata={
+                        "thinking_step": thinking_step,
+                        "brain_generated": True,
+                        "llm_usage": dict(llm_response.usage),
+                        "model_used": self.config.model
+                    }
+                )
             
             # Record thinking result
             thinking_step["response_generated"] = True
             thinking_step["response_length"] = len(response.content)
+            thinking_step["tool_calls_requested"] = len(response.tool_calls) if response.tool_calls else 0
             self._thinking_history.append(thinking_step)
             
             logger.debug(f"Brain generated response for {self.agent.name}")
@@ -199,6 +252,8 @@ class Brain:
                 metadata={"error": True, "error_message": str(e)}
             )
     
+
+    
     async def reason_with_tools(
         self,
         messages: List[Message],
@@ -208,26 +263,14 @@ class Brain:
         """
         Advanced reasoning with tool integration.
         
-        The Brain can orchestrate complex reasoning workflows
-        involving multiple tools and reasoning steps.
+        This method is now integrated into the main think() method
+        through the hybrid architecture. It's kept for backward compatibility.
         """
-        results = []
+        logger.info(f"🧠 {self.agent.name} reason_with_tools called - delegating to hybrid think()")
         
-        # Simple tool reasoning for now
-        if available_tools and messages:
-            last_message = messages[-1]
-            
-            # Check if we should use tools
-            if "search" in last_message.content.lower():
-                tool_response = Message(
-                    content=f"🧠 {self.agent.name} would use search tools here",
-                    sender=self.agent.name,
-                    role="assistant",
-                    metadata={"tool_reasoning": True}
-                )
-                results.append(tool_response)
-        
-        return results
+        # Convert to the new architecture
+        response = await self.think(messages, context={"available_tools": available_tools})
+        return [response] if response else []
     
     async def integrate_memory(
         self,

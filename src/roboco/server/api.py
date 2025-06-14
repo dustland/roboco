@@ -8,7 +8,7 @@ Provides endpoints for creating and managing tasks, and accessing task memory.
 import asyncio
 from datetime import datetime
 from typing import Dict, Any, Optional, List
-import logging
+from ..utils.logger import get_logger
 import json
 
 from fastapi import FastAPI, HTTPException, BackgroundTasks
@@ -23,7 +23,7 @@ from .models import (
     HealthResponse
 )
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # In-memory task storage (in production, use a proper database)
 active_tasks: Dict[str, Task] = {}

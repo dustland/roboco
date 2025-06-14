@@ -2,56 +2,20 @@
 Configuration Models
 
 Data models for Roboco configuration files, focusing on team collaboration
-rather than rigid workflows.
+and matching the design document structure.
 """
 
 from typing import List, Dict, Any, Optional
 from pydantic import BaseModel, Field
 from dataclasses import dataclass, field
 
-class TeamConfig(BaseModel):
-    """Configuration for a collaborative team of agents."""
-    name: str
-    description: Optional[str] = None
-    agents: List[str]  # Agent names/IDs in the team
-    collaboration_settings: Optional[Dict[str, Any]] = Field(default_factory=dict)
+# Note: AgentConfig is imported in __init__.py to avoid circular imports
 
-class AgentConfig(BaseModel):
-    """Configuration for a collaborative agent."""
-    name: str
-    role: str
-    model: str = "gpt-4"
-    
-    # Collaboration-specific settings
-    collaboration_style: str = "cooperative"  # e.g., "cooperative", "competitive", "supportive"
-    
-    # Agent-specific details for collaboration
-    collaboration_details: Optional[Dict[str, Any]] = Field(default_factory=dict)
-
-class ToolParameterConfig(BaseModel):
-    """Configuration for a tool parameter."""
-    name: str
-    type: str  # JSON Schema type
-    description: str
-    required: bool = True
-    default: Optional[Any] = None
-
-class ToolConfig(BaseModel):
-    """Configuration for a single tool."""
-    name: str
-    description: Optional[str] = None
-    # Module path for the tool class (e.g., "roboco.builtin_tools.search_tools")
-    module: str
-    # Class name for the tool (e.g., "WebSearchTool")  
-    class_name: str
-    # Parameters to pass to tool constructor
-    parameters: Optional[Dict[str, Any]] = Field(default_factory=dict)
-    # Tool parameter schema for validation
-    parameters_schema: Optional[List[ToolParameterConfig]] = Field(default_factory=list)
-    # Authorization settings
-    allowed_agents: Optional[List[str]] = None
-    # Rate limiting settings
-    rate_limit: Optional[Dict[str, Any]] = None
+class LLMProviderConfig(BaseModel):
+    """LLM provider configuration."""
+    base_url: Optional[str] = None
+    api_key: Optional[str] = None
+    model: Optional[str] = None
 
 @dataclass
 class MemoryConfig:
@@ -97,18 +61,30 @@ class MemoryConfig:
     # History database path
     history_db_path: Optional[str] = None
 
-class EventConfig(BaseModel):
-    """Configuration for event system."""
-    bus_type: str = "memory"  # Type of event bus
-    persistence: bool = False
-    config: Dict[str, Any] = Field(default_factory=dict)
-
-class RobocoConfig(BaseModel):
-    """Root configuration for a Roboco application."""
-    version: str = "0.1.0"
-    teams: Optional[List[TeamConfig]] = Field(default_factory=list)
-    tools: Optional[List[ToolConfig]] = Field(default_factory=list)
+class TeamConfig(BaseModel):
+    """
+    Team configuration matching the design document structure.
+    This represents a complete team.yaml file.
+    """
+    name: str
+    description: Optional[str] = None
+    
+    # LLM provider settings (can be in .env instead)
+    llm_provider: Optional[LLMProviderConfig] = None
+    
+    # List of agent configurations (full configs, not just names)
+    agents: List[Dict[str, Any]]  # Raw agent data from YAML
+    
+    # Team collaboration controls (merged from CollaborationConfig)
+    speaker_selection_method: str = "auto"  # auto, round_robin, manual
+    max_rounds: int = 10
+    termination_condition: str = "TERMINATE"
+    timeout_minutes: Optional[int] = None
+    auto_terminate_keywords: Optional[List[str]] = None
+    speaker_order: Optional[List[str]] = None
+    
+    # Tool configurations (flexible dict for now)
+    tools: Optional[Dict[str, Any]] = None
+    
+    # Memory configuration
     memory: Optional[MemoryConfig] = None
-    events: Optional[EventConfig] = None
-    # Global settings like logging, event bus config, context store config
-    settings: Optional[Dict[str, Any]] = Field(default_factory=dict)

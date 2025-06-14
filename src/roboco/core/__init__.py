@@ -20,7 +20,7 @@ while providing complete freedom to extend and customize.
 from .agent import Agent, AgentRole, AgentConfig, create_assistant_agent, create_user_agent, create_code_agent
 from .team import Team, TeamConfig, SpeakerSelectionMethod, create_team
 from .brain import Brain, Message, ChatHistory, BrainConfig
-from .tool import Tool, ToolRegistry, FunctionTool, CodeExecutionTool, register_tool, register_function
+from .tool import Tool, ToolRegistry, CodeExecutionTool, register_tool, get_tool_registry, print_available_tools, validate_agent_tools, suggest_tools_for_agent
 from .memory import Memory, MemoryItem
 from .event import Event, EventBus, EventType, global_events
 
@@ -58,10 +58,9 @@ __all__ = [
     
     # Tools & Functions
     "ToolRegistry",
-    "FunctionTool",
-    "CodeExecutionTool",
+    "CodeExecutionTool", 
     "register_tool",
-    "register_function",
+    "get_tool_registry",
     
     # Memory Management
     "MemoryItem",

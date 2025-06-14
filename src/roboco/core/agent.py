@@ -5,17 +5,16 @@ This replaces AG2's ConversableAgent with a cleaner, more elegant design.
 """
 
 import asyncio
-import logging
 from typing import Dict, List, Optional, Any, Callable, Literal, Union
 from dataclasses import dataclass, field
 from enum import Enum
 
 from .brain import Brain, Message, BrainConfig
-from .tool import Tool, ToolRegistry
 from .memory import Memory
 from .event import Event, EventBus
+from ..utils.logger import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class AgentRole(Enum):
@@ -30,8 +29,9 @@ class AgentConfig:
     """Agent configuration."""
     name: str
     role: AgentRole = AgentRole.ASSISTANT
-    system_message: str = "You are a helpful AI assistant."
+    system_message: Optional[str] = None
     description: str = ""
+    prompt_file: Optional[str] = None
     
     # Brain configuration
     brain_config: Optional[BrainConfig] = None
@@ -69,12 +69,30 @@ class Agent:
         self.config = config
         self.name = config.name
         self.role = config.role
-        self.system_message = config.system_message
+        
+        # Determine system message: prefer prompt_file, fallback to system_message, then default
+        if config.prompt_file:
+            self.system_message = self._load_prompt_file(config.prompt_file)
+        elif config.system_message:
+            self.system_message = config.system_message
+        else:
+            self.system_message = "You are a helpful AI assistant."
+            
         self.description = config.description or f"{config.role.value.title()} agent: {config.name}"
         
+        # Initialize brain config with DeepSeek optimization
+        brain_config = config.brain_config or BrainConfig()
+        
+        # IMPORTANT: If this agent has tools and is using deepseek-reasoner, 
+        # switch to deepseek-chat for tool calling compatibility
+        if (brain_config.model == "deepseek-reasoner" and 
+            (config.enable_code_execution or self._has_tools_configured())):
+            logger.info(f"Agent {self.name} has tools - switching from deepseek-reasoner to deepseek-chat for tool compatibility")
+            brain_config.model = brain_config.tool_executor_model
+        
         # Initialize core components
-        self.brain = Brain(agent=self, config=config.brain_config)
-        self.tools = ToolRegistry(agent=self)
+        self.brain = Brain(agent=self, config=brain_config)
+        self._tool_names: List[str] = []  # Simple list of tool names
         self.memory = Memory(agent=self) if config.enable_memory else None
         self.events = EventBus(agent=self)
         
@@ -88,7 +106,7 @@ class Agent:
         if config.enable_code_execution:
             self._init_code_executor()
         
-        logger.info(f"Created {self.role.value} agent: {self.name}")
+        logger.info(f"Created {self.role.value} agent: {self.name} with model: {brain_config.model}")
     
     @property
     def is_user_agent(self) -> bool:
@@ -265,13 +283,43 @@ class Agent:
             logger.warning(f"Failed to initialize code executor: {e}")
             self._code_executor = None
     
-    def add_tool(self, tool: Tool):
+    def add_tool(self, tool_name: str):
         """Add a tool to this agent."""
-        self.tools.register(tool)
+        if tool_name not in self._tool_names:
+            self._tool_names.append(tool_name)
+            logger.debug(f"Added tool '{tool_name}' to agent {self.name}")
     
     def remove_tool(self, tool_name: str):
         """Remove a tool from this agent."""
-        self.tools.unregister(tool_name)
+        if tool_name in self._tool_names:
+            self._tool_names.remove(tool_name)
+            logger.debug(f"Removed tool '{tool_name}' from agent {self.name}")
+    
+    def get_tool_names(self) -> List[str]:
+        """Get list of tool names this agent can call."""
+        return self._tool_names.copy()
+    
+    def get_tool_schemas(self) -> List[Dict[str, Any]]:
+        """Get OpenAI function schemas for this agent's tools."""
+        from .tool import get_tool_schemas
+        return get_tool_schemas(self._tool_names)
+    
+    def has_tool(self, tool_name: str) -> bool:
+        """Check if agent has access to a specific tool."""
+        return tool_name in self._tool_names
+    
+    async def call_tool(self, tool_name: str, **kwargs) -> "ToolResult":
+        """Call a tool with the given parameters."""
+        if not self.has_tool(tool_name):
+            from .tool import ToolResult
+            return ToolResult(
+                success=False,
+                result=None,
+                error=f"Agent {self.name} does not have access to tool '{tool_name}'"
+            )
+        
+        from .tool import execute_tool
+        return await execute_tool(tool_name, **kwargs)
     
     def save_memory(self, content: str, metadata: Optional[Dict[str, Any]] = None):
         """Save content to memory."""
@@ -298,6 +346,51 @@ class Agent:
     
     def __repr__(self) -> str:
         return f"Agent(name='{self.name}', role={self.role.value}, active={self._active})"
+    
+    def _load_prompt_file(self, prompt_file: str) -> str:
+        """Load system message from a prompt file."""
+        try:
+            from ..config.prompt_loader import create_prompt_loader
+            from pathlib import Path
+            
+            # Try to determine the config directory
+            # This is a simplified approach - in practice, you'd want to pass this context
+            config_dir = Path.cwd()  # Start with current directory
+            
+            # Look for common config directories
+            possible_dirs = [
+                config_dir / "config",
+                config_dir / "prompts", 
+                config_dir,
+            ]
+            
+            for dir_path in possible_dirs:
+                if dir_path.exists():
+                    try:
+                        prompt_loader = create_prompt_loader(str(dir_path))
+                        return prompt_loader.load_prompt(prompt_file)
+                    except Exception:
+                        continue
+            
+            # If all fails, try to read the file directly
+            prompt_path = Path(prompt_file)
+            if prompt_path.exists():
+                return prompt_path.read_text(encoding='utf-8')
+            
+            logger.warning(f"Could not load prompt file: {prompt_file}. Using fallback system message.")
+            return self.config.system_message or "You are a helpful AI assistant."
+            
+        except Exception as e:
+            logger.error(f"Error loading prompt file {prompt_file}: {e}")
+            return self.config.system_message or "You are a helpful AI assistant."
+
+    def _has_tools_configured(self) -> bool:
+        """Check if this agent is likely to have tools configured."""
+        # This is a simple heuristic - in practice, tools are registered after init
+        # But we can check for common tool-using agent patterns
+        tool_indicators = ["executor", "tool", "search", "web", "code", "browser"]
+        agent_name_lower = self.name.lower()
+        return any(indicator in agent_name_lower for indicator in tool_indicators)
 
 
 # Factory functions for convenience

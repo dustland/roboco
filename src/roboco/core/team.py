@@ -5,7 +5,8 @@ This single class manages multi-agent conversations elegantly.
 """
 
 import asyncio
-import logging
+from ..utils.logger import get_logger
+import json
 from typing import Dict, List, Optional, Any, Callable, Union
 from dataclasses import dataclass
 from enum import Enum
@@ -14,7 +15,7 @@ from .agent import Agent
 from .brain import Message, ChatHistory
 from .event import Event
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class SpeakerSelectionMethod(Enum):
@@ -70,10 +71,28 @@ class Team:
         self._speaker_index = 0
         self._custom_selector: Optional[Callable] = None
         
+        # Tool management
+        self._tool_executor: Optional[Agent] = None
+        self._team_tools: Dict[str, "Tool"] = {}
+        
+        # Set agent teams and find tool executor
+        for agent in self.agent_list:
+            agent._team = self  # Set team reference
+            
+            # Auto-detect tool executor (agent with tools or code execution)
+            if (self._tool_executor is None and 
+                (agent.config.enable_code_execution or 
+                 "executor" in agent.name.lower() or 
+                 "tool" in agent.name.lower())):
+                self._tool_executor = agent
+                logger.info(f"Auto-detected tool executor: {agent.name}")
+        
         # Validation
         self._validate_agents()
         
         logger.info(f"Created team '{self.name}' with {len(self.agents)} agents")
+        if self._tool_executor:
+            logger.info(f"Tool executor: {self._tool_executor.name}")
     
     def _validate_agents(self):
         """Validate team configuration."""
@@ -321,6 +340,88 @@ class Team:
     
     def __repr__(self) -> str:
         return f"Team(name='{self.name}', agents={len(self.agents)}, active={self.is_active})"
+    
+    def set_tool_executor(self, agent_name: str):
+        """Manually set the tool executor agent."""
+        agent = self.get_agent(agent_name)
+        if not agent:
+            raise ValueError(f"Agent '{agent_name}' not found in team")
+        
+        self._tool_executor = agent
+        logger.info(f"Set tool executor: {agent_name}")
+    
+    def get_tool_executor(self) -> Optional[Agent]:
+        """Get the team's tool executor agent."""
+        return self._tool_executor
+    
+    def register_tool(self, tool: "Tool"):
+        """Register a tool with the team."""
+        self._team_tools[tool.name] = tool
+        logger.info(f"Registered tool '{tool.name}' with team '{self.name}'")
+    
+    async def execute_tool(self, tool_name: str, **kwargs):
+        """Execute a tool using the team's tool registry."""
+        from .tool import ToolResult  # Import here to avoid circular imports
+        
+        tool = self._team_tools.get(tool_name)
+        if not tool:
+            return ToolResult(
+                success=False,
+                result=None,
+                error=f"Tool '{tool_name}' not found in team registry"
+            )
+        
+        return await tool.execute(**kwargs)
+    
+    def list_team_tools(self) -> List[str]:
+        """List all tools registered with the team."""
+        return list(self._team_tools.keys())
+    
+    async def execute_tool_calls(self, message: "Message") -> List["Message"]:
+        """Execute tool calls using the team's tool executor."""
+        from .brain import Message  # Import here to avoid circular imports
+        
+        if not message.tool_calls:
+            return []
+        
+        if not self._tool_executor:
+            logger.error(f"No tool executor in team {self.name}")
+            return []
+        
+        results = []
+        
+        for call in message.tool_calls:
+            try:
+                tool_name = call["function"]["name"]
+                tool_args = json.loads(call["function"]["arguments"])
+                
+                # Execute the tool
+                result = await self.execute_tool(tool_name, **tool_args)
+                
+                # Create result message
+                results.append(Message(
+                    content=str(result.result) if result.success else f"Error: {result.error}",
+                    sender=self._tool_executor.name,
+                    role="tool",
+                    name=tool_name,
+                    metadata={
+                        "tool_call_id": call["id"],
+                        "success": result.success,
+                        "execution_time": result.execution_time
+                    }
+                ))
+                
+            except Exception as e:
+                logger.error(f"Tool execution failed: {e}")
+                results.append(Message(
+                    content=f"Error: {str(e)}",
+                    sender=self._tool_executor.name,
+                    role="tool",
+                    name=call.get("function", {}).get("name", "unknown"),
+                    metadata={"error": True, "tool_call_id": call.get("id", "unknown")}
+                ))
+        
+        return results
 
 
 def create_team(

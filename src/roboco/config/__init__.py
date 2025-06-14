@@ -1,24 +1,32 @@
+"""
+Configuration system for Roboco.
+
+Public API:
+- load_team_config: Load team configuration from YAML files
+- validate_team_config: Validate team configuration
+- MemoryConfig: Memory system configuration (used by memory backends)
+- TeamConfig, LLMProviderConfig: Core config models
+"""
+
 from .models import (
-    RobocoConfig,
-    AgentConfig,
-    ToolConfig,
-    ToolParameterConfig,
     TeamConfig,
+    LLMProviderConfig,
+    MemoryConfig,
 )
-from .loaders import ConfigLoader, YamlConfigLoader
-from .prompt_loader import PromptLoader, create_prompt_loader
+from .team_loader import (
+    load_team_config,
+    validate_team_config
+)
+
+# Note: AgentConfig imported in individual modules to avoid circular imports
 
 __all__ = [
-    # Models
-    "RobocoConfig",
-    "AgentConfig",
-    "ToolConfig",
-    "ToolParameterConfig",
+    # Main API (matching design document)
+    "load_team_config",
+    "validate_team_config",
+    
+    # Core config models used by other modules
     "TeamConfig",
-    # Loaders
-    "ConfigLoader",
-    "YamlConfigLoader",
-    # Prompt System
-    "PromptLoader",
-    "create_prompt_loader",
+    "LLMProviderConfig", 
+    "MemoryConfig",
 ]

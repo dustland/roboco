@@ -8,11 +8,7 @@ from pathlib import Path
 from typing import Dict, Any, Optional
 import re
 
-try:
-    from jinja2 import Template, Environment, FileSystemLoader, TemplateNotFound
-    HAS_JINJA2 = True
-except ImportError:
-    HAS_JINJA2 = False
+from jinja2 import Template, Environment, FileSystemLoader, TemplateNotFound
 
 from ..core.exceptions import ConfigurationError
 
@@ -30,9 +26,6 @@ class PromptLoader:
         Args:
             prompts_dir: Directory containing prompt markdown files
         """
-        if not HAS_JINJA2:
-            raise ConfigurationError("Jinja2 is required for prompt templating. Install with: pip install jinja2")
-        
         self.prompts_dir = Path(prompts_dir)
         if not self.prompts_dir.exists():
             raise ConfigurationError(f"Prompts directory does not exist: {prompts_dir}")
@@ -92,43 +85,48 @@ class PromptLoader:
         """
         return [f.name for f in self.prompts_dir.glob("*.md")]
     
-    def validate_prompt_variables(self, prompt_file: str, variables: Dict[str, Any]) -> tuple[bool, list[str]]:
+    def clear_cache(self) -> None:
+        """Clear the prompt cache."""
+        self._prompt_cache.clear()
+    
+    def get_template_variables(self, prompt_file: str) -> list[str]:
         """
-        Validate that all required variables are provided for a prompt.
-        Note: This is a basic validation for Jinja2 templates.
+        Extract template variables from a prompt file.
         
         Args:
             prompt_file: Name of the prompt file
-            variables: Dictionary of provided variables
             
         Returns:
-            Tuple of (is_valid, missing_variables)
+            List of variable names found in the template
         """
         try:
             template = self.jinja_env.get_template(prompt_file)
-            
-            # Get template source to find variables
-            source = template.source
-            
-            # Use regex to find Jinja2 variables (basic detection)
-            pattern = r'\{\{\s*([^}|\s]+)(?:\s*\|[^}]*)?\s*\}\}'
-            required_vars = set()
-            
-            for match in re.finditer(pattern, source):
-                var_name = match.group(1).strip()
-                # Skip Jinja2 built-ins and filters
-                if '.' not in var_name and not var_name.startswith('_'):
-                    required_vars.add(var_name)
-            
-            provided_vars = set(variables.keys())
-            missing_vars = list(required_vars - provided_vars)
-            
-            return len(missing_vars) == 0, missing_vars
-            
-        except TemplateNotFound:
-            return False, [f"Prompt file not found: {prompt_file}"]
+            # Get undeclared variables (template variables)
+            from jinja2 import meta
+            ast = self.jinja_env.parse(template.source)
+            return list(meta.find_undeclared_variables(ast))
         except Exception as e:
-            return False, [f"Error validating prompt file {prompt_file}: {e}"]
+            raise ConfigurationError(f"Error analyzing template {prompt_file}: {e}")
+    
+    def validate_template(self, prompt_file: str, variables: Dict[str, Any]) -> bool:
+        """
+        Validate that a template can be rendered with given variables.
+        
+        Args:
+            prompt_file: Name of the prompt file
+            variables: Variables to test with
+            
+        Returns:
+            True if template renders successfully
+            
+        Raises:
+            ConfigurationError: If template validation fails
+        """
+        try:
+            self.load_prompt(prompt_file, variables)
+            return True
+        except Exception as e:
+            raise ConfigurationError(f"Template validation failed for {prompt_file}: {e}")
     
     def render_prompt_with_fallbacks(self, prompt_file: str, variables: Dict[str, Any], 
                                    fallback_values: Optional[Dict[str, Any]] = None) -> str:

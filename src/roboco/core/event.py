@@ -3,14 +3,14 @@ Event component for real-time event system.
 """
 
 import asyncio
-import logging
+from ..utils.logger import get_logger
 from typing import Dict, List, Optional, Any, Callable, Union
 from dataclasses import dataclass, field
 from datetime import datetime
 from uuid import uuid4
 from enum import Enum
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class EventType(Enum):

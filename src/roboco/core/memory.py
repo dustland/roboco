@@ -5,36 +5,40 @@ This module provides the main Memory interface that agents use, backed by
 intelligent memory backends (Mem0) for semantic search and advanced operations.
 """
 
-import logging
 import asyncio
 from typing import Dict, List, Optional, Any, Union
 from dataclasses import dataclass, field
 from datetime import datetime
-from uuid import uuid4
+import uuid
 
-from ..memory import create_memory_backend, MemoryBackend, MemoryQuery, MemoryType
-from ..config.models import MemoryConfig
+from ..memory.backend import MemoryBackend
+from ..memory.factory import create_memory_backend
+from ..memory.types import MemoryType
+# MemoryConfig imported locally to avoid circular imports
+from ..utils.logger import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 @dataclass
 class MemoryItem:
-    """A single memory item - backward compatibility wrapper."""
+    """Individual memory item."""
     content: str
     agent_name: str
+    memory_id: str = field(default_factory=lambda: str(uuid.uuid4()))
     timestamp: datetime = field(default_factory=datetime.now)
-    memory_id: str = field(default_factory=lambda: str(uuid4()))
+    memory_type: MemoryType = MemoryType.TEXT
     metadata: Dict[str, Any] = field(default_factory=dict)
-    importance: float = 1.0  # 0.0 to 1.0
+    importance: float = 1.0
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary."""
         return {
+            "memory_id": self.memory_id,
             "content": self.content,
             "agent_name": self.agent_name,
             "timestamp": self.timestamp.isoformat(),
-            "memory_id": self.memory_id,
+            "memory_type": self.memory_type.value,
             "metadata": self.metadata,
             "importance": self.importance
         }
@@ -42,10 +46,15 @@ class MemoryItem:
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "MemoryItem":
         """Create from dictionary."""
-        data = data.copy()
-        if "timestamp" in data and isinstance(data["timestamp"], str):
-            data["timestamp"] = datetime.fromisoformat(data["timestamp"])
-        return cls(**data)
+        return cls(
+            memory_id=data["memory_id"],
+            content=data["content"],
+            agent_name=data["agent_name"],
+            timestamp=datetime.fromisoformat(data["timestamp"]),
+            memory_type=MemoryType(data["memory_type"]),
+            metadata=data.get("metadata", {}),
+            importance=data.get("importance", 1.0)
+        )
 
 
 class Memory:
@@ -56,85 +65,72 @@ class Memory:
     for semantic search and advanced memory operations.
     """
     
-    def __init__(self, agent: "Agent", config: Optional[MemoryConfig] = None):
+    def __init__(self, agent: "Agent", config = None):
         self.agent = agent
         self._backend: Optional[MemoryBackend] = None
         self._config = config
-        
-        # Memory configuration
-        self.max_memories = 1000
-        self.importance_threshold = 0.1
-        
-        # Backward compatibility - keep simple storage for fallback
-        self.memories: List[MemoryItem] = []
-        self._memory_index: Dict[str, MemoryItem] = {}
         
         logger.debug(f"Initialized memory for agent '{agent.name}'")
     
     async def _get_backend(self) -> MemoryBackend:
         """Get or create the memory backend."""
         if self._backend is None:
-            try:
-                self._backend = create_memory_backend(self._config)
-            except Exception as e:
-                logger.warning(f"Failed to create memory backend, using fallback: {e}")
-                # Could implement a simple fallback backend here
-                raise
+            self._backend = create_memory_backend(self._config)
         return self._backend
     
-    def save(self, content: str, metadata: Optional[Dict[str, Any]] = None, importance: float = 1.0):
+    async def save_async(self, content: str, metadata: Optional[Dict[str, Any]] = None, importance: float = 1.0) -> str:
+        """Save content to memory."""
+        backend = await self._get_backend()
+        memory_id = await backend.add(
+            content=content,
+            memory_type=MemoryType.TEXT,
+            agent_name=self.agent.name,
+            metadata=metadata,
+            importance=importance
+        )
+        logger.debug(f"Saved memory {memory_id} for {self.agent.name}: {content[:50]}...")
+        return memory_id
+    
+    def save(self, content: str, metadata: Optional[Dict[str, Any]] = None, importance: float = 1.0) -> str:
         """Save content to memory (sync wrapper)."""
-        # Run async method in event loop
         try:
             loop = asyncio.get_event_loop()
             if loop.is_running():
-                # If we're already in an async context, create a task
-                task = asyncio.create_task(self.save_async(content, metadata, importance))
-                # For now, we can't wait for it in sync context
                 logger.warning("save() called in async context, use save_async() instead")
+                # Create task but can't wait for it in sync context
+                task = asyncio.create_task(self.save_async(content, metadata, importance))
+                return "pending"  # Return placeholder
             else:
-                loop.run_until_complete(self.save_async(content, metadata, importance))
+                return loop.run_until_complete(self.save_async(content, metadata, importance))
         except Exception as e:
             logger.error(f"Failed to save memory: {e}")
-            # Fallback to simple storage
-            self._save_fallback(content, metadata, importance)
+            raise
     
-    async def save_async(self, content: str, metadata: Optional[Dict[str, Any]] = None, importance: float = 1.0) -> str:
-        """Save content to memory (async)."""
-        try:
-            backend = await self._get_backend()
-            memory_id = await backend.add(
-                content=content,
-                memory_type=MemoryType.TEXT,  # Default to text
-                agent_name=self.agent.name,
-                metadata=metadata,
-                importance=importance
-            )
-            logger.debug(f"Saved memory {memory_id} for {self.agent.name}: {content[:50]}...")
-            return memory_id
-            
-        except Exception as e:
-            logger.error(f"Failed to save memory to backend: {e}")
-            # Fallback to simple storage
-            return self._save_fallback(content, metadata, importance)
-    
-    def _save_fallback(self, content: str, metadata: Optional[Dict[str, Any]] = None, importance: float = 1.0) -> str:
-        """Fallback save to simple storage."""
-        memory_item = MemoryItem(
-            content=content,
+    async def search_async(self, query: str, limit: int = 10) -> List[MemoryItem]:
+        """Search memories by content."""
+        backend = await self._get_backend()
+        results = await backend.search(
+            query=query,
             agent_name=self.agent.name,
-            metadata=metadata or {},
-            importance=importance
+            limit=limit
         )
         
-        self.memories.append(memory_item)
-        self._memory_index[memory_item.memory_id] = memory_item
+        # Convert backend results to MemoryItem objects
+        memory_items = []
+        for result in results:
+            memory_item = MemoryItem(
+                memory_id=result.get("memory_id", str(uuid.uuid4())),
+                content=result["content"],
+                agent_name=self.agent.name,
+                timestamp=datetime.fromisoformat(result.get("timestamp", datetime.now().isoformat())),
+                memory_type=MemoryType(result.get("memory_type", MemoryType.TEXT.value)),
+                metadata=result.get("metadata", {}),
+                importance=result.get("importance", 1.0)
+            )
+            memory_items.append(memory_item)
         
-        # Cleanup old memories if needed
-        self._cleanup_memories()
-        
-        logger.debug(f"Saved memory (fallback) for {self.agent.name}: {content[:50]}...")
-        return memory_item.memory_id
+        logger.debug(f"Found {len(memory_items)} memories for query: {query}")
+        return memory_items
     
     def search(self, query: str, limit: int = 10) -> List[MemoryItem]:
         """Search memories by content (sync wrapper)."""
@@ -142,172 +138,83 @@ class Memory:
             loop = asyncio.get_event_loop()
             if loop.is_running():
                 logger.warning("search() called in async context, use search_async() instead")
-                return self._search_fallback(query, limit)
+                return []  # Return empty list in async context
             else:
                 return loop.run_until_complete(self.search_async(query, limit))
         except Exception as e:
             logger.error(f"Failed to search memory: {e}")
-            return self._search_fallback(query, limit)
+            raise
     
-    async def search_async(self, query: str, limit: int = 10) -> List[MemoryItem]:
-        """Search memories by content (async)."""
-        try:
-            backend = await self._get_backend()
-            memory_query = MemoryQuery(
-                query=query,
+    async def get_async(self, memory_id: str) -> Optional[MemoryItem]:
+        """Get a specific memory by ID."""
+        backend = await self._get_backend()
+        result = await backend.get(memory_id, self.agent.name)
+        
+        if result:
+            return MemoryItem(
+                memory_id=result["memory_id"],
+                content=result["content"],
                 agent_name=self.agent.name,
-                limit=limit
+                timestamp=datetime.fromisoformat(result.get("timestamp", datetime.now().isoformat())),
+                memory_type=MemoryType(result.get("memory_type", MemoryType.TEXT.value)),
+                metadata=result.get("metadata", {}),
+                importance=result.get("importance", 1.0)
             )
-            
-            result = await backend.search(memory_query)
-            
-            # Convert backend MemoryItems to local MemoryItems for compatibility
-            return [self._convert_backend_item(item) for item in result.items]
-            
+        return None
+    
+    def get(self, memory_id: str) -> Optional[MemoryItem]:
+        """Get a specific memory by ID (sync wrapper)."""
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                logger.warning("get() called in async context, use get_async() instead")
+                return None
+            else:
+                return loop.run_until_complete(self.get_async(memory_id))
         except Exception as e:
-            logger.error(f"Failed to search memory in backend: {e}")
-            return self._search_fallback(query, limit)
+            logger.error(f"Failed to get memory: {e}")
+            raise
     
-    def _search_fallback(self, query: str, limit: int = 10) -> List[MemoryItem]:
-        """Fallback search using simple text matching."""
-        query_lower = query.lower()
-        
-        matches = []
-        for memory in self.memories:
-            if query_lower in memory.content.lower():
-                matches.append(memory)
-        
-        # Sort by importance and recency
-        matches.sort(key=lambda m: (m.importance, m.timestamp), reverse=True)
-        
-        return matches[:limit]
+    async def delete_async(self, memory_id: str) -> bool:
+        """Delete a memory by ID."""
+        backend = await self._get_backend()
+        success = await backend.delete(memory_id, self.agent.name)
+        if success:
+            logger.debug(f"Deleted memory {memory_id} for {self.agent.name}")
+        return success
     
-    def _convert_backend_item(self, backend_item) -> MemoryItem:
-        """Convert backend MemoryItem to local MemoryItem."""
-        return MemoryItem(
-            content=backend_item.content,
-            agent_name=backend_item.agent_name,
-            timestamp=backend_item.timestamp,
-            memory_id=backend_item.memory_id,
-            metadata=backend_item.metadata,
-            importance=backend_item.importance
-        )
+    def delete(self, memory_id: str) -> bool:
+        """Delete a memory by ID (sync wrapper)."""
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                logger.warning("delete() called in async context, use delete_async() instead")
+                return False
+            else:
+                return loop.run_until_complete(self.delete_async(memory_id))
+        except Exception as e:
+            logger.error(f"Failed to delete memory: {e}")
+            raise
     
-    def get_recent(self, limit: int = 10) -> List[MemoryItem]:
-        """Get recent memories."""
-        return sorted(self.memories, key=lambda m: m.timestamp, reverse=True)[:limit]
+    async def clear_async(self) -> bool:
+        """Clear all memories for this agent."""
+        backend = await self._get_backend()
+        success = await backend.clear(self.agent.name)
+        if success:
+            logger.debug(f"Cleared all memories for {self.agent.name}")
+        return success
     
-    def get_important(self, limit: int = 10) -> List[MemoryItem]:
-        """Get most important memories."""
-        return sorted(self.memories, key=lambda m: m.importance, reverse=True)[:limit]
+    def clear(self) -> bool:
+        """Clear all memories for this agent (sync wrapper)."""
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                logger.warning("clear() called in async context, use clear_async() instead")
+                return False
+            else:
+                return loop.run_until_complete(self.clear_async())
+        except Exception as e:
+            logger.error(f"Failed to clear memory: {e}")
+            raise
     
-    def get_by_id(self, memory_id: str) -> Optional[MemoryItem]:
-        """Get memory by ID."""
-        return self._memory_index.get(memory_id)
-    
-    def update_importance(self, memory_id: str, importance: float):
-        """Update memory importance."""
-        memory = self.get_by_id(memory_id)
-        if memory:
-            memory.importance = max(0.0, min(1.0, importance))
-            logger.debug(f"Updated memory importance: {memory_id} -> {importance}")
-    
-    def delete(self, memory_id: str):
-        """Delete a memory."""
-        memory = self._memory_index.pop(memory_id, None)
-        if memory:
-            self.memories.remove(memory)
-            logger.debug(f"Deleted memory: {memory_id}")
-    
-    def clear(self):
-        """Clear all memories."""
-        self.memories.clear()
-        self._memory_index.clear()
-        logger.debug(f"Cleared all memories for {self.agent.name}")
-    
-    def _cleanup_memories(self):
-        """Clean up old or unimportant memories."""
-        if len(self.memories) <= self.max_memories:
-            return
-        
-        # Remove memories below importance threshold first
-        low_importance = [m for m in self.memories if m.importance < self.importance_threshold]
-        for memory in low_importance:
-            self.delete(memory.memory_id)
-        
-        # If still too many, remove oldest
-        if len(self.memories) > self.max_memories:
-            sorted_memories = sorted(self.memories, key=lambda m: m.timestamp)
-            excess_count = len(self.memories) - self.max_memories
-            
-            for memory in sorted_memories[:excess_count]:
-                self.delete(memory.memory_id)
-        
-        logger.debug(f"Memory cleanup completed for {self.agent.name}")
-    
-    def get_context(self, query: str = "", max_items: int = 5) -> str:
-        """Get relevant context for a query."""
-        if query:
-            relevant_memories = self.search(query, max_items)
-        else:
-            relevant_memories = self.get_recent(max_items)
-        
-        if not relevant_memories:
-            return ""
-        
-        context_parts = []
-        for memory in relevant_memories:
-            context_parts.append(f"- {memory.content}")
-        
-        return "\n".join(context_parts)
-    
-    def save_conversation_summary(self, summary: str, participants: List[str]):
-        """Save a conversation summary."""
-        metadata = {
-            "type": "conversation_summary",
-            "participants": participants
-        }
-        self.save(summary, metadata, importance=0.8)
-    
-    def save_learning(self, learning: str, topic: str):
-        """Save a learning or insight."""
-        metadata = {
-            "type": "learning",
-            "topic": topic
-        }
-        self.save(learning, metadata, importance=0.9)
-    
-    def get_stats(self) -> Dict[str, Any]:
-        """Get memory statistics."""
-        if not self.memories:
-            return {
-                "total_memories": 0,
-                "avg_importance": 0.0,
-                "oldest_memory": None,
-                "newest_memory": None
-            }
-        
-        return {
-            "total_memories": len(self.memories),
-            "avg_importance": sum(m.importance for m in self.memories) / len(self.memories),
-            "oldest_memory": min(self.memories, key=lambda m: m.timestamp).timestamp.isoformat(),
-            "newest_memory": max(self.memories, key=lambda m: m.timestamp).timestamp.isoformat()
-        }
-    
-    def to_dict(self) -> Dict[str, Any]:
-        """Convert to dictionary."""
-        return {
-            "agent_name": self.agent.name,
-            "memories": [m.to_dict() for m in self.memories],
-            "stats": self.get_stats()
-        }
-    
-    @classmethod
-    def from_dict(cls, data: Dict[str, Any], agent: "Agent") -> "Memory":
-        """Create from dictionary."""
-        memory = cls(agent)
-        for memory_data in data.get("memories", []):
-            memory_item = MemoryItem.from_dict(memory_data)
-            memory.memories.append(memory_item)
-            memory._memory_index[memory_item.memory_id] = memory_item
-        return memory 
+ 
