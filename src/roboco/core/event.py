@@ -239,9 +239,14 @@ class GlobalEventBus:
         self.event_history.append(event)
         self._cleanup_history()
         
-        # Notify listeners
+        # Notify specific listeners
         listeners = self.listeners.get(event_type, [])
-        for callback in listeners:
+        
+        # Also notify wildcard listeners
+        wildcard_listeners = self.listeners.get("*", [])
+        all_listeners = listeners + wildcard_listeners
+        
+        for callback in all_listeners:
             try:
                 callback(event)
             except Exception as e:

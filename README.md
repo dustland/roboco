@@ -10,6 +10,7 @@ Roboco is a modern, configuration-driven framework for building collaborative AI
 - **Brain-Powered Intelligence**: Each agent has a Brain component that handles all LLM reasoning, tool orchestration, and intelligent decision-making
 - **Task-Centric API**: Clean, intuitive object-oriented interface with task-level conversation management
 - **Configuration-Based**: Define agents, tools, and workflows in YAML
+- **Modern Observability**: Built-in monitoring with CLI and web dashboard (FastAPI + Preline UI)
 - **Secure Code Execution**: Daytona-powered sandboxes for safe AI code execution
 - **Memory System**: Intelligent storage with Mem0 integration (26% higher accuracy, 91% faster)
 - **Search Integration**: Web search with SerpAPI backend
@@ -34,6 +35,27 @@ uv sync  # or pip install -e .
 - Optional: Daytona for secure code execution
 
 ## 🏃‍♂️ Quick Start
+
+### CLI Commands
+
+```bash
+# Start API server with observability
+roboco start
+
+# Start observability monitor (CLI interface)
+roboco monitor
+
+# Start web dashboard
+roboco monitor --web
+
+# Run examples
+roboco example superwriter
+
+# Check system status
+roboco status
+```
+
+### Python API
 
 ```python
 import asyncio
@@ -108,6 +130,61 @@ history = chat.get_chat_history()
 await chat.send_message("Additional instruction")
 ```
 
+## 📊 Observability & Monitoring
+
+Roboco includes a comprehensive observability system for monitoring and debugging multi-agent workflows:
+
+### Web Dashboard
+
+Modern FastAPI + Preline UI dashboard with:
+
+- **Dashboard**: System overview with metrics and recent activity
+- **Tasks**: Task conversation history viewer with export
+- **Events**: Real-time event monitoring with filtering
+- **Memory**: Memory browser with search and categories
+- **Messages**: Agent conversation history during execution
+- **Configuration**: System configuration and status viewer
+
+```bash
+# Start web dashboard
+roboco monitor --web
+
+# Custom port
+roboco monitor --web --port 8502
+```
+
+### CLI Monitor
+
+Interactive command-line interface:
+
+```bash
+# Start CLI monitor
+roboco monitor
+
+# Available commands:
+monitor> status    # Show system status
+monitor> tasks     # List recent tasks
+monitor> memory    # Browse memory categories
+monitor> search    # Search memory content
+monitor> export    # Export data to JSON
+monitor> web       # Launch web interface
+```
+
+### Programmatic Access
+
+```python
+from roboco.observability.monitor import get_monitor
+
+# Get monitor instance
+monitor = get_monitor()
+
+# Access data
+dashboard_data = monitor.get_dashboard_data()
+recent_tasks = monitor.get_recent_tasks(10)
+conversation = monitor.get_task_conversation(task_id)
+memory_categories = monitor.get_memory_categories()
+```
+
 ## 📚 Examples
 
 Complete working examples in `examples/`:
@@ -117,8 +194,12 @@ Complete working examples in `examples/`:
 Basic multi-agent collaboration demonstrating Brain-powered reasoning:
 
 ```bash
+# Using CLI
+roboco example simple_team
+
+# Or directly
 cd examples/simple_team
-python demo.py  # Full framework demonstration
+python demo.py
 ```
 
 ### [SuperWriter](examples/superwriter/) - Production Multi-Agent System
@@ -126,8 +207,12 @@ python demo.py  # Full framework demonstration
 A comprehensive writing system with research, planning, writing, and review agents:
 
 ```bash
+# Using CLI
+roboco example superwriter
+
+# Or directly
 cd examples/superwriter
-python demo.py  # Advanced multi-agent workflows
+python demo.py
 ```
 
 ## 🏗️ Architecture
@@ -200,6 +285,7 @@ The Agent coordinates between Brain (for reasoning), Tools (for execution), Memo
 
 - **[System Architecture](docs/system-architecture.md)** - Overall design and Brain architecture
 - **[Configuration Based Design](docs/config-based-design.md)** - YAML configuration reference
+- **[Observability](docs/observability.md)** - Monitoring, web dashboard, and CLI tools
 - **[Memory System](docs/memory-system.md)** - Mem0 integration and usage
 - **[Tool System](docs/tool-system.md)** - Plugin architecture and development
 - **[Event System](docs/event-system.md)** - Real-time monitoring and events

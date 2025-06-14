@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Roboco Observability{% endblock %}</title>
+    
+    <!-- Favicon -->
+    <link rel="icon" type="image/png" href="/static/logo.png">
+    <link rel="shortcut icon" type="image/png" href="/static/logo.png">
+    
+    <!-- TailwindCSS + Preline UI v3.10 -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/preline@3.10.0/dist/preline.min.css">
+
+    <!-- HTMX v2.0.4 -->
+    <script src="https://unpkg.com/htmx.org@2.0.4"></script>
+    
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+    
+    <!-- Custom styles -->
+    <style>
+        /* HTMX indicators */
+        .htmx-indicator {
+            opacity: 0;
+            transition: opacity 500ms ease-in;
+        }
+        .htmx-request .htmx-indicator {
+            opacity: 1;
+        }
+        .htmx-request.htmx-indicator {
+            opacity: 1;
+        }
+        
+        /* Custom scrollbar for better UX */
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 6px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: rgb(243 244 246);
+            border-radius: 3px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: rgb(156 163 175);
+            border-radius: 3px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+            background: rgb(107 114 128);
+        }
+        
+        /* Dark mode scrollbar */
+        .dark .custom-scrollbar::-webkit-scrollbar-track {
+            background: rgb(64 64 64);
+        }
+        .dark .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: rgb(115 115 115);
+        }
+        .dark .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+            background: rgb(163 163 163);
+        }
+    </style>
+</head>
+<body class="bg-gray-50 dark:bg-neutral-900">
+    <!-- Navigation -->
+    <header class="sticky top-0 inset-x-0 flex flex-wrap md:justify-start md:flex-nowrap z-[48] w-full bg-white border-b text-sm py-2.5 lg:ps-[260px] dark:bg-neutral-800 dark:border-neutral-700">
+        <nav class="px-4 sm:px-6 flex basis-full items-center w-full mx-auto">
+            <!-- Logo -->
+            <div class="me-5 lg:me-0 lg:hidden">
+                <a href="/" class="flex items-center text-xl font-bold text-gray-800 hover:text-gray-600 dark:text-white dark:hover:text-neutral-300 transition-colors">
+                    <img src="/static/logo.png" alt="Roboco" class="w-6 h-6 mr-2">
+                    Roboco
+                </a>
+            </div>
+
+            <!-- End -->
+            <div class="w-full flex items-center justify-end ms-auto md:justify-between gap-x-1 md:gap-x-3">
+                <div class="hidden md:block">
+                    <!-- Search -->
+                    <div class="relative">
+                        <div class="absolute inset-y-0 start-0 flex items-center pointer-events-none z-20 ps-3.5">
+                            <i data-lucide="search" class="shrink-0 size-4 text-gray-400 dark:text-white/60"></i>
+                        </div>
+                        <input type="text" class="py-2 ps-10 pe-16 block w-full bg-white border-gray-200 rounded-lg text-sm focus:outline-none focus:border-blue-500 focus:ring-blue-500 disabled:opacity-50 disabled:pointer-events-none dark:bg-neutral-800 dark:border-neutral-700 dark:text-neutral-400 dark:placeholder:text-neutral-400 dark:focus:ring-neutral-600" placeholder="Search">
+                    </div>
+                </div>
+
+                <div class="flex flex-row items-center justify-end gap-1">
+                    <!-- Theme Toggle -->
+                    <button type="button" data-hs-theme-switch class="size-[38px] relative inline-flex justify-center items-center gap-x-2 text-sm font-semibold rounded-full border border-transparent text-gray-800 hover:bg-gray-100 focus:outline-none focus:bg-gray-100 disabled:opacity-50 disabled:pointer-events-none dark:text-white dark:hover:bg-neutral-700 dark:focus:bg-neutral-700">
+                        <i data-lucide="sun" class="shrink-0 size-4 dark:hidden"></i>
+                        <i data-lucide="moon" class="shrink-0 size-4 hidden dark:block"></i>
+                        <span class="sr-only">Toggle theme</span>
+                    </button>
+
+                    <!-- Status Indicator -->
+                    <div class="relative">
+                        <button type="button" class="size-[38px] relative inline-flex justify-center items-center gap-x-2 text-sm font-semibold rounded-full border border-transparent text-gray-800 hover:bg-gray-100 focus:outline-none focus:bg-gray-100 disabled:opacity-50 disabled:pointer-events-none dark:text-white dark:hover:bg-neutral-700 dark:focus:bg-neutral-700">
+                            <i data-lucide="activity" class="shrink-0 size-4"></i>
+                        </button>
+                        <span id="status-indicator" class="absolute top-0 end-0 inline-flex items-center py-0.5 px-1.5 rounded-full text-xs font-medium transform -translate-y-1/2 translate-x-1/2 bg-green-500 text-white"></span>
+                    </div>
+                </div>
+            </div>
+        </nav>
+    </header>
+
+    <!-- Sidebar -->
+    <div class="hs-overlay [--auto-close:lg] hs-overlay-open:translate-x-0 -translate-x-full transition-all duration-300 transform w-[260px] h-full hidden fixed inset-y-0 start-0 z-[60] bg-white border-e border-gray-200 lg:block lg:translate-x-0 lg:end-auto lg:bottom-0 dark:bg-neutral-800 dark:border-neutral-700">
+        <div class="relative flex flex-col h-full max-h-full">
+            <div class="px-6 pt-4">
+                <!-- Logo -->
+                <a href="/" class="flex items-center text-xl font-bold text-gray-800 dark:text-white">
+                    <img src="/static/logo.png" alt="Roboco" class="w-6 h-6 mr-2">
+                    Roboco <span class="text-sm text-gray-400 ml-2">O11y</span>
+                </a>
+            </div>
+
+            <!-- Content -->
+            <div class="h-full overflow-y-auto [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-track]:bg-gray-100 [&::-webkit-scrollbar-thumb]:bg-gray-300 dark:[&::-webkit-scrollbar-track]:bg-neutral-700 dark:[&::-webkit-scrollbar-thumb]:bg-neutral-500">
+                <nav class="hs-accordion-group p-3 w-full flex flex-col flex-wrap" data-hs-accordion-always-open>
+                    <ul class="flex flex-col space-y-1">
+                        <li>
+                            <a class="flex items-center gap-x-2 py-2 px-2.5 {% if page_title == 'Dashboard' %}bg-gray-100 dark:bg-neutral-700{% endif %} text-sm text-gray-800 rounded-lg hover:bg-gray-100 focus:outline-none focus:bg-gray-100 dark:text-neutral-200 dark:hover:bg-neutral-700 dark:focus:bg-neutral-700" href="/">
+                                <i data-lucide="layout-dashboard" class="shrink-0 size-4"></i>
+                                Dashboard
+                            </a>
+                        </li>
+                        <li>
+                            <a class="flex items-center gap-x-2 py-2 px-2.5 {% if page_title == 'Tasks' %}bg-gray-100 dark:bg-neutral-700{% endif %} text-sm text-gray-800 rounded-lg hover:bg-gray-100 focus:outline-none focus:bg-gray-100 dark:text-neutral-200 dark:hover:bg-neutral-700 dark:focus:bg-neutral-700" href="/tasks">
+                                <i data-lucide="list-checks" class="shrink-0 size-4"></i>
+                                Tasks
+                            </a>
+                        </li>
+                        <li>
+                            <a class="flex items-center gap-x-2 py-2 px-2.5 {% if page_title == 'Events' %}bg-gray-100 dark:bg-neutral-700{% endif %} text-sm text-gray-800 rounded-lg hover:bg-gray-100 focus:outline-none focus:bg-gray-100 dark:text-neutral-200 dark:hover:bg-neutral-700 dark:focus:bg-neutral-700" href="/events">
+                                <i data-lucide="zap" class="shrink-0 size-4"></i>
+                                Events
+                            </a>
+                        </li>
+                        <li>
+                            <a class="flex items-center gap-x-2 py-2 px-2.5 {% if page_title == 'Memory' %}bg-gray-100 dark:bg-neutral-700{% endif %} text-sm text-gray-800 rounded-lg hover:bg-gray-100 focus:outline-none focus:bg-gray-100 dark:text-neutral-200 dark:hover:bg-neutral-700 dark:focus:bg-neutral-700" href="/memory">
+                                <i data-lucide="brain" class="shrink-0 size-4"></i>
+                                Memory
+                            </a>
+                        </li>
+                                                  <li>
+                             <a class="flex items-center gap-x-2 py-2 px-2.5 {% if page_title == 'Messages' %}bg-gray-100 dark:bg-neutral-700{% endif %} text-sm text-gray-800 rounded-lg hover:bg-gray-100 focus:outline-none focus:bg-gray-100 dark:text-neutral-200 dark:hover:bg-neutral-700 dark:focus:bg-neutral-700" href="/messages">
+                                  <i data-lucide="message-square" class="shrink-0 size-4"></i>
+                                  Messages
+                              </a>
+                          </li>
+                        <li>
+                            <a class="flex items-center gap-x-2 py-2 px-2.5 {% if page_title == 'Configuration' %}bg-gray-100 dark:bg-neutral-700{% endif %} text-sm text-gray-800 rounded-lg hover:bg-gray-100 focus:outline-none focus:bg-gray-100 dark:text-neutral-200 dark:hover:bg-neutral-700 dark:focus:bg-neutral-700" href="/configuration">
+                                <i data-lucide="settings" class="shrink-0 size-4"></i>
+                                Configuration
+                            </a>
+                        </li>
+                    </ul>
+                </nav>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main content -->
+    <div class="w-full lg:ps-64">
+        <div class="p-4 sm:p-6 space-y-4 sm:space-y-6">
+            {% block content %}{% endblock %}
+        </div>
+    </div>
+
+    <!-- Toast notifications -->
+    <div id="toast-container" class="fixed top-4 end-4 z-50 space-y-3"></div>
+
+    <!-- Loading overlay -->
+    <div id="loading-overlay" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
+        <div class="bg-white dark:bg-neutral-800 p-6 rounded-lg shadow-xl">
+            <div class="flex items-center space-x-3">
+                <div class="animate-spin inline-block size-6 border-[3px] border-current border-t-transparent text-blue-600 rounded-full" role="status" aria-label="loading">
+                    <span class="sr-only">Loading...</span>
+                </div>
+                <span class="text-gray-800 dark:text-white">Loading...</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Preline UI theme initialization (must run early) -->
+    <script>
+        // This code should be added to <head>. It's used to prevent page load glitches.
+        const html = document.querySelector('html');
+        
+        // Set default theme if none exists
+        if (!localStorage.getItem('hs_theme')) {
+            localStorage.setItem('hs_theme', 'light');
+        }
+        
+        const isLightOrAuto = localStorage.getItem('hs_theme') === 'light' || (localStorage.getItem('hs_theme') === 'auto' && !window.matchMedia('(prefers-color-scheme: dark)').matches);
+        const isDarkOrAuto = localStorage.getItem('hs_theme') === 'dark' || (localStorage.getItem('hs_theme') === 'auto' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+        
+        if (isLightOrAuto && html.classList.contains('dark')) html.classList.remove('dark');
+        else if (isDarkOrAuto && html.classList.contains('light')) html.classList.remove('light');
+        else if (isDarkOrAuto && !html.classList.contains('dark')) html.classList.add('dark');
+        else if (isLightOrAuto && !html.classList.contains('light')) html.classList.add('light');
+    </script>
+    
+    <!-- Preline UI JS v3.10 -->
+    <script src="https://cdn.jsdelivr.net/npm/preline@3.10.0/dist/preline.min.js"></script>
+    
+    <script>
+        // Initialize Lucide icons
+        lucide.createIcons();
+        
+        // Initialize Preline components
+        document.addEventListener('DOMContentLoaded', function() {
+            if (window.HSStaticMethods) {
+                window.HSStaticMethods.autoInit();
+            }
+        });
+        
+        // Preline UI theme switch event handling
+        document.addEventListener('DOMContentLoaded', function() {
+            // Listen for theme changes
+            document.addEventListener('on-hs-theme-switch', function(e) {
+                // Re-initialize Preline components after theme change
+                if (window.HSStaticMethods) {
+                    window.HSStaticMethods.autoInit();
+                }
+                
+                // Re-initialize Lucide icons
+                lucide.createIcons();
+            });
+        });
+        
+
+        
+        // Toast notification system
+        function showToast(message, type = 'info') {
+            const toast = document.createElement('div');
+            toast.className = `alert alert-${type} shadow-lg mb-2`;
+            toast.innerHTML = `
+                <div>
+                    <i data-lucide="${type === 'success' ? 'check-circle' : type === 'error' ? 'x-circle' : 'info'}" class="w-5 h-5"></i>
+                    <span>${message}</span>
+                </div>
+            `;
+            
+            document.getElementById('toast-container').appendChild(toast);
+            lucide.createIcons();
+            
+            // Auto remove after 5 seconds
+            setTimeout(() => {
+                toast.remove();
+            }, 5000);
+        }
+        
+        // HTMX event handlers
+        document.body.addEventListener('htmx:beforeRequest', function(evt) {
+            document.getElementById('loading-overlay').classList.remove('hidden');
+        });
+        
+        document.body.addEventListener('htmx:afterRequest', function(evt) {
+            document.getElementById('loading-overlay').classList.add('hidden');
+            
+            if (evt.detail.successful) {
+                // Re-initialize Lucide icons after HTMX updates
+                lucide.createIcons();
+            } else {
+                showToast('Request failed', 'error');
+            }
+        });
+        
+        // Auto-refresh dashboard stats every 30 seconds
+        setInterval(function() {
+            if (window.location.pathname === '/') {
+                htmx.trigger('#dashboard-stats', 'refresh');
+            }
+        }, 30000);
+        
+        // Status indicator updates
+        function updateStatusIndicator(isRunning, isIntegrated) {
+            const indicator = document.getElementById('status-indicator');
+            if (isRunning && isIntegrated) {
+                indicator.className = 'indicator-item badge badge-success badge-xs';
+            } else if (isRunning) {
+                indicator.className = 'indicator-item badge badge-warning badge-xs';
+            } else {
+                indicator.className = 'indicator-item badge badge-error badge-xs';
+            }
+        }
+    </script>
+    
+    {% block scripts %}{% endblock %}
+</body>
+</html> 

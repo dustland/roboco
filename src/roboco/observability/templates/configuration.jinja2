@@ -1,0 +1,312 @@
+{% extends "base.jinja2" %}
+
+{% block title %}Configuration - Roboco Observability{% endblock %}
+
+{% block content %}
+<!-- Page Header -->
+<div class="sm:flex sm:justify-between sm:items-center mb-8">
+    <div class="mb-4 sm:mb-0">
+        <h1 class="text-2xl font-semibold text-gray-800 dark:text-neutral-200">Configuration</h1>
+        <p class="text-sm text-gray-600 dark:text-neutral-400">System configuration and agent settings</p>
+    </div>
+    
+    <div class="flex gap-x-2">
+        <button 
+            type="button"
+            class="py-2 px-3 inline-flex items-center gap-x-2 text-sm font-medium rounded-lg border border-gray-200 bg-white text-gray-800 shadow-sm hover:bg-gray-50 focus:outline-none focus:bg-gray-50 disabled:opacity-50 disabled:pointer-events-none dark:bg-neutral-800 dark:border-neutral-700 dark:text-white dark:hover:bg-neutral-700 dark:focus:bg-neutral-700"
+            onclick="window.location.reload()"
+        >
+            <i data-lucide="refresh-cw" class="shrink-0 size-4"></i>
+            Refresh
+        </button>
+    </div>
+</div>
+
+<!-- Configuration Grid -->
+<div class="grid lg:grid-cols-2 gap-6">
+    <!-- System Information -->
+    <div class="flex flex-col bg-white border shadow-sm rounded-xl dark:bg-neutral-800 dark:border-neutral-700">
+        <div class="px-6 py-4 border-b border-gray-200 dark:border-neutral-700">
+            <h2 class="text-xl font-semibold text-gray-800 dark:text-neutral-200">
+                <i data-lucide="monitor" class="inline shrink-0 size-4 mr-2"></i>
+                System Information
+            </h2>
+        </div>
+        
+        <div class="p-6">
+            <div class="space-y-4">
+                <div class="flex justify-between items-center">
+                    <span class="text-sm text-gray-600 dark:text-neutral-400">Mode:</span>
+                    <span class="inline-flex items-center gap-x-1.5 py-1.5 px-3 rounded-full text-xs font-medium {% if config_data.system.mode == 'Integrated' %}bg-green-100 text-green-800 dark:bg-green-800/30 dark:text-green-500{% else %}bg-yellow-100 text-yellow-800 dark:bg-yellow-800/30 dark:text-yellow-500{% endif %}">
+                        {{ config_data.system.mode }}
+                    </span>
+                </div>
+                
+                <div class="flex justify-between items-center">
+                    <span class="text-sm text-gray-600 dark:text-neutral-400">Status:</span>
+                    <span class="inline-flex items-center gap-x-1.5 py-1.5 px-3 rounded-full text-xs font-medium {% if config_data.system.running %}bg-green-100 text-green-800 dark:bg-green-800/30 dark:text-green-500{% else %}bg-red-100 text-red-800 dark:bg-red-800/30 dark:text-red-500{% endif %}">
+                        {% if config_data.system.running %}Running{% else %}Stopped{% endif %}
+                    </span>
+                </div>
+                
+                <div class="flex justify-between">
+                    <span class="text-sm text-gray-600 dark:text-neutral-400">Data Directory:</span>
+                    <span class="text-sm font-mono text-gray-800 dark:text-neutral-200 text-right max-w-xs truncate">{{ config_data.system.data_directory }}</span>
+                </div>
+                
+                <div class="flex justify-between">
+                    <span class="text-sm text-gray-600 dark:text-neutral-400">Python Version:</span>
+                    <span class="text-sm font-medium text-gray-800 dark:text-neutral-200">{{ config_data.system.python_version }}</span>
+                </div>
+                
+                <div class="flex justify-between">
+                    <span class="text-sm text-gray-600 dark:text-neutral-400">Platform:</span>
+                    <span class="text-sm font-medium text-gray-800 dark:text-neutral-200">{{ config_data.system.platform }}</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- LLM Models -->
+    <div class="flex flex-col bg-white border shadow-sm rounded-xl dark:bg-neutral-800 dark:border-neutral-700">
+        <div class="px-6 py-4 border-b border-gray-200 dark:border-neutral-700">
+            <h2 class="text-xl font-semibold text-gray-800 dark:text-neutral-200">
+                <i data-lucide="brain" class="inline shrink-0 size-4 mr-2"></i>
+                LLM Models
+            </h2>
+        </div>
+        
+        <div class="p-6">
+            {% if config_data.llm_models %}
+                <div class="space-y-4">
+                    {% for provider, config in config_data.llm_models.items() %}
+                        {% if provider != 'config_file' %}
+                        <div class="flex justify-between items-center">
+                            <span class="text-sm font-medium text-gray-800 dark:text-neutral-200">{{ provider }}:</span>
+                            <div class="flex items-center gap-x-2">
+                                {% if config.configured %}
+                                    <span class="inline-flex items-center gap-x-1.5 py-1 px-2 rounded-full text-xs font-medium bg-green-100 text-green-800 dark:bg-green-800/30 dark:text-green-500">
+                                        <i data-lucide="check" class="shrink-0 size-3"></i>
+                                        Configured
+                                    </span>
+                                    {% if config.api_key_preview %}
+                                    <span class="text-xs font-mono text-gray-500 dark:text-neutral-400">{{ config.api_key_preview }}</span>
+                                    {% endif %}
+                                {% else %}
+                                    <span class="inline-flex items-center gap-x-1.5 py-1 px-2 rounded-full text-xs font-medium bg-gray-100 text-gray-800 dark:bg-neutral-700 dark:text-neutral-200">
+                                        <i data-lucide="x" class="shrink-0 size-3"></i>
+                                        Not Set
+                                    </span>
+                                {% endif %}
+                            </div>
+                        </div>
+                        {% endif %}
+                    {% endfor %}
+                    
+                    {% if config_data.llm_models.config_file %}
+                    <div class="mt-4 pt-4 border-t border-gray-200 dark:border-neutral-700">
+                        <div class="space-y-2">
+                            <div class="flex justify-between">
+                                <span class="text-sm text-gray-600 dark:text-neutral-400">Config File:</span>
+                                <span class="text-xs font-mono text-gray-800 dark:text-neutral-200">{{ config_data.llm_models.config_file.path }}</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-sm text-gray-600 dark:text-neutral-400">Default Model:</span>
+                                <span class="text-sm font-medium text-gray-800 dark:text-neutral-200">{{ config_data.llm_models.config_file.default_model }}</span>
+                            </div>
+                            {% if config_data.llm_models.config_file.models %}
+                            <div class="flex justify-between">
+                                <span class="text-sm text-gray-600 dark:text-neutral-400">Available Models:</span>
+                                <div class="flex flex-wrap gap-1">
+                                    {% for model in config_data.llm_models.config_file.models %}
+                                    <span class="inline-flex items-center py-1 px-2 rounded-full text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-800/30 dark:text-blue-500">{{ model }}</span>
+                                    {% endfor %}
+                                </div>
+                            </div>
+                            {% endif %}
+                        </div>
+                    </div>
+                    {% endif %}
+                </div>
+            {% else %}
+                <div class="text-center py-8">
+                    <i data-lucide="alert-circle" class="mx-auto size-12 text-gray-400 dark:text-neutral-500 mb-3"></i>
+                    <p class="text-sm text-gray-600 dark:text-neutral-400">No LLM configuration found</p>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Agents Configuration -->
+    <div class="flex flex-col bg-white border shadow-sm rounded-xl dark:bg-neutral-800 dark:border-neutral-700">
+        <div class="px-6 py-4 border-b border-gray-200 dark:border-neutral-700">
+            <h2 class="text-xl font-semibold text-gray-800 dark:text-neutral-200">
+                <i data-lucide="users" class="inline shrink-0 size-4 mr-2"></i>
+                Agents Configuration
+            </h2>
+        </div>
+        
+        <div class="p-6">
+            {% if config_data.agents %}
+                <div class="space-y-4">
+                    {% for agent_name, agent_config in config_data.agents.items() %}
+                    <div class="border border-gray-200 dark:border-neutral-700 rounded-lg p-4">
+                        <div class="flex justify-between items-start mb-3">
+                            <h3 class="text-sm font-semibold text-gray-800 dark:text-neutral-200">{{ agent_name }}</h3>
+                            <span class="inline-flex items-center py-1 px-2 rounded-full text-xs font-medium bg-purple-100 text-purple-800 dark:bg-purple-800/30 dark:text-purple-500">{{ agent_config.role }}</span>
+                        </div>
+                        
+                        <div class="space-y-2 text-sm">
+                            <div class="flex justify-between">
+                                <span class="text-gray-600 dark:text-neutral-400">Class:</span>
+                                <span class="font-mono text-gray-800 dark:text-neutral-200">{{ agent_config.class }}</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-gray-600 dark:text-neutral-400">Model:</span>
+                                <span class="font-medium text-gray-800 dark:text-neutral-200">{{ agent_config.model }}</span>
+                            </div>
+                            {% if agent_config.tools %}
+                            <div class="flex justify-between">
+                                <span class="text-gray-600 dark:text-neutral-400">Tools:</span>
+                                <div class="flex flex-wrap gap-1">
+                                    {% for tool in agent_config.tools %}
+                                    <span class="inline-flex items-center py-0.5 px-1.5 rounded text-xs font-medium bg-gray-100 text-gray-800 dark:bg-neutral-700 dark:text-neutral-200">{{ tool }}</span>
+                                    {% endfor %}
+                                </div>
+                            </div>
+                            {% endif %}
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            {% else %}
+                <div class="text-center py-8">
+                    <i data-lucide="user-x" class="mx-auto size-12 text-gray-400 dark:text-neutral-500 mb-3"></i>
+                    <p class="text-sm text-gray-600 dark:text-neutral-400">No agent configuration found</p>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Memory Configuration -->
+    <div class="flex flex-col bg-white border shadow-sm rounded-xl dark:bg-neutral-800 dark:border-neutral-700">
+        <div class="px-6 py-4 border-b border-gray-200 dark:border-neutral-700">
+            <h2 class="text-xl font-semibold text-gray-800 dark:text-neutral-200">
+                <i data-lucide="database" class="inline shrink-0 size-4 mr-2"></i>
+                Memory Configuration
+            </h2>
+        </div>
+        
+        <div class="p-6">
+            <div class="space-y-4">
+                <div class="flex justify-between">
+                    <span class="text-sm text-gray-600 dark:text-neutral-400">Provider:</span>
+                    <span class="text-sm font-medium text-gray-800 dark:text-neutral-200">{{ config_data.memory.provider }}</span>
+                </div>
+                
+                <div class="flex justify-between">
+                    <span class="text-sm text-gray-600 dark:text-neutral-400">Vector Store:</span>
+                    <span class="text-sm font-medium text-gray-800 dark:text-neutral-200">{{ config_data.memory.vector_store }}</span>
+                </div>
+                
+                <div class="flex justify-between">
+                    <span class="text-sm text-gray-600 dark:text-neutral-400">Embedder:</span>
+                    <span class="text-sm font-medium text-gray-800 dark:text-neutral-200">{{ config_data.memory.embedder }}</span>
+                </div>
+                
+                {% if config_data.memory.llm_provider %}
+                <div class="flex justify-between">
+                    <span class="text-sm text-gray-600 dark:text-neutral-400">LLM Provider:</span>
+                    <span class="text-sm font-medium text-gray-800 dark:text-neutral-200">{{ config_data.memory.llm_provider }}</span>
+                </div>
+                {% endif %}
+                
+                <div class="flex justify-between">
+                    <span class="text-sm text-gray-600 dark:text-neutral-400">Categories:</span>
+                    <span class="text-sm font-medium text-gray-800 dark:text-neutral-200">{{ config_data.memory.categories }}</span>
+                </div>
+                
+                <div class="flex justify-between">
+                    <span class="text-sm text-gray-600 dark:text-neutral-400">Total Items:</span>
+                    <span class="text-sm font-medium text-gray-800 dark:text-neutral-200">{{ config_data.memory.total_items }}</span>
+                </div>
+                
+                {% if config_data.memory.version %}
+                <div class="flex justify-between">
+                    <span class="text-sm text-gray-600 dark:text-neutral-400">Version:</span>
+                    <span class="text-sm font-medium text-gray-800 dark:text-neutral-200">{{ config_data.memory.version }}</span>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Tools Configuration -->
+    <div class="flex flex-col bg-white border shadow-sm rounded-xl dark:bg-neutral-800 dark:border-neutral-700">
+        <div class="px-6 py-4 border-b border-gray-200 dark:border-neutral-700">
+            <h2 class="text-xl font-semibold text-gray-800 dark:text-neutral-200">
+                <i data-lucide="wrench" class="inline shrink-0 size-4 mr-2"></i>
+                Tools Configuration
+            </h2>
+        </div>
+        
+        <div class="p-6">
+            {% if config_data.tools.tool_modules %}
+                <div class="space-y-3">
+                    <div>
+                        <span class="text-sm text-gray-600 dark:text-neutral-400">Available Tool Modules:</span>
+                        <div class="mt-2 flex flex-wrap gap-2">
+                            {% for module in config_data.tools.tool_modules %}
+                            <span class="inline-flex items-center py-1.5 px-3 rounded-full text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-800/30 dark:text-blue-500">{{ module }}</span>
+                            {% endfor %}
+                        </div>
+                    </div>
+                </div>
+            {% else %}
+                <div class="text-center py-8">
+                    <i data-lucide="tool" class="mx-auto size-12 text-gray-400 dark:text-neutral-500 mb-3"></i>
+                    <p class="text-sm text-gray-600 dark:text-neutral-400">No tools configuration found</p>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Events Configuration -->
+    <div class="flex flex-col bg-white border shadow-sm rounded-xl dark:bg-neutral-800 dark:border-neutral-700">
+        <div class="px-6 py-4 border-b border-gray-200 dark:border-neutral-700">
+            <h2 class="text-xl font-semibold text-gray-800 dark:text-neutral-200">
+                <i data-lucide="activity" class="inline shrink-0 size-4 mr-2"></i>
+                Events Configuration
+            </h2>
+        </div>
+        
+        <div class="p-6">
+            <div class="space-y-4">
+                <div class="flex justify-between items-center">
+                    <span class="text-sm text-gray-600 dark:text-neutral-400">Mode:</span>
+                    <span class="inline-flex items-center gap-x-1.5 py-1.5 px-3 rounded-full text-xs font-medium {% if config_data.events.integrated_mode %}bg-green-100 text-green-800 dark:bg-green-800/30 dark:text-green-500{% else %}bg-yellow-100 text-yellow-800 dark:bg-yellow-800/30 dark:text-yellow-500{% endif %}">
+                        {% if config_data.events.integrated_mode %}Integrated{% else %}Independent{% endif %}
+                    </span>
+                </div>
+                
+                <div class="flex justify-between items-center">
+                    <span class="text-sm text-gray-600 dark:text-neutral-400">Capture Enabled:</span>
+                    <span class="inline-flex items-center gap-x-1.5 py-1.5 px-3 rounded-full text-xs font-medium {% if config_data.events.capture_enabled %}bg-green-100 text-green-800 dark:bg-green-800/30 dark:text-green-500{% else %}bg-red-100 text-red-800 dark:bg-red-800/30 dark:text-red-500{% endif %}">
+                        {% if config_data.events.capture_enabled %}Yes{% else %}No{% endif %}
+                    </span>
+                </div>
+                
+                <div class="flex justify-between">
+                    <span class="text-sm text-gray-600 dark:text-neutral-400">Total Events:</span>
+                    <span class="text-sm font-medium text-gray-800 dark:text-neutral-200">{{ config_data.events.total_events }}</span>
+                </div>
+                
+                <div class="flex justify-between">
+                    <span class="text-sm text-gray-600 dark:text-neutral-400">Event Types:</span>
+                    <span class="text-sm font-medium text-gray-800 dark:text-neutral-200">{{ config_data.events.event_types }}</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %} 

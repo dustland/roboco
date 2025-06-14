@@ -1,0 +1,328 @@
+{% extends "base.jinja2" %}
+
+{% block title %}Dashboard - Roboco Observability{% endblock %}
+
+{% block content %}
+<!-- Page Header -->
+<div class="sm:flex sm:justify-between sm:items-center mb-8">
+    <div class="mb-4 sm:mb-0">
+        <h1 class="text-2xl font-semibold text-gray-800 dark:text-neutral-200">Dashboard</h1>
+        <p class="text-sm text-gray-600 dark:text-neutral-400">Real-time observability for your Roboco system</p>
+    </div>
+    
+    <!-- Control buttons -->
+    <div class="flex gap-x-2">
+        <button 
+            type="button"
+            class="py-2 px-3 inline-flex items-center gap-x-2 text-sm font-medium rounded-lg border border-gray-200 bg-white text-gray-800 shadow-sm hover:bg-gray-50 focus:outline-none focus:bg-gray-50 disabled:opacity-50 disabled:pointer-events-none dark:bg-neutral-800 dark:border-neutral-700 dark:text-white dark:hover:bg-neutral-700 dark:focus:bg-neutral-700"
+            onclick="window.location.reload()"
+        >
+            <i data-lucide="refresh-cw" class="shrink-0 size-4"></i>
+            Refresh
+        </button>
+        
+        {% if dashboard_data.is_running %}
+        <button 
+            type="button"
+            class="py-2 px-3 inline-flex items-center gap-x-2 text-sm font-medium rounded-lg border border-transparent bg-red-600 text-white hover:bg-red-700 focus:outline-none focus:bg-red-700 disabled:opacity-50 disabled:pointer-events-none"
+            hx-post="/api/monitor/stop"
+            hx-trigger="click"
+            hx-target="#monitor-controls"
+            hx-swap="outerHTML"
+        >
+            <i data-lucide="square" class="shrink-0 size-4"></i>
+            Stop
+        </button>
+        {% else %}
+        <button 
+            type="button"
+            class="py-2 px-3 inline-flex items-center gap-x-2 text-sm font-medium rounded-lg border border-transparent bg-green-600 text-white hover:bg-green-700 focus:outline-none focus:bg-green-700 disabled:opacity-50 disabled:pointer-events-none"
+            hx-post="/api/monitor/start"
+            hx-trigger="click"
+            hx-target="#monitor-controls"
+            hx-swap="outerHTML"
+        >
+            <i data-lucide="play" class="shrink-0 size-4"></i>
+            Start
+        </button>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Stats Cards -->
+<div id="dashboard-stats" class="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 mb-8">
+    <!-- System Status Card -->
+    <div class="flex flex-col bg-white border shadow-sm rounded-xl dark:bg-neutral-800 dark:border-neutral-700">
+        <div class="p-4 md:p-5">
+            <div class="flex items-center gap-x-2">
+                <p class="text-xs uppercase tracking-wide text-gray-500 dark:text-neutral-500">
+                    System Status
+                </p>
+            </div>
+            
+            <div class="mt-1 flex items-center gap-x-2">
+                {% if dashboard_data.is_running and dashboard_data.is_integrated %}
+                    <i data-lucide="check-circle" class="shrink-0 size-5 text-green-600"></i>
+                {% elif dashboard_data.is_running %}
+                    <i data-lucide="alert-circle" class="shrink-0 size-5 text-yellow-500"></i>
+                {% else %}
+                    <i data-lucide="x-circle" class="shrink-0 size-5 text-red-500"></i>
+                {% endif %}
+                <h3 class="text-xl sm:text-2xl font-medium text-gray-800 dark:text-neutral-200">
+                    {% if dashboard_data.is_running %}Running{% else %}Stopped{% endif %}
+                </h3>
+            </div>
+            
+            <div class="mt-2 flex gap-x-1">
+                {% if dashboard_data.is_integrated %}
+                    <span class="inline-flex items-center gap-x-1.5 py-1.5 px-3 rounded-full text-xs font-medium bg-green-100 text-green-800 dark:bg-green-800/30 dark:text-green-500">Integrated</span>
+                {% else %}
+                    <span class="inline-flex items-center gap-x-1.5 py-1.5 px-3 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800 dark:bg-yellow-800/30 dark:text-yellow-500">Independent</span>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Tasks Card -->
+    <div class="flex flex-col bg-white border shadow-sm rounded-xl dark:bg-neutral-800 dark:border-neutral-700">
+        <div class="p-4 md:p-5">
+            <div class="flex items-center gap-x-2">
+                <p class="text-xs uppercase tracking-wide text-gray-500 dark:text-neutral-500">
+                    Tasks
+                </p>
+            </div>
+            
+            <div class="mt-1 flex items-center gap-x-2">
+                <i data-lucide="list-checks" class="shrink-0 size-5 text-blue-600"></i>
+                <h3 class="text-xl sm:text-2xl font-medium text-gray-800 dark:text-neutral-200">
+                    {{ dashboard_data.total_tasks }}
+                </h3>
+            </div>
+            
+            <p class="mt-1 text-sm text-gray-500 dark:text-neutral-500">
+                Total tracked
+            </p>
+        </div>
+    </div>
+
+    <!-- Memory Items Card -->
+    <div class="flex flex-col bg-white border shadow-sm rounded-xl dark:bg-neutral-800 dark:border-neutral-700">
+        <div class="p-4 md:p-5">
+            <div class="flex items-center gap-x-2">
+                <p class="text-xs uppercase tracking-wide text-gray-500 dark:text-neutral-500">
+                    Memory Items
+                </p>
+            </div>
+            
+            <div class="mt-1 flex items-center gap-x-2">
+                <i data-lucide="brain" class="shrink-0 size-5 text-purple-600"></i>
+                <h3 class="text-xl sm:text-2xl font-medium text-gray-800 dark:text-neutral-200">
+                    {{ dashboard_data.total_memory_items }}
+                </h3>
+            </div>
+            
+            <p class="mt-1 text-sm text-gray-500 dark:text-neutral-500">
+                {{ dashboard_data.memory_categories }} categories
+            </p>
+        </div>
+    </div>
+
+    <!-- Events Card -->
+    <div class="flex flex-col bg-white border shadow-sm rounded-xl dark:bg-neutral-800 dark:border-neutral-700">
+        <div class="p-4 md:p-5">
+            <div class="flex items-center gap-x-2">
+                <p class="text-xs uppercase tracking-wide text-gray-500 dark:text-neutral-500">
+                    Events
+                </p>
+            </div>
+            
+            <div class="mt-1 flex items-center gap-x-2">
+                {% if dashboard_data.is_integrated %}
+                    <i data-lucide="zap" class="shrink-0 size-5 text-orange-600"></i>
+                    <h3 class="text-xl sm:text-2xl font-medium text-gray-800 dark:text-neutral-200">
+                        {{ dashboard_data.total_events }}
+                    </h3>
+                {% else %}
+                    <i data-lucide="zap" class="shrink-0 size-5 text-gray-400"></i>
+                    <h3 class="text-xl sm:text-2xl font-medium text-gray-400 dark:text-neutral-500">
+                        N/A
+                    </h3>
+                {% endif %}
+            </div>
+            
+            <p class="mt-1 text-sm text-gray-500 dark:text-neutral-500">
+                {% if dashboard_data.is_integrated %}Real-time capture{% else %}Integrated mode only{% endif %}
+            </p>
+        </div>
+    </div>
+</div>
+
+<!-- Content Grid -->
+<div class="grid lg:grid-cols-2 gap-4 sm:gap-6">
+    <!-- Recent Tasks -->
+    <div class="flex flex-col bg-white border shadow-sm rounded-xl dark:bg-neutral-800 dark:border-neutral-700">
+        <div class="px-6 py-4 grid gap-3 md:flex md:justify-between md:items-center border-b border-gray-200 dark:border-neutral-700">
+            <div>
+                <h2 class="text-xl font-semibold text-gray-800 dark:text-neutral-200">
+                    <i data-lucide="clock" class="inline shrink-0 size-4 mr-2"></i>
+                    Recent Tasks
+                </h2>
+            </div>
+            
+            <div>
+                <a class="py-1.5 px-2 inline-flex items-center gap-x-2 text-sm font-medium rounded-lg border border-gray-200 bg-white text-gray-800 shadow-sm hover:bg-gray-50 focus:outline-none focus:bg-gray-50 disabled:opacity-50 disabled:pointer-events-none dark:bg-neutral-800 dark:border-neutral-700 dark:text-white dark:hover:bg-neutral-700 dark:focus:bg-neutral-700" href="/tasks">
+                    View All
+                    <i data-lucide="arrow-right" class="shrink-0 size-4"></i>
+                </a>
+            </div>
+        </div>
+        
+        <div class="p-6">
+            {% if dashboard_data.recent_tasks %}
+                <div class="space-y-3">
+                    {% for task_id in dashboard_data.recent_tasks %}
+                    <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg dark:bg-neutral-700">
+                        <div class="flex items-center gap-x-3">
+                            <div class="size-2 bg-blue-600 rounded-full"></div>
+                            <span class="text-sm font-mono text-gray-800 dark:text-neutral-200">{{ task_id }}</span>
+                        </div>
+                        <button 
+                            type="button"
+                            class="py-1 px-2 inline-flex items-center gap-x-2 text-xs font-medium rounded-lg border border-transparent text-gray-500 hover:text-gray-800 focus:outline-none focus:text-gray-800 disabled:opacity-50 disabled:pointer-events-none dark:text-neutral-400 dark:hover:text-neutral-200 dark:focus:text-neutral-200"
+                            onclick="viewTaskDetails('{{ task_id }}')"
+                        >
+                            <i data-lucide="eye" class="shrink-0 size-3"></i>
+                        </button>
+                    </div>
+                    {% endfor %}
+                </div>
+            {% else %}
+                <div class="text-center py-8">
+                    <i data-lucide="inbox" class="mx-auto size-12 text-gray-400 dark:text-neutral-500 mb-3"></i>
+                    <p class="text-sm text-gray-600 dark:text-neutral-400">No recent tasks</p>
+                    <p class="text-xs text-gray-500 dark:text-neutral-500">Tasks will appear here after running Roboco</p>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- System Information / Event Types -->
+    <div class="flex flex-col bg-white border shadow-sm rounded-xl dark:bg-neutral-800 dark:border-neutral-700">
+        <div class="px-6 py-4 grid gap-3 md:flex md:justify-between md:items-center border-b border-gray-200 dark:border-neutral-700">
+            <div>
+                <h2 class="text-xl font-semibold text-gray-800 dark:text-neutral-200">
+                    {% if dashboard_data.is_integrated and dashboard_data.event_types %}
+                        <i data-lucide="activity" class="inline shrink-0 size-4 mr-2"></i>
+                        Event Types
+                    {% else %}
+                        <i data-lucide="info" class="inline shrink-0 size-4 mr-2"></i>
+                        System Information
+                    {% endif %}
+                </h2>
+            </div>
+            
+            {% if dashboard_data.is_integrated and dashboard_data.event_types %}
+            <div>
+                <a class="py-1.5 px-2 inline-flex items-center gap-x-2 text-sm font-medium rounded-lg border border-gray-200 bg-white text-gray-800 shadow-sm hover:bg-gray-50 focus:outline-none focus:bg-gray-50 disabled:opacity-50 disabled:pointer-events-none dark:bg-neutral-800 dark:border-neutral-700 dark:text-white dark:hover:bg-neutral-700 dark:focus:bg-neutral-700" href="/events">
+                    View All
+                    <i data-lucide="arrow-right" class="shrink-0 size-4"></i>
+                </a>
+            </div>
+            {% endif %}
+        </div>
+        
+        <div class="p-6">
+            {% if dashboard_data.is_integrated and dashboard_data.event_types %}
+                <div class="space-y-3">
+                    {% for event_type, count in dashboard_data.event_types.items() %}
+                    <div class="flex items-center justify-between">
+                        <span class="text-sm text-gray-800 dark:text-neutral-200">{{ event_type }}</span>
+                        <span class="inline-flex items-center gap-x-1.5 py-1.5 px-3 rounded-full text-xs font-medium bg-gray-100 text-gray-800 dark:bg-neutral-700 dark:text-neutral-200">{{ count }}</span>
+                    </div>
+                    {% endfor %}
+                </div>
+            {% else %}
+                <div class="space-y-3">
+                    <div class="flex justify-between">
+                        <span class="text-sm text-gray-600 dark:text-neutral-400">Mode:</span>
+                        <span class="text-sm font-medium text-gray-800 dark:text-neutral-200">
+                            {% if dashboard_data.is_integrated %}Integrated{% else %}Independent{% endif %}
+                        </span>
+                    </div>
+                    
+                    <div class="flex justify-between">
+                        <span class="text-sm text-gray-600 dark:text-neutral-400">Data Directory:</span>
+                        <span class="text-sm font-mono text-gray-800 dark:text-neutral-200">{{ dashboard_data.data_dir }}</span>
+                    </div>
+                    
+                    <div class="flex justify-between">
+                        <span class="text-sm text-gray-600 dark:text-neutral-400">Status:</span>
+                        <span class="text-sm font-medium text-gray-800 dark:text-neutral-200">
+                            {% if dashboard_data.is_running %}Running{% else %}Stopped{% endif %}
+                        </span>
+                    </div>
+                </div>
+                
+                {% if not dashboard_data.is_integrated %}
+                <div class="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg dark:bg-blue-800/30 dark:border-blue-700">
+                    <div class="flex">
+                        <i data-lucide="info" class="shrink-0 size-4 text-blue-600 mt-0.5"></i>
+                        <div class="ms-3">
+                            <h3 class="text-sm font-medium text-blue-800 dark:text-blue-400">
+                                Independent Mode
+                            </h3>
+                            <p class="mt-1 text-xs text-blue-700 dark:text-blue-300">
+                                Real-time events require integrated mode
+                            </p>
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<!-- Quick Actions -->
+<div class="mt-8">
+    <div class="flex flex-col bg-white border shadow-sm rounded-xl dark:bg-neutral-800 dark:border-neutral-700">
+        <div class="px-6 py-4 border-b border-gray-200 dark:border-neutral-700">
+            <h2 class="text-xl font-semibold text-gray-800 dark:text-neutral-200">
+                <i data-lucide="zap" class="inline shrink-0 size-4 mr-2"></i>
+                Quick Actions
+            </h2>
+        </div>
+        
+        <div class="p-6">
+            <div class="grid sm:grid-cols-3 gap-4">
+                <a href="/tasks" class="group flex flex-col items-center justify-center text-center border-2 border-dashed border-gray-300 rounded-lg p-6 hover:border-gray-400 focus:outline-none focus:border-gray-400 dark:border-neutral-700 dark:hover:border-neutral-600 dark:focus:border-neutral-600">
+                    <i data-lucide="list-checks" class="size-8 text-gray-400 group-hover:text-gray-500 dark:text-neutral-500 dark:group-hover:text-neutral-400"></i>
+                    <span class="mt-2 block text-sm font-medium text-gray-700 group-hover:text-gray-800 dark:text-neutral-300 dark:group-hover:text-neutral-200">View Tasks</span>
+                </a>
+                
+                <a href="/memory" class="group flex flex-col items-center justify-center text-center border-2 border-dashed border-gray-300 rounded-lg p-6 hover:border-gray-400 focus:outline-none focus:border-gray-400 dark:border-neutral-700 dark:hover:border-neutral-600 dark:focus:border-neutral-600">
+                    <i data-lucide="brain" class="size-8 text-gray-400 group-hover:text-gray-500 dark:text-neutral-500 dark:group-hover:text-neutral-400"></i>
+                    <span class="mt-2 block text-sm font-medium text-gray-700 group-hover:text-gray-800 dark:text-neutral-300 dark:group-hover:text-neutral-200">Browse Memory</span>
+                </a>
+                
+                <button type="button" onclick="exportData()" class="group flex flex-col items-center justify-center text-center border-2 border-dashed border-gray-300 rounded-lg p-6 hover:border-gray-400 focus:outline-none focus:border-gray-400 dark:border-neutral-700 dark:hover:border-neutral-600 dark:focus:border-neutral-600">
+                    <i data-lucide="download" class="size-8 text-gray-400 group-hover:text-gray-500 dark:text-neutral-500 dark:group-hover:text-neutral-400"></i>
+                    <span class="mt-2 block text-sm font-medium text-gray-700 group-hover:text-gray-800 dark:text-neutral-300 dark:group-hover:text-neutral-200">Export Data</span>
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function viewTaskDetails(taskId) {
+    // Navigate to task details
+    window.location.href = `/tasks?task=${taskId}`;
+}
+
+function exportData() {
+    // Trigger data export
+    window.location.href = '/api/export';
+}
+</script>
+{% endblock %} 

@@ -1,0 +1,308 @@
+{% extends "base.jinja2" %}
+
+{% block title %}Tasks - Roboco Observability{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+    <!-- Header -->
+    <div class="flex justify-between items-center">
+        <div>
+            <h1 class="text-3xl font-bold">Tasks</h1>
+            <p class="text-base-content/70 mt-1">Task conversation history and management</p>
+        </div>
+    </div>
+
+    {% if recent_tasks %}
+    <!-- Task List -->
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <!-- Task Selector -->
+        <div class="card bg-base-200 shadow-xl">
+            <div class="card-body">
+                <h2 class="card-title mb-4">
+                    <i data-lucide="list" class="w-5 h-5"></i>
+                    Select Task
+                </h2>
+                
+                <div class="space-y-2 max-h-96 overflow-y-auto custom-scrollbar">
+                    {% for task_id in recent_tasks %}
+                    <button 
+                        class="btn btn-ghost btn-block justify-start task-item"
+                        onclick="loadTaskConversation('{{ task_id }}')"
+                        data-task-id="{{ task_id }}"
+                    >
+                        <div class="w-2 h-2 bg-primary rounded-full"></div>
+                        <span class="font-mono text-sm truncate">{{ task_id }}</span>
+                    </button>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+
+        <!-- Conversation Display -->
+        <div class="lg:col-span-2">
+            <div class="card bg-base-200 shadow-xl">
+                <div class="card-body">
+                    <div class="flex items-center justify-between mb-4">
+                        <h2 class="card-title">
+                            <i data-lucide="message-circle" class="w-5 h-5"></i>
+                            Conversation
+                        </h2>
+                        <div class="flex space-x-2">
+                            <button 
+                                id="export-conversation-btn"
+                                class="btn btn-outline btn-sm"
+                                onclick="exportConversation()"
+                                disabled
+                            >
+                                <i data-lucide="download" class="w-4 h-4"></i>
+                                Export
+                            </button>
+                            <button 
+                                id="refresh-conversation-btn"
+                                class="btn btn-outline btn-sm"
+                                onclick="refreshConversation()"
+                                disabled
+                            >
+                                <i data-lucide="refresh-cw" class="w-4 h-4"></i>
+                                Refresh
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div id="conversation-content" class="min-h-96">
+                        <div class="text-center py-16 text-base-content/50">
+                            <i data-lucide="message-square" class="w-16 h-16 mx-auto mb-4"></i>
+                            <p class="text-lg">Select a task to view conversation</p>
+                            <p class="text-sm">Choose a task from the list to see its conversation history</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% else %}
+    <!-- Empty State -->
+    <div class="card bg-base-200 shadow-xl">
+        <div class="card-body">
+            <div class="text-center py-16 text-base-content/50">
+                <i data-lucide="inbox" class="w-24 h-24 mx-auto mb-6"></i>
+                <h2 class="text-2xl font-bold mb-2">No Tasks Found</h2>
+                <p class="text-lg mb-4">Tasks will appear here after running Roboco</p>
+                <div class="space-y-2">
+                    <p class="text-sm">To get started:</p>
+                    <ul class="text-sm space-y-1">
+                        <li>• Run <code class="bg-base-300 px-2 py-1 rounded">roboco start</code> to execute an example</li>
+                        <li>• Use <code class="bg-base-300 px-2 py-1 rounded">roboco server</code> for integrated mode</li>
+                        <li>• Check the dashboard for system status</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    let currentTaskId = null;
+    let currentConversation = null;
+    
+    // Load task conversation
+    function loadTaskConversation(taskId) {
+        currentTaskId = taskId;
+        
+        // Update UI state
+        document.querySelectorAll('.task-item').forEach(btn => {
+            btn.classList.remove('btn-active');
+        });
+        document.querySelector(`[data-task-id="${taskId}"]`).classList.add('btn-active');
+        
+        // Enable buttons
+        document.getElementById('export-conversation-btn').disabled = false;
+        document.getElementById('refresh-conversation-btn').disabled = false;
+        
+        // Show loading
+        const content = document.getElementById('conversation-content');
+        content.innerHTML = `
+            <div class="flex items-center justify-center py-16">
+                <span class="loading loading-spinner loading-lg"></span>
+                <span class="ml-4 text-lg">Loading conversation...</span>
+            </div>
+        `;
+        
+        // Load conversation
+        fetch(`/api/task/${taskId}/conversation`)
+            .then(response => response.json())
+            .then(data => {
+                currentConversation = data.conversation;
+                displayConversation(data.conversation);
+            })
+            .catch(error => {
+                content.innerHTML = `
+                    <div class="alert alert-error">
+                        <i data-lucide="x-circle" class="w-5 h-5"></i>
+                        <div>
+                            <div class="font-bold">Failed to load conversation</div>
+                            <div class="text-sm">${error.message}</div>
+                        </div>
+                    </div>
+                `;
+                lucide.createIcons();
+            });
+    }
+    
+    // Display conversation
+    function displayConversation(conversation) {
+        const content = document.getElementById('conversation-content');
+        
+        if (!conversation || conversation.length === 0) {
+            content.innerHTML = `
+                <div class="text-center py-16 text-base-content/50">
+                    <i data-lucide="message-square-off" class="w-16 h-16 mx-auto mb-4"></i>
+                    <p class="text-lg">No conversation history</p>
+                    <p class="text-sm">This task doesn't have any recorded conversation</p>
+                </div>
+            `;
+            lucide.createIcons();
+            return;
+        }
+        
+        let html = '<div class="space-y-4 max-h-96 overflow-y-auto custom-scrollbar">';
+        
+        conversation.forEach((entry, index) => {
+            const time = new Date(entry.timestamp).toLocaleTimeString();
+            const date = new Date(entry.timestamp).toLocaleDateString();
+            
+            // Choose icon and style based on message type
+            let icon, alertClass, typeLabel;
+            switch (entry.type) {
+                case 'tool':
+                    icon = 'wrench';
+                    alertClass = 'alert-info';
+                    typeLabel = 'Tool';
+                    break;
+                case 'error':
+                    icon = 'x-circle';
+                    alertClass = 'alert-error';
+                    typeLabel = 'Error';
+                    break;
+                default:
+                    icon = 'message-circle';
+                    alertClass = 'alert-success';
+                    typeLabel = 'Message';
+            }
+            
+            html += `
+                <div class="alert ${alertClass}">
+                    <i data-lucide="${icon}" class="w-5 h-5 flex-shrink-0"></i>
+                    <div class="flex-grow min-w-0">
+                        <div class="flex items-center justify-between mb-1">
+                            <div class="font-bold text-sm">${entry.agent}</div>
+                            <div class="flex items-center space-x-2 text-xs opacity-70">
+                                <span class="badge badge-outline badge-xs">${typeLabel}</span>
+                                <span>${time}</span>
+                            </div>
+                        </div>
+                        <div class="text-sm whitespace-pre-wrap break-words">${entry.message}</div>
+                    </div>
+                </div>
+            `;
+        });
+        
+        html += '</div>';
+        
+        // Add conversation stats
+        const stats = getConversationStats(conversation);
+        html += `
+            <div class="divider"></div>
+            <div class="stats stats-horizontal shadow">
+                <div class="stat">
+                    <div class="stat-title">Messages</div>
+                    <div class="stat-value text-sm">${stats.total}</div>
+                </div>
+                <div class="stat">
+                    <div class="stat-title">Agents</div>
+                    <div class="stat-value text-sm">${stats.agents}</div>
+                </div>
+                <div class="stat">
+                    <div class="stat-title">Tools</div>
+                    <div class="stat-value text-sm">${stats.tools}</div>
+                </div>
+                <div class="stat">
+                    <div class="stat-title">Duration</div>
+                    <div class="stat-value text-sm">${stats.duration}</div>
+                </div>
+            </div>
+        `;
+        
+        content.innerHTML = html;
+        lucide.createIcons();
+        
+        // Scroll to bottom
+        const scrollContainer = content.querySelector('.custom-scrollbar');
+        if (scrollContainer) {
+            scrollContainer.scrollTop = scrollContainer.scrollHeight;
+        }
+    }
+    
+    // Get conversation statistics
+    function getConversationStats(conversation) {
+        if (!conversation || conversation.length === 0) {
+            return { total: 0, agents: 0, tools: 0, duration: '0s' };
+        }
+        
+        const agents = new Set(conversation.map(entry => entry.agent));
+        const tools = conversation.filter(entry => entry.type === 'tool').length;
+        
+        // Calculate duration
+        const start = new Date(conversation[0].timestamp);
+        const end = new Date(conversation[conversation.length - 1].timestamp);
+        const durationMs = end - start;
+        const durationSec = Math.round(durationMs / 1000);
+        const duration = durationSec < 60 ? `${durationSec}s` : `${Math.round(durationSec / 60)}m`;
+        
+        return {
+            total: conversation.length,
+            agents: agents.size,
+            tools: tools,
+            duration: duration
+        };
+    }
+    
+    // Refresh current conversation
+    function refreshConversation() {
+        if (currentTaskId) {
+            loadTaskConversation(currentTaskId);
+            showToast('Conversation refreshed', 'success');
+        }
+    }
+    
+    // Export conversation
+    function exportConversation() {
+        if (!currentConversation || !currentTaskId) {
+            showToast('No conversation to export', 'warning');
+            return;
+        }
+        
+        const data = {
+            task_id: currentTaskId,
+            conversation: currentConversation,
+            exported_at: new Date().toISOString(),
+            stats: getConversationStats(currentConversation)
+        };
+        
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `conversation_${currentTaskId}_${new Date().toISOString().split('T')[0]}.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        
+        showToast('Conversation exported successfully', 'success');
+    }
+</script>
+{% endblock %} 

@@ -1,0 +1,446 @@
+{% extends "base.jinja2" %}
+
+{% block title %}Events - Roboco Observability{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+    <!-- Header -->
+    <div class="flex justify-between items-center">
+        <div>
+            <h1 class="text-3xl font-bold">Events</h1>
+            <p class="text-base-content/70 mt-1">Real-time event monitoring and analysis</p>
+        </div>
+        
+        <div class="flex space-x-2">
+            <button 
+                class="btn btn-outline btn-sm"
+                onclick="refreshEvents()"
+            >
+                <i data-lucide="refresh-cw" class="w-4 h-4"></i>
+                Refresh
+            </button>
+            
+            <button 
+                class="btn btn-outline btn-sm"
+                onclick="exportEvents()"
+            >
+                <i data-lucide="download" class="w-4 h-4"></i>
+                Export
+            </button>
+        </div>
+    </div>
+
+    {% if not is_integrated %}
+    <!-- Not Integrated Warning -->
+    <div class="alert alert-warning">
+        <i data-lucide="alert-triangle" class="w-6 h-6"></i>
+        <div>
+            <div class="font-bold">Event monitoring unavailable</div>
+            <div class="text-sm">Event monitoring is only available in integrated mode. Start Roboco with <code>roboco server</code> to enable real-time event capture.</div>
+        </div>
+    </div>
+    {% else %}
+    
+    {% if event_summary %}
+    <!-- Event Summary -->
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        {% for event_type, count in event_summary.items() %}
+        <div class="card bg-base-200 shadow-lg">
+            <div class="card-body p-4">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <h3 class="text-sm font-semibold truncate">{{ event_type }}</h3>
+                        <p class="text-2xl font-bold">{{ count }}</p>
+                    </div>
+                    <div class="text-primary">
+                        {% if 'tool' in event_type %}
+                            <i data-lucide="wrench" class="w-6 h-6"></i>
+                        {% elif 'agent' in event_type %}
+                            <i data-lucide="user" class="w-6 h-6"></i>
+                        {% elif 'memory' in event_type %}
+                            <i data-lucide="brain" class="w-6 h-6"></i>
+                        {% else %}
+                            <i data-lucide="zap" class="w-6 h-6"></i>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+
+    <!-- Event Filters and Display -->
+    <div class="card bg-base-200 shadow-xl">
+        <div class="card-body">
+            <div class="flex items-center justify-between mb-6">
+                <h2 class="card-title">
+                    <i data-lucide="filter" class="w-5 h-5"></i>
+                    Event Stream
+                </h2>
+                
+                <!-- Auto-refresh toggle -->
+                <div class="form-control">
+                    <label class="label cursor-pointer">
+                        <span class="label-text mr-2">Auto-refresh</span>
+                        <input 
+                            type="checkbox" 
+                            class="toggle toggle-primary" 
+                            id="auto-refresh-toggle"
+                            onchange="toggleAutoRefresh()"
+                        />
+                    </label>
+                </div>
+            </div>
+            
+            <!-- Filters -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                <div class="form-control">
+                    <label class="label">
+                        <span class="label-text">Event Type</span>
+                    </label>
+                    <select 
+                        class="select select-bordered" 
+                        id="event-type-filter"
+                        onchange="filterEvents()"
+                    >
+                        <option value="">All Events</option>
+                        {% for event_type in event_summary.keys() %}
+                        <option value="{{ event_type }}">{{ event_type }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                
+                <div class="form-control">
+                    <label class="label">
+                        <span class="label-text">Limit</span>
+                    </label>
+                    <select 
+                        class="select select-bordered" 
+                        id="event-limit-filter"
+                        onchange="filterEvents()"
+                    >
+                        <option value="50">50 events</option>
+                        <option value="100" selected>100 events</option>
+                        <option value="200">200 events</option>
+                        <option value="500">500 events</option>
+                    </select>
+                </div>
+                
+                <div class="form-control">
+                    <label class="label">
+                        <span class="label-text">Search</span>
+                    </label>
+                    <input 
+                        type="text" 
+                        placeholder="Search events..." 
+                        class="input input-bordered" 
+                        id="event-search"
+                        onkeyup="debounceSearch()"
+                    />
+                </div>
+            </div>
+            
+            <!-- Events List -->
+            <div id="events-container" class="space-y-2 max-h-96 overflow-y-auto custom-scrollbar">
+                <div class="text-center py-8">
+                    <span class="loading loading-spinner loading-md"></span>
+                    <p class="mt-2">Loading events...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    {% else %}
+    <!-- No Events -->
+    <div class="card bg-base-200 shadow-xl">
+        <div class="card-body">
+            <div class="text-center py-16 text-base-content/50">
+                <i data-lucide="activity" class="w-24 h-24 mx-auto mb-6"></i>
+                <h2 class="text-2xl font-bold mb-2">No Events Captured</h2>
+                <p class="text-lg mb-4">Events will appear here when Roboco is active</p>
+                <div class="space-y-2">
+                    <p class="text-sm">Events are captured when:</p>
+                    <ul class="text-sm space-y-1">
+                        <li>• Agents send messages</li>
+                        <li>• Tools are executed</li>
+                        <li>• Memory operations occur</li>
+                        <li>• System events happen</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+    
+    {% endif %}
+</div>
+
+<!-- Event Details Modal -->
+<dialog id="event-details-modal" class="modal">
+    <div class="modal-box w-11/12 max-w-4xl">
+        <form method="dialog">
+            <button class="btn btn-sm btn-circle btn-ghost absolute right-2 top-2">✕</button>
+        </form>
+        <h3 class="font-bold text-lg mb-4">Event Details</h3>
+        <div id="event-details-content">
+            <!-- Content will be loaded here -->
+        </div>
+    </div>
+</dialog>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    let autoRefreshInterval = null;
+    let searchTimeout = null;
+    let currentEvents = [];
+    
+    // Load events on page load
+    document.addEventListener('DOMContentLoaded', function() {
+        {% if is_integrated %}
+        loadEvents();
+        {% endif %}
+    });
+    
+    // Load events from API
+    function loadEvents() {
+        const eventType = document.getElementById('event-type-filter')?.value || '';
+        const limit = document.getElementById('event-limit-filter')?.value || 100;
+        
+        const params = new URLSearchParams();
+        if (eventType) params.append('event_type', eventType);
+        params.append('limit', limit);
+        
+        fetch(`/api/events?${params}`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    displayError(data.error);
+                } else {
+                    currentEvents = data.events || [];
+                    displayEvents(currentEvents);
+                }
+            })
+            .catch(error => {
+                displayError(error.message);
+            });
+    }
+    
+    // Display events
+    function displayEvents(events) {
+        const container = document.getElementById('events-container');
+        
+        if (!events || events.length === 0) {
+            container.innerHTML = `
+                <div class="text-center py-8 text-base-content/50">
+                    <i data-lucide="inbox" class="w-12 h-12 mx-auto mb-2"></i>
+                    <p>No events match the current filter</p>
+                </div>
+            `;
+            lucide.createIcons();
+            return;
+        }
+        
+        let html = '';
+        events.forEach((event, index) => {
+            const time = new Date(event.timestamp).toLocaleTimeString();
+            const date = new Date(event.timestamp).toLocaleDateString();
+            
+            // Choose icon and color based on event type
+            let icon, badgeClass;
+            if (event.event_type.includes('tool')) {
+                icon = 'wrench';
+                badgeClass = 'badge-info';
+            } else if (event.event_type.includes('agent')) {
+                icon = 'user';
+                badgeClass = 'badge-success';
+            } else if (event.event_type.includes('memory')) {
+                icon = 'brain';
+                badgeClass = 'badge-secondary';
+            } else if (event.event_type.includes('error')) {
+                icon = 'x-circle';
+                badgeClass = 'badge-error';
+            } else {
+                icon = 'zap';
+                badgeClass = 'badge-primary';
+            }
+            
+            // Preview of event data
+            let dataPreview = '';
+            if (event.data && typeof event.data === 'object') {
+                const keys = Object.keys(event.data);
+                if (keys.length > 0) {
+                    dataPreview = keys.slice(0, 3).join(', ');
+                    if (keys.length > 3) dataPreview += '...';
+                }
+            }
+            
+            html += `
+                <div class="alert alert-info cursor-pointer hover:bg-base-300 transition-colors"
+                     onclick="showEventDetails(${index})">
+                    <i data-lucide="${icon}" class="w-5 h-5 flex-shrink-0"></i>
+                    <div class="flex-grow min-w-0">
+                        <div class="flex items-center justify-between mb-1">
+                            <div class="flex items-center space-x-2">
+                                <span class="font-bold text-sm">${event.event_type}</span>
+                                <span class="badge ${badgeClass} badge-xs">${event.source}</span>
+                            </div>
+                            <span class="text-xs opacity-70">${time}</span>
+                        </div>
+                        ${dataPreview ? `<div class="text-xs opacity-70">Data: ${dataPreview}</div>` : ''}
+                    </div>
+                    <i data-lucide="chevron-right" class="w-4 h-4 opacity-50"></i>
+                </div>
+            `;
+        });
+        
+        container.innerHTML = html;
+        lucide.createIcons();
+    }
+    
+    // Display error
+    function displayError(message) {
+        const container = document.getElementById('events-container');
+        container.innerHTML = `
+            <div class="alert alert-error">
+                <i data-lucide="x-circle" class="w-5 h-5"></i>
+                <div>
+                    <div class="font-bold">Failed to load events</div>
+                    <div class="text-sm">${message}</div>
+                </div>
+            </div>
+        `;
+        lucide.createIcons();
+    }
+    
+    // Filter events
+    function filterEvents() {
+        loadEvents();
+    }
+    
+    // Debounced search
+    function debounceSearch() {
+        clearTimeout(searchTimeout);
+        searchTimeout = setTimeout(() => {
+            const query = document.getElementById('event-search').value.toLowerCase();
+            if (query) {
+                const filtered = currentEvents.filter(event => 
+                    event.event_type.toLowerCase().includes(query) ||
+                    event.source.toLowerCase().includes(query) ||
+                    JSON.stringify(event.data).toLowerCase().includes(query)
+                );
+                displayEvents(filtered);
+            } else {
+                displayEvents(currentEvents);
+            }
+        }, 300);
+    }
+    
+    // Toggle auto-refresh
+    function toggleAutoRefresh() {
+        const toggle = document.getElementById('auto-refresh-toggle');
+        
+        if (toggle.checked) {
+            autoRefreshInterval = setInterval(loadEvents, 5000); // Refresh every 5 seconds
+            showToast('Auto-refresh enabled', 'success');
+        } else {
+            clearInterval(autoRefreshInterval);
+            autoRefreshInterval = null;
+            showToast('Auto-refresh disabled', 'info');
+        }
+    }
+    
+    // Refresh events manually
+    function refreshEvents() {
+        loadEvents();
+        showToast('Events refreshed', 'success');
+    }
+    
+    // Show event details
+    function showEventDetails(index) {
+        const event = currentEvents[index];
+        if (!event) return;
+        
+        const modal = document.getElementById('event-details-modal');
+        const content = document.getElementById('event-details-content');
+        
+        const time = new Date(event.timestamp).toLocaleString();
+        
+        content.innerHTML = `
+            <div class="space-y-4">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label class="label">
+                            <span class="label-text font-bold">Event Type</span>
+                        </label>
+                        <div class="badge badge-primary">${event.event_type}</div>
+                    </div>
+                    
+                    <div>
+                        <label class="label">
+                            <span class="label-text font-bold">Source</span>
+                        </label>
+                        <div class="badge badge-secondary">${event.source}</div>
+                    </div>
+                    
+                    <div class="md:col-span-2">
+                        <label class="label">
+                            <span class="label-text font-bold">Timestamp</span>
+                        </label>
+                        <div class="text-sm font-mono">${time}</div>
+                    </div>
+                </div>
+                
+                <div>
+                    <label class="label">
+                        <span class="label-text font-bold">Event Data</span>
+                    </label>
+                    <div class="mockup-code">
+                        <pre><code>${JSON.stringify(event.data, null, 2)}</code></pre>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        modal.showModal();
+    }
+    
+    // Export events
+    function exportEvents() {
+        if (!currentEvents || currentEvents.length === 0) {
+            showToast('No events to export', 'warning');
+            return;
+        }
+        
+        const data = {
+            events: currentEvents,
+            exported_at: new Date().toISOString(),
+            total_events: currentEvents.length,
+            filters: {
+                event_type: document.getElementById('event-type-filter')?.value || 'all',
+                limit: document.getElementById('event-limit-filter')?.value || 100,
+                search: document.getElementById('event-search')?.value || ''
+            }
+        };
+        
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `events_${new Date().toISOString().split('T')[0]}.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        
+        showToast('Events exported successfully', 'success');
+    }
+    
+    // Cleanup on page unload
+    window.addEventListener('beforeunload', function() {
+        if (autoRefreshInterval) {
+            clearInterval(autoRefreshInterval);
+        }
+    });
+</script>
+{% endblock %} 
