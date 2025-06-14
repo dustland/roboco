@@ -365,6 +365,37 @@ roboco status
 roboco monitor
 ```
 
+### Data Directory Location
+
+The observability system intelligently locates the data directory using this search order:
+
+1. **Current directory**: `./roboco_data`
+2. **Parent directories**: Searches up to 3 levels for existing `roboco_data`
+3. **User home**: `~/.roboco/data` (if exists)
+4. **Default**: Creates `./roboco_data` in current directory
+
+This means you can run `roboco monitor --web` from any subdirectory of your project and it will find the correct data directory.
+
+**Manual data directory specification:**
+
+```bash
+# Specify custom data directory
+roboco monitor --data-dir /path/to/your/roboco_data
+roboco monitor --web --data-dir /path/to/your/roboco_data
+```
+
+**Web Interface Data Directory Management:**
+
+The web dashboard includes a comprehensive data directory management interface:
+
+- **Current Directory Display**: Shows the active data directory path with copy and open buttons
+- **Directory Information**: Real-time stats including file count, size, and last modified time
+- **Change Directory**: Interactive form to specify a new data directory path
+- **Directory Validation**: Automatic validation and creation of new directories
+- **Live Updates**: Refresh functionality to update directory information
+
+Access this feature at: `http://localhost:8501/configuration` → Data Directory Management section.
+
 ### Performance Considerations
 
 - **Memory Usage**: Monitor stores task conversations and memory data in memory
@@ -406,6 +437,26 @@ from roboco.observability.monitor import get_monitor
 
 # Get the singleton monitor instance
 monitor = get_monitor()
+
+# Get monitor with custom data directory
+monitor = get_monitor(data_dir="/path/to/custom/data")
+```
+
+### Data Directory Management API
+
+```python
+# Get data directory information
+GET /api/data-directory/info
+# Returns: {"exists": bool, "path": str, "file_count": int, "size_mb": float, "last_modified": str, "files": []}
+
+# Change data directory
+POST /api/data-directory/change
+# Body: {"path": "/new/data/directory"}
+# Returns: {"success": bool, "message": str, "new_path": str}
+
+# Browse directories (for future file picker implementation)
+GET /api/data-directory/browse?path=/some/path
+# Returns: {"current_path": str, "parent_path": str, "directories": []}
 ```
 
 ### Event System

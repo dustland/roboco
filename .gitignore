@@ -192,6 +192,7 @@ user_data/
 # Roboco workspace
 workspace/
 !workspace/.gitkeep
+roboco_data/
 
 # User data
 user_data/

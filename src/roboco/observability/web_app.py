@@ -15,13 +15,23 @@ from fastapi import FastAPI, Request, HTTPException, Depends
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from pydantic import BaseModel
 import uvicorn
 
 from .monitor import get_monitor, ObservabilityMonitor
 
+# Global variable to store data_dir for the web app
+_web_app_data_dir: Optional[str] = None
 
-def create_web_app() -> FastAPI:
+# Pydantic models for API requests
+class ChangeDataDirectoryRequest(BaseModel):
+    path: str
+
+def create_web_app(data_dir: Optional[str] = None) -> FastAPI:
     """Create the FastAPI web application."""
+    global _web_app_data_dir
+    _web_app_data_dir = data_dir
+    
     app = FastAPI(
         title="Roboco Observability Dashboard",
         description="Modern web interface for Roboco observability",
@@ -44,7 +54,7 @@ def create_web_app() -> FastAPI:
     
     # Dependency to get monitor
     def get_monitor_dependency() -> ObservabilityMonitor:
-        return get_monitor()
+        return get_monitor(_web_app_data_dir)
     
     @app.get("/", response_class=HTMLResponse)
     async def dashboard(request: Request, monitor: ObservabilityMonitor = Depends(get_monitor_dependency)):
@@ -190,12 +200,151 @@ def create_web_app() -> FastAPI:
         except Exception as e:
             return {"status": "error", "message": str(e)}
     
+    # Data Directory Management APIs
+    @app.get("/api/data-directory/info")
+    async def get_data_directory_info(monitor: ObservabilityMonitor = Depends(get_monitor_dependency)):
+        """Get information about the current data directory."""
+        try:
+            from pathlib import Path
+            import os
+            from datetime import datetime
+            
+            data_dir = Path(monitor.data_dir)
+            
+            if not data_dir.exists():
+                return {
+                    "exists": False,
+                    "path": str(data_dir),
+                    "file_count": 0,
+                    "size_mb": 0,
+                    "last_modified": None
+                }
+            
+            # Count files and calculate size
+            files = list(data_dir.glob("*.json"))
+            total_size = sum(f.stat().st_size for f in files if f.is_file())
+            size_mb = round(total_size / (1024 * 1024), 2)
+            
+            # Get last modified time
+            last_modified = None
+            if files:
+                latest_file = max(files, key=lambda f: f.stat().st_mtime)
+                last_modified = datetime.fromtimestamp(latest_file.stat().st_mtime).strftime("%Y-%m-%d %H:%M:%S")
+            
+            return {
+                "exists": True,
+                "path": str(data_dir),
+                "file_count": len(files),
+                "size_mb": size_mb,
+                "last_modified": last_modified,
+                "files": [f.name for f in files]
+            }
+            
+        except Exception as e:
+            return {"error": str(e), "exists": False}
+    
+    @app.post("/api/data-directory/change")
+    async def change_data_directory(
+        request: ChangeDataDirectoryRequest,
+        monitor: ObservabilityMonitor = Depends(get_monitor_dependency)
+    ):
+        """Change the data directory."""
+        try:
+            from pathlib import Path
+            
+            new_path = request.path.strip()
+            if not new_path:
+                return {"success": False, "error": "Path is required"}
+            
+            new_data_dir = Path(new_path)
+            
+            # Validate the path
+            if not new_data_dir.is_absolute():
+                # Make it absolute relative to current working directory
+                new_data_dir = Path.cwd() / new_data_dir
+            
+            # Create directory if it doesn't exist
+            try:
+                new_data_dir.mkdir(parents=True, exist_ok=True)
+            except Exception as e:
+                return {"success": False, "error": f"Cannot create directory: {str(e)}"}
+            
+            # Check if we can write to the directory
+            test_file = new_data_dir / ".test_write"
+            try:
+                test_file.write_text("test")
+                test_file.unlink()
+            except Exception as e:
+                return {"success": False, "error": f"Cannot write to directory: {str(e)}"}
+            
+            # Update the global monitor instance to use the new data directory
+            global _web_app_data_dir
+            _web_app_data_dir = str(new_data_dir)
+            
+            # Note: In a real implementation, you might want to:
+            # 1. Stop the current monitor
+            # 2. Create a new monitor with the new data directory
+            # 3. Restart the monitor
+            # For now, we'll just update the path and let the user reload
+            
+            return {
+                "success": True, 
+                "message": f"Data directory changed to {new_data_dir}",
+                "new_path": str(new_data_dir)
+            }
+            
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+    
+    @app.get("/api/data-directory/browse")
+    async def browse_data_directory(
+        path: Optional[str] = None,
+        monitor: ObservabilityMonitor = Depends(get_monitor_dependency)
+    ):
+        """Browse directories for data directory selection."""
+        try:
+            from pathlib import Path
+            import os
+            
+            if path:
+                browse_path = Path(path)
+            else:
+                browse_path = Path.cwd()
+            
+            if not browse_path.exists() or not browse_path.is_dir():
+                browse_path = Path.cwd()
+            
+            # Get directories only
+            directories = []
+            try:
+                for item in browse_path.iterdir():
+                    if item.is_dir() and not item.name.startswith('.'):
+                        directories.append({
+                            "name": item.name,
+                            "path": str(item),
+                            "is_roboco_data": item.name == "roboco_data" or (item / "conversations.json").exists()
+                        })
+            except PermissionError:
+                pass
+            
+            # Sort directories
+            directories.sort(key=lambda x: x["name"].lower())
+            
+            return {
+                "current_path": str(browse_path),
+                "parent_path": str(browse_path.parent) if browse_path.parent != browse_path else None,
+                "directories": directories
+            }
+            
+        except Exception as e:
+            return {"error": str(e)}
+    
     return app
 
 
-def run_web_app(host: str = "0.0.0.0", port: int = 8501):
+def run_web_app(host: str = "0.0.0.0", port: int = 8501, data_dir: Optional[str] = None):
     """Run the web application."""
-    app = create_web_app()
+    app = create_web_app(data_dir)
     uvicorn.run(app, host=host, port=port)
 
 

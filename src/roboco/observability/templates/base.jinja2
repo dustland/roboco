@@ -287,6 +287,110 @@
                 indicator.className = 'indicator-item badge badge-error badge-xs';
             }
         }
+        
+        // Data Directory Management Functions
+        function copyToClipboard(text) {
+            navigator.clipboard.writeText(text).then(function() {
+                showToast('Path copied to clipboard', 'success');
+            }).catch(function(err) {
+                showToast('Failed to copy path', 'error');
+            });
+        }
+        
+        function openDataDirectory() {
+            // This would typically require a backend API call to open the directory
+            // For now, we'll just copy the path and show a message
+            const path = document.querySelector('#new-data-dir').value || '{{ config_data.system.data_directory }}';
+            copyToClipboard(path);
+            showToast('Path copied. Open it manually in your file manager.', 'info');
+        }
+        
+        function browseDataDirectory() {
+            // In a real implementation, this would open a file dialog
+            // For web-based implementation, we'll provide a helpful message
+            showToast('Enter the path manually or use the file manager to find the directory', 'info');
+        }
+        
+        function refreshDataDirectory() {
+            fetch('/api/data-directory/info')
+                .then(response => response.json())
+                .then(data => {
+                    updateDataDirectoryInfo(data);
+                    showToast('Data directory info refreshed', 'success');
+                })
+                .catch(error => {
+                    showToast('Failed to refresh data directory info', 'error');
+                });
+        }
+        
+        function updateDataDirectoryInfo(info) {
+            const container = document.getElementById('data-directory-info');
+            if (container && info) {
+                container.innerHTML = `
+                    <div class="flex justify-between text-sm">
+                        <span class="text-gray-600 dark:text-neutral-400">Status:</span>
+                        <span class="text-gray-800 dark:text-neutral-200">${info.exists ? 'Exists' : 'Not Found'}</span>
+                    </div>
+                    <div class="flex justify-between text-sm">
+                        <span class="text-gray-600 dark:text-neutral-400">Files:</span>
+                        <span class="text-gray-800 dark:text-neutral-200">${info.file_count || 0}</span>
+                    </div>
+                    <div class="flex justify-between text-sm">
+                        <span class="text-gray-600 dark:text-neutral-400">Size:</span>
+                        <span class="text-gray-800 dark:text-neutral-200">${info.size_mb || 0} MB</span>
+                    </div>
+                    <div class="flex justify-between text-sm">
+                        <span class="text-gray-600 dark:text-neutral-400">Last Modified:</span>
+                        <span class="text-gray-800 dark:text-neutral-200">${info.last_modified || 'Unknown'}</span>
+                    </div>
+                `;
+            }
+        }
+        
+        function changeDataDirectory() {
+            const newPath = document.getElementById('new-data-dir').value.trim();
+            if (!newPath) {
+                showToast('Please enter a valid directory path', 'error');
+                return;
+            }
+            
+            if (confirm('Changing the data directory will restart the monitor. Continue?')) {
+                fetch('/api/data-directory/change', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ path: newPath })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        showToast('Data directory changed successfully. Reloading...', 'success');
+                        setTimeout(() => {
+                            window.location.reload();
+                        }, 2000);
+                    } else {
+                        showToast(data.error || 'Failed to change data directory', 'error');
+                    }
+                })
+                .catch(error => {
+                    showToast('Failed to change data directory', 'error');
+                });
+            }
+        }
+        
+        function resetDataDirectory() {
+            const currentPath = '{{ config_data.system.data_directory }}';
+            document.getElementById('new-data-dir').value = currentPath;
+            showToast('Reset to current data directory path', 'info');
+        }
+        
+        // Auto-load data directory info on configuration page
+        document.addEventListener('DOMContentLoaded', function() {
+            if (window.location.pathname === '/configuration') {
+                refreshDataDirectory();
+            }
+        });
     </script>
     
     {% block scripts %}{% endblock %}

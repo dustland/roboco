@@ -647,12 +647,49 @@ class ObservabilityMonitor:
         }
 
 
+def find_data_directory() -> str:
+    """
+    Intelligently find the roboco data directory.
+    
+    Search order:
+    1. Current directory's roboco_data
+    2. Parent directories up to 3 levels for roboco_data
+    3. User's home directory .roboco/data
+    4. Default to current directory roboco_data (will be created)
+    """
+    current_dir = Path.cwd()
+    
+    # 1. Check current directory
+    data_dir = current_dir / "roboco_data"
+    if data_dir.exists():
+        return str(data_dir)
+    
+    # 2. Check parent directories (up to 3 levels)
+    for parent in [current_dir.parent, current_dir.parent.parent, current_dir.parent.parent.parent]:
+        if parent == current_dir:  # Avoid infinite loop at filesystem root
+            break
+        data_dir = parent / "roboco_data"
+        if data_dir.exists():
+            return str(data_dir)
+    
+    # 3. Check user's home directory
+    home_data_dir = Path.home() / ".roboco" / "data"
+    if home_data_dir.exists():
+        return str(home_data_dir)
+    
+    # 4. Default to current directory (will be created)
+    return str(current_dir / "roboco_data")
+
+
 # Global monitor instance
 _monitor_instance: Optional[ObservabilityMonitor] = None
 
-def get_monitor() -> ObservabilityMonitor:
+def get_monitor(data_dir: Optional[str] = None) -> ObservabilityMonitor:
     """Get the global monitor instance."""
     global _monitor_instance
     if _monitor_instance is None:
-        _monitor_instance = ObservabilityMonitor()
+        # Use provided data_dir or intelligently find one
+        if data_dir is None:
+            data_dir = find_data_directory()
+        _monitor_instance = ObservabilityMonitor(data_dir)
     return _monitor_instance 

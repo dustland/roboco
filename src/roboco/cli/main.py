@@ -79,6 +79,10 @@ For more information, visit: https://github.com/dustland/roboco
         default="0.0.0.0",
         help="Host for web interface (default: 0.0.0.0, only used with --web)"
     )
+    monitor_parser.add_argument(
+        "--data-dir",
+        help="Path to roboco data directory (default: auto-detect)"
+    )
     
     # Status command
     status_parser = subparsers.add_parser(
@@ -325,10 +329,13 @@ def main():
         
         elif args.command == "monitor":
             if args.web:
-                # TODO: Use args.port and args.host when updating web function
-                return web()
+                return web(
+                    data_dir=getattr(args, 'data_dir', None),
+                    host=args.host,
+                    port=args.port
+                )
             else:
-                return monitor()
+                return monitor(data_dir=getattr(args, 'data_dir', None))
         
         elif args.command == "status":
             show_status()

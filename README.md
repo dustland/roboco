@@ -143,7 +143,7 @@ Modern FastAPI + Preline UI dashboard with:
 - **Events**: Real-time event monitoring with filtering
 - **Memory**: Memory browser with search and categories
 - **Messages**: Agent conversation history during execution
-- **Configuration**: System configuration and status viewer
+- **Configuration**: System configuration and status viewer with data directory management
 
 ```bash
 # Start web dashboard
@@ -160,6 +160,13 @@ Interactive command-line interface:
 ```bash
 # Start CLI monitor
 roboco monitor
+
+# Start from any project subdirectory (auto-finds data)
+cd examples/simple_team/config
+roboco monitor --web
+
+# Specify custom data directory
+roboco monitor --data-dir /path/to/roboco_data
 
 # Available commands:
 monitor> status    # Show system status

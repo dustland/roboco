@@ -6,6 +6,7 @@ import sys
 import subprocess
 from pathlib import Path
 import os
+from typing import Optional
 
 def run_example(example_name: str = "superwriter") -> int:
     """Run an example."""
@@ -104,7 +105,7 @@ def start():
 
 
 
-def monitor():
+def monitor(data_dir: Optional[str] = None):
     """Run observability monitor in independent mode (post-mortem analysis)."""
     print("🤖 Starting Roboco Observability Monitor (Independent Mode)")
     print("=" * 60)
@@ -116,10 +117,10 @@ def monitor():
     print()
     
     try:
-        from roboco.observability.monitor import ObservabilityMonitor
+        from roboco.observability.monitor import get_monitor
         
-        # Create monitor in independent mode
-        monitor = ObservabilityMonitor()
+        # Create monitor in independent mode with smart data directory detection
+        monitor = get_monitor(data_dir)
         monitor.start()
         
         if monitor.is_integrated:
@@ -266,7 +267,7 @@ def monitor():
         print(f"❌ Error starting monitor: {e}")
         return 1
 
-def web():
+def web(data_dir: Optional[str] = None, host: str = "0.0.0.0", port: int = 8501):
     """Start the modern web-based observability dashboard."""
     print("🌐 Starting Roboco Observability Web Dashboard")
     print("=" * 50)
@@ -275,13 +276,13 @@ def web():
         from roboco.observability.web_app import run_web_app
         
         print("🚀 Starting modern web dashboard...")
-        print("📊 Dashboard will open at http://localhost:8501")
+        print(f"📊 Dashboard will open at http://localhost:{port}")
         print("🎨 Features: FastAPI + HTMX + TailwindCSS + Preline UI")
         print("🔄 Press Ctrl+C to stop")
         print()
         
         # Run the modern web app
-        run_web_app(host="0.0.0.0", port=8501)
+        run_web_app(host=host, port=port, data_dir=data_dir)
         return 0
         
     except KeyboardInterrupt:
