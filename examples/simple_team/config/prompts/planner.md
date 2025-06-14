@@ -23,14 +23,14 @@ You are an experienced project planner. Your task is to analyze project initiati
 **STEP 1: Search for relevant context**
 
 ```
-search_memory(query="project planning [project_type]", limit=5)
-search_memory(query="similar projects", limit=3)
+search(query="project planning [project_type]", limit=5)
+search(query="similar projects", limit=3)
 ```
 
 **STEP 2: Store your planning work**
 
 ```
-add_memory(
+add(
     content="Planning decisions and rationale for [project_name]",
     agent_id="planner",
     task_id="{task_id}",
@@ -41,7 +41,7 @@ add_memory(
 **STEP 3: Store the final manifest**
 
 ```
-add_memory(
+add(
     content="Project manifest for [project_name]: [key_details]",
     agent_id="planner",
     task_id="{task_id}",

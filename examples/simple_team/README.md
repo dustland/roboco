@@ -63,10 +63,10 @@ Agents can:
 
 ```python
 # Search for relevant context
-search_memory(query="documentation style", limit=5)
+search(query="documentation style", limit=5)
 
 # Store important decisions
-add_memory(
+add(
     content="User prefers concise docs with examples",
     agent_id="writer",
     task_id="{task_id}",

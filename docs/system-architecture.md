@@ -2,594 +2,693 @@
 
 ## 1. Introduction
 
-Roboco is a multi-agent framework designed for building, orchestrating, and operating sophisticated AI systems. It provides a robust, modular, and observable environment for collaborative agents to perform complex tasks. This document outlines the high-level architecture, its core components, and the design principles that govern its evolution.
+Roboco is an opinionated multi-agent framework designed for building, orchestrating, and operating sophisticated AI systems. It provides a robust, unified, and observable environment for collaborative agents to perform complex tasks with best-in-class integrations by default.
 
-The architecture is designed to meet the following key non-functional requirements:
+**Architecture Pattern**: `Task → Team → Agent → (Brain, Tool, Memory, Event)`
 
-- **Scalability**: Support for teams of 100+ specialized agents operating concurrently.
-- **Resilience**: High availability with stateful recovery from agent and component failures.
-- **Extensibility**: A pluggable architecture for integrating new tools, models, and storage backends.
-- **Performance**: Sub-second latency for core message passing and event processing.
+**Philosophy**: An opinionated framework with freedom of extensibility - we make the best choices by default while providing complete freedom to extend and customize.
+
+The architecture is designed to meet the following key requirements:
+
+- **Simplicity**: Unified classes (Agent, Team) with Brain-powered intelligence
+- **Performance**: Sub-90ms code execution, intelligent memory, real-time events
+- **Best-in-Class**: Opinionated integrations chosen for superior capabilities
+- **Extensibility**: MCP protocol support and plugin architecture
+- **Observability**: Real-time event system with comprehensive monitoring
 
 ## 2. Design Principles
 
-The system design is guided by several key architectural principles. Each principle is a strategic choice made to satisfy the non-functional requirements outlined in the introduction.
+The system design is guided by several key architectural principles:
 
-- **Modular by Design**: Components are designed with high cohesion and low coupling, communicating through well-defined, versioned APIs. This principle is critical for achieving our **Scalability** and **Extensibility** requirements, allowing subsystems to be developed, deployed, and scaled independently.
-- **Event-First Architecture**: All significant state changes and actions within the system are communicated via a central event bus. This approach is fundamental to meeting our **Performance** and **Resilience** goals while enabling system-wide observability.
-- **Secure by Default**: The architecture incorporates security at every layer, from agent authentication to fine-grained tool authorization and comprehensive audit trails. This directly supports the core requirement of a secure and resilient system.
-- **Human-in-the-Loop by Design**: The system is built to facilitate human oversight and intervention. Control points are intentionally designed into workflows, ensuring the system is not only automated but also governable. This is crucial for complex, high-stakes tasks.
-- **Configuration as Code**: The structure, behavior, and permissions of agent teams are defined in declarative configuration files. This enables version control, automated deployment, and repeatable collaboration patterns, directly contributing to the **Resilience** and **Extensibility** of the framework.
+- **Brain-Centric Intelligence**: Each agent has a Brain component that handles all LLM reasoning, tool orchestration, and intelligent decision-making
+- **Task-Level Conversations**: ChatHistory managed at Team/Task level, not individual agents
+- **Unified Architecture**: Single `Agent` class with role-based behavior, single `Team` class for all collaboration patterns
+- **Opinionated Excellence**: Best-in-class tools chosen by default (Firecrawl > Jina, browser-use > Playwright, Mem0 > basic memory, Daytona > Docker)
+- **Event-First Architecture**: All significant state changes communicated via real-time event system
+- **Secure by Default**: Built-in security with workspace isolation, tool permissions, and audit trails
+- **Human-in-the-Loop**: Designed for human oversight and intervention at every level
+- **Configuration as Code**: Declarative configuration with type safety and validation
 
 ## 3. High-Level Architecture
 
-The Roboco framework is composed of an **Execution Core** and the **Core Subsystems** that support it.
+The Roboco framework consists of a **Core Framework** with **Brain-Powered Intelligence** and **Opinionated Integrations**:
 
 ```mermaid
 flowchart TB
-    User["User"] --> Proxy
+    User["User"] --> Task
 
-    subgraph EC["Execution Core"]
-        direction LR
-        Proxy["User Proxy Agent"] --> Team["Team"]
-        Team --> Agents
-        subgraph Agents["Agents"]
-            direction TB
-            A1["Agent1"]:::agent
-            A2["Agent2"]:::agent
-            A3["Agent3"]:::agent
-            A4["..."]:::agent
+    Task --> Team
+    Task --> CS
+
+    subgraph CF["Core Framework"]
+        Task["Task<br/>(Backwards Compatibility)"]
+        Team["Team<br/>(Task-Level ChatHistory)"]
+
+        subgraph "Agents"
+          Team --> Agent1["Agent 1<br/>(Assistant)"]
+          Team --> Agent2["Agent 2<br/>(User/Code)"]
+          Team --> Agent3["Agent 3<br/>(System)"]
+
+          subgraph "Agent1"
+              Brain["🧠 Brain"]
+              Tool["🔧 Tool"]
+              CodeExecutor["CodeExecutor"]
+          end
+        end
+
+        subgraph CS["Core Subsystems"]
+            direction LR
+            MS["Memory System"]:::sub
+            Config["Config System"]:::sub
+            ES["Event System"]:::sub
         end
     end
 
-    EC -.-> CS
-
-    subgraph CS["Core Subsystems"]
-        direction TB
-        Config["Config System"]:::sub
-        Memory["Memory System"]:::sub
-        Tool["Tool System"]:::sub
-        Event["Event System"]:::sub
+    subgraph LLM["LLM"]
+      direction TB
+      OpenAI
+      DeepSeek
+      Anthropic
+      Qwen
     end
+
+    subgraph ToolIntegration["Opinionated Integrations"]
+      direction TB
+      Firecrawl
+      BrowserUse
+      Daytona
+      Mem0
+    end
+
+    subgraph OpenAPI["Open API"]
+      MCP["MCP"]
+      MCP --> Github
+      MCP --> Notion
+      MCP --> MCPTools["More MCP Tools"]
+    end
+
+    CF --> CS
+    Brain --> LLM
+    Tool --> Firecrawl
+    Tool --> BrowserUse
+    Tool --> MCP
+    MS --> Mem0
+    CodeExecutor --> Daytona
 ```
 
-The diagram illustrates the primary relationship: the `Execution Core` is defined by and utilizes the `Core Subsystems`. Specifically, the `Config System` defines the team, which in turn uses the `Memory`, `Tool`, and `Event` Systems to orchestrate its agents.
+### 3.1 Core Framework
 
-### 3.1 Execution Core
+**Task (High-Level API)**
 
-The Execution Core is responsible for orchestrating agent collaboration based on a given configuration.
+- Backwards compatibility layer for existing workflows
+- Simplified interface: `Task.start()` creates Team and executes
+- Configuration-driven team creation
+- Task-level conversation management
 
-- **User Proxy Agent**: The primary interface between a human user and the agent system.
-- **Team**: An orchestrator, defined by the **Config System**, that manages the interaction between a group of specialized agents to achieve a goal.
-- **Agents (`Agent 1`, `Agent 2`, ...)**: Individual, specialized agents that perform specific tasks. Each agent independently consumes capabilities from the **Tool** and **Memory** systems.
+**Team (Unified Collaboration)**
 
-### 3.2 Core Subsystems
+- Single class replacing GroupChat + GroupChatManager
+- Manages task-level ChatHistory (not agent-level)
+- Built-in conversation flow and termination logic
+- Supports all collaboration patterns (sequential, round-robin, auto)
 
-**Config System**
-The Config System is the foundation of the framework's "config-as-code" philosophy. It provides the schemas and tools to define the structure and behavior of the agent system, including the composition of teams, the roles of individual agents, and the tools they are permitted to use.
+**Agent (Unified Agent Class)**
 
-> For a detailed design, see: [Config-Based Design](./config-based-design.md)
+- Single class with role-based behavior (assistant/user/system)
+- Brain-powered intelligence for reasoning and decision-making
+- Built-in tool access, memory, and events
+- No separate UserAgent/ConversableAgent classes
+- Integrated human interaction and code execution
 
-**Memory System**
-The Memory System provides agents with a robust capacity for learning and context retention across complex, long-running tasks. Its architecture is designed to manage information of varying types and sizes, ensuring that agents have access to relevant context without exceeding LLM token limits.
+**Core Components**
 
-### Architecture Overview
+- **Agent**: Coordinates Brain, Tools, Memory, and Events as peer modules
+- **Brain**: The intelligent thinking component handling LLM reasoning and decision-making
+- **Tool**: Function calling, code execution, and tool registry
+- **Memory**: Intelligent memory with importance scoring
+- **Event**: Real-time event system with global and agent-level buses
 
-- **Hybrid Storage Model**: The system integrates multiple storage strategies to optimize for different data types. It combines a **Vector Store** for fast semantic search on unstructured data with a **Key-Value Store** for structured metadata, enabling rich, filterable queries.
-- **Chunking and Retrieval Engine**: To handle large documents and long conversations, all incoming content is passed through an intelligent chunking engine. This engine segments data into semantically meaningful pieces. The retrieval process then reassembles these chunks based on relevance, ensuring the most pertinent information is provided to the agent within its context window.
+### 3.2 Brain Architecture
 
-### Memory Interface
+The **Brain** is the core intelligence component of each agent:
 
-The TaskMemory methods are exposed to agents through the tool system:
+**Key Responsibilities:**
 
-| Tool Name       | TaskMemory Method | Description                                         |
-| --------------- | ----------------- | --------------------------------------------------- |
-| `add_memory`    | `add()`           | Adds content with automatic intelligent extraction  |
-| `search_memory` | `search()`        | Retrieves relevant information with semantic search |
-| `list_memories` | `get_all()`       | Lists memories with agent filtering and pagination  |
-| `get_memory`    | `get()`           | Retrieves specific memory by ID                     |
-| `clear_memory`  | `clear()`         | Clears agent memories with task scope               |
+- **LLM Integration**: Direct interface to OpenAI and other LLM providers
+- **Reasoning Engine**: Handles complex thinking and decision-making processes
+- **Tool Decision Making**: Determines which tools to call (Agent coordinates execution)
+- **Context Management**: Token counting, conversation windows, memory integration
+- **Response Generation**: Produces thoughtful, contextual responses
 
-> **Implementation Details**: For a comprehensive discussion of the memory architecture, including the storage provider pattern, chunking strategies, and data models, see the [Memory System Design](./memory-system.md) document.
-
-**Tool System**
-The Tool System enables agents to interact with external systems and capabilities. It provides a secure and observable framework for discovering, executing, and monitoring tools.
-
-**Event System**
-The Event System is the central nervous system of the framework. It operates on a publish-subscribe model, where all other components emit events about their state and actions. This provides a unified stream for observability, debugging, and control.
-
-### 3.3 Extensibility
-
-The framework supports tool extensibility through multiple approaches:
-
-- **Native Tools**: Built-in tools implemented directly in the framework
-- **Model Context Protocol (MCP)**: Integration with external services through the MCP standard
-- **Custom Integrations**: Direct API integrations for specialized requirements
-
-The MCP approach provides standardized tool integration where agents act as MCP clients connecting to external MCP servers that expose specific capabilities (web search, databases, etc.). This promotes modularity and makes tool integration uniform across different resource types.
-
-> For a detailed design, see: [Tool System Architecture](./tool-system.md)
-
-## 4. Memory System
-
-The Memory System provides agents with a robust capacity for learning and context retention across complex, long-running tasks. Its architecture is designed to manage information of varying types and sizes, ensuring that agents have access to relevant context without exceeding LLM token limits.
-
-### Architecture Overview
-
-- **Hybrid Storage Model**: The system integrates multiple storage strategies to optimize for different data types. It combines a **Vector Store** for fast semantic search on unstructured data with a **Key-Value Store** for structured metadata, enabling rich, filterable queries.
-- **Chunking and Retrieval Engine**: To handle large documents and long conversations, all incoming content is passed through an intelligent chunking engine. This engine segments data into semantically meaningful pieces. The retrieval process then reassembles these chunks based on relevance, ensuring the most pertinent information is provided to the agent within its context window.
-
-### MemoryManager Implementation
-
-The MemoryManager class implements all memory operations and provides both framework API access and tool interfaces:
+**Brain Components:**
 
 ```python
-class MemoryManager:
-    def __init__(self, config: MemoryConfig):
-        self.backend = Mem0Backend(config)
-        self.chunker = IntelligentChunker()
-        self.retriever = TokenAwareRetriever()
+@dataclass
+class BrainConfig:
+    model: str = "gpt-4"
+    temperature: float = 0.7
+    enable_reasoning_traces: bool = True
+    enable_memory_integration: bool = True
+    enable_tool_calling: bool = True
 
-    # Core memory operations
-    async def add_memory(self, content: str, metadata: dict = None) -> str:
-        """Adds content with automatic chunking for large items"""
+class Brain:
+    async def think(self, messages, context) -> Message:
+        """Core thinking method - generates intelligent responses"""
 
-    async def query_memory(self, query: str, max_tokens: int = 2000) -> str:
-        """Retrieves relevant information with token limit awareness"""
+    async def reason_with_tools(self, messages, tools) -> List[Message]:
+        """Advanced reasoning with tool integration"""
 
-    async def list_memory(self, filters: dict = None) -> List[dict]:
-        """Lists memories with metadata filtering and pagination"""
-
-    async def get_memory(self, memory_id: str) -> Memory:
-        """Retrieves specific memory by ID with chunk information"""
-
-    async def update_memory(self, memory_id: str, content: str) -> str:
-        """Updates existing memory while preserving structure"""
-
-    async def delete_memory(self, memory_id: str) -> str:
-        """Removes memory and associated chunks/metadata"""
-
-    async def clear_memory(self, session_id: str) -> str:
-        """Clears session memories with backup options"""
-
-    async def search_memory(self, query: str, limit: int = 5) -> List[dict]:
-        """Performs semantic search with relevance ranking"""
+    async def integrate_memory(self, messages, memory_context) -> Dict:
+        """Integrate memory into thinking process"""
 ```
 
-### Memory Interface
+### 3.3 Task-Level Conversation Management
 
-The MemoryManager methods are exposed to agents through the tool system:
+**ChatHistory Architecture:**
 
-| Tool Name       | MemoryManager Method | Description                                               |
-| --------------- | -------------------- | --------------------------------------------------------- |
-| `add_memory`    | `add_memory()`       | Adds content with automatic chunking for large items      |
-| `query_memory`  | `query_memory()`     | Retrieves relevant information with token limit awareness |
-| `list_memory`   | `list_memory()`      | Lists memories with metadata filtering and pagination     |
-| `get_memory`    | `get_memory()`       | Retrieves specific memory by ID with chunk information    |
-| `update_memory` | `update_memory()`    | Updates existing memory while preserving structure        |
-| `delete_memory` | `delete_memory()`    | Removes memory and associated chunks/metadata             |
-| `clear_memory`  | `clear_memory()`     | Clears session memories with backup options               |
-| `search_memory` | `search_memory()`    | Performs semantic search with relevance ranking           |
+- **Task-Level**: Conversations managed at Team/Task level, not individual agents
+- **Shared Context**: All agents in a team share the same conversation history
+- **Message Flow**: Messages flow through the team's ChatHistory, not agent-specific chats
 
-> **Implementation Details**: For a comprehensive discussion of the memory architecture, including the storage provider pattern, chunking strategies, and data models, see the [Memory System Design](./memory-system.md) document.
+```python
+class Team:
+    def __init__(self, config, agents):
+        # Task-level conversation history
+        self.chat_history = ChatHistory(task_id="")
 
-## 5. Tool System
+    async def start_conversation(self, initial_message):
+        # All agents share this conversation history
+        return self.chat_history
 
-The Tool System is designed to provide agents with secure, reliable, and observable access to external capabilities. Its architecture is founded on the principles of protocol-based interaction and separation of concerns, ensuring that agent logic remains decoupled from tool implementation details.
+class Agent:
+    def __init__(self, config):
+        # No agent-level chat history
+        self.brain = Brain(agent=self)
 
-- **Multiple Integration Patterns**: The system supports multiple tool integration patterns. For **external tools**, the framework mandates the use of the **Model Context Protocol (MCP)** to ensure a uniform, secure, and discoverable interface. For **built-in tools**, a more direct and optimized internal API is used to maximize performance for core functionalities.
+    async def receive_message(self, message):
+        # Brain processes message and generates response
+        return await self.brain.think([message])
+```
 
-  ```python
-  # Example of an MCP-compliant tool endpoint
-  @tool_protocol.mcp_endpoint("web_search")
-  async def search(query: str, filters: dict):
-      # Implementation logic for the search tool
-      return await brave_search_api.call(query, **filters)
-  ```
+### 3.4 Opinionated Integrations
 
-- **Separation of Concerns**: The system distinguishes between the **Tool Registry** for discovery, the **Execution Engine** for invocation, and the **Physical Tools** themselves. This allows each part of the system to be managed and scaled independently.
+We've chosen best-in-class tools for each capability:
 
-**Key Capabilities**
+| Capability             | Integration | Why Better                                    |
+| ---------------------- | ----------- | --------------------------------------------- |
+| **Web Search**         | SERP API    | Reliable, fast, comprehensive results         |
+| **Content Extraction** | Firecrawl   | Superior quality, JS support, markdown output |
+| **Browser Automation** | browser-use | AI-first design, natural language control     |
+| **Memory**             | Mem0        | 26% higher accuracy, 91% faster than basic    |
+| **Code Execution**     | Daytona     | Sub-90ms sandboxes vs Docker's slow startup   |
+| **Tool Protocol**      | MCP         | Standardized, extensible tool integration     |
+| **LLM Inference**      | OpenAI      | Best function calling, reliable API           |
 
-1.  **Execution Modes**: The Execution Engine supports multiple invocation patterns to suit different use cases:
+## 4. Core Components Deep Dive
 
-    - **Synchronous**: For fast, blocking operations (<500ms).
-    - **Asynchronous**: For long-running tasks, providing progress updates via callbacks.
-    - **Streaming**: For tools that produce continuous output, such as LLM responses.
+### 4.1 Agent Architecture
 
-2.  **Security Model**: A multi-layered security model governs tool access:
-    - **Authentication**: All agents and tools must authenticate using OAuth 2.0 or managed API keys.
-    - **Authorization**: Access is controlled by per-agent or per-team capability matrices defined in the configuration. These policies specify which agents can execute which tools and enforce rate limits.
-    - **Auditing**: Every tool call generates a `tool.call.initiated` event and a corresponding `completed` or `failed` event, creating a comprehensive and immutable audit trail.
+The unified `Agent` class supports three roles through a single interface:
 
-> For the full specification, including the MCP definition, security policy schema, and monitoring integration, see the [Tool System Design](./tool-system.md) document.
+```python
+# Assistant Agent (AI-powered with Brain)
+assistant = Agent(
+    name="researcher",
+    role=AgentRole.ASSISTANT,
+    system_message="You are a research specialist...",
+    brain_config=BrainConfig(model="gpt-4", temperature=0.7)
+)
 
-## 6. Event System
+# User Agent (Human proxy + code execution)
+user = Agent(
+    name="executor",
+    role=AgentRole.USER,
+    enable_human_interaction=True,
+    enable_code_execution=True
+)
 
-The Event System is the observability and control backbone of the framework. It is designed for high throughput and low latency, enabling real-time monitoring and dynamic intervention in agent workflows.
+# System Agent (Automated responses)
+system = Agent(
+    name="coordinator",
+    role=AgentRole.SYSTEM,
+    system_message="Coordinate team activities..."
+)
+```
 
-The system is built around a central **Event Bus** that routes events between producers and consumers. This decouples components and allows for flexible integration with external monitoring and control systems.
+**Key Features:**
 
-- **Unified Event Schema**: All events adhere to a standardized, versioned JSON schema. This ensures consistency and simplifies the development of consumers.
+- **Brain-Powered**: Each agent has a Brain for intelligent reasoning
+- **Role-based behavior**: Same class, different capabilities
+- **Integrated components**: Brain, tools, memory, events built-in
+- **Type safety**: Full TypeScript-style type hints
+- **Configuration-driven**: Declarative setup with validation
 
-  ```typescript
-  // Example of a standardized RobocoEvent
-  interface RobocoEvent {
-    eventId: string; // UUID for the event
-    timestamp: ISO8601; // UTC timestamp
-    eventType: string; // e.g., "agent.message.sent", "tool.call.failed"
-    payload: Record<string, unknown>; // Event-specific data
-    metadata: {
-      sessionId: string; // Correlates all events in a single workflow
-      source: string; // e.g., "Agent/Planner", "Tool/WebSearch"
-    };
-  }
-  ```
+### 4.2 Team Architecture
 
-- **Bidirectional Communication**: The event bus is not just for observability; it's also a control plane.
-  - **Outbound Events**: Components publish events about their state and actions (e.g., `agent.decision.made`).
-  - **Inbound Events**: External systems (or human supervisors) can publish control events (e.g., `control.collaboration.pause`) to dynamically influence the workflow.
+The unified `Team` class handles all collaboration patterns with task-level conversation management:
 
-The Event System is designed to meet stringent performance and reliability targets suitable for production environments.
+```python
+team = Team(
+    name="research_team",
+    agents=[researcher, writer, executor],
+    config=TeamConfig(
+        speaker_selection=SpeakerSelectionMethod.ROUND_ROBIN,
+        max_rounds=10,
+        termination_keywords=["TERMINATE"]
+    )
+)
 
-| Metric         | Target                 | Description                                                               |
-| -------------- | ---------------------- | ------------------------------------------------------------------------- |
-| **Throughput** | >10,000 events/sec     | The number of events the bus can process per second.                      |
-| **Latency**    | <50ms (p99)            | The time from when an event is published to when it is delivered.         |
-| **Durability** | At-least-once delivery | Ensures that critical events are not lost, with configurable persistence. |
+# Execute team conversation with shared ChatHistory
+chat_history = await team.start_conversation(
+    initial_message="Research AI market trends and write a report"
+)
+```
 
-> For a detailed exploration of the event-driven architecture, including the bridge pattern for framework integration and the control plane design, see the [Event System Design](./event-sytem.md) document.
+**Collaboration Patterns:**
 
-## 7. Framework Extensibility
+- **Round-robin**: Circular agent rotation
+- **Random**: Random speaker selection
+- **LLM-based**: Brain-driven speaker selection
+- **Manual**: Human-controlled handoffs
+- **Custom**: User-defined selection logic
 
-The framework is designed with extensibility as a core principle, enabling seamless integration of new capabilities across multiple dimensions. This extensible architecture ensures the framework can adapt to evolving requirements and integrate with diverse technology stacks.
+### 4.3 Brain System
 
-### 7.1 Tool Extensibility
+Brain-powered intelligence for each agent:
 
-The Tool System provides multiple pathways for extending agent capabilities with new tools and integrations:
+```python
+# Agent automatically gets Brain
+agent = Agent(
+    name="researcher",
+    role=AgentRole.ASSISTANT,
+    brain_config=BrainConfig(
+        model="gpt-4",
+        enable_tool_calling=True,
+        enable_memory_integration=True
+    )
+)
 
-**Native Tool Implementation**
+# Brain handles all thinking
+response = await agent.brain.think(
+    messages=[user_message],
+    context={"task": "research", "domain": "AI"}
+)
 
-- Direct Python implementation within the framework
-- Full access to framework internals and optimizations
-- Example: Custom database connectors, specialized algorithms
+# Brain can reason with tools
+tool_responses = await agent.brain.reason_with_tools(
+    messages=[user_message],
+    available_tools=agent.tools.get_all()
+)
+```
 
-**Model Context Protocol (MCP) Integration**
+### 4.4 Memory System
 
-- Standardized protocol for external tool services
-- Language-agnostic tool development (Python, Node.js, etc.)
-- Automatic tool discovery and registration
-- Example: Web search services, API integrations, specialized AI models
+Intelligent memory with Mem0 integration:
 
-**Direct API Integration**
+```python
+# Agent automatically gets memory
+agent = Agent(name="researcher", role=AgentRole.ASSISTANT)
 
-- RESTful API endpoints as tools
-- GraphQL and other modern API patterns
-- Authentication and rate limiting support
-- Example: CRM systems, cloud services, third-party analytics
+# Memory operations through agent
+await agent.memory.save("Important research finding...")
+results = await agent.memory.search("previous findings about AI")
+```
 
-**Plugin Architecture**
+**Features:**
 
-- Hot-pluggable tool modules
-- Configuration-driven tool activation
-- Version management and dependency resolution
-- Example: Domain-specific tool packages, community contributions
+- **Intelligent storage**: Automatic importance scoring
+- **Semantic search**: Natural language queries
+- **Memory cleanup**: Automatic relevance-based cleanup
+- **Cross-agent sharing**: Team-level memory access
 
-### 7.2 Storage Backend Extensibility
+### 4.5 Tool System
 
-The Storage System's provider pattern enables support for diverse storage solutions:
+Unified tool system with opinionated integrations:
 
-**Cloud Storage Providers**
+```python
+# Built-in web tools (opinionated choices)
+from roboco.tools import FirecrawlTool, BrowserUseTool, SearchTool
 
-- AWS S3 with multi-region support
-- Azure Blob Storage with enterprise integration
-- Google Cloud Storage with AI/ML optimizations
-- Custom cloud providers through standardized interfaces
+# Register with agent
+agent.register_tool(FirecrawlTool())
+agent.register_tool(BrowserUseTool())
 
-**Specialized Storage Systems**
+# MCP tool integration
+agent.register_mcp_server("http://localhost:8080")
+```
 
-- Vector databases (Qdrant, Pinecone, Weaviate) for semantic search
-- Graph databases (Neo4j, Amazon Neptune) for relationship modeling
-- Time-series databases (InfluxDB, TimescaleDB) for temporal data
-- Distributed file systems (HDFS, Ceph) for large-scale deployments
+**Tool Categories:**
 
-**Hybrid Storage Architectures**
+- **Web Tools**: Firecrawl (extraction) + browser-use (automation)
+- **Search Tools**: SERP API for reliable web search
+- **Memory Tools**: Mem0-powered intelligent memory
+- **Basic Tools**: File operations, calculations
+- **Code Tools**: Daytona-powered execution
+- **MCP Tools**: External tool protocol support
 
-- Multi-tier storage with automatic data lifecycle management
-- Caching layers for performance optimization
-- Replication and backup strategies
-- Cross-provider data migration and synchronization
+### 4.6 Event System
 
-### 7.3 LLM Provider Extensibility
+Real-time event system for observability and control:
 
-The framework supports multiple LLM providers through a unified interface:
+```python
+# Global event bus
+from roboco.core import global_events
 
-**Major Commercial Providers**
+# Listen to all agent messages
+@global_events.on("agent.message.sent")
+async def log_message(event):
+    print(f"Agent {event.agent_id}: {event.message}")
 
-- OpenAI (GPT-4, GPT-4 Turbo, GPT-4o)
-- Anthropic (Claude 3.5 Sonnet, Claude 3 Opus)
-- Google (Gemini Pro, Gemini Ultra)
-- Microsoft Azure OpenAI Service
+# Agent-level events
+@agent.events.on("tool.executed")
+async def track_tool_usage(event):
+    print(f"Tool {event.tool_name} executed")
+```
 
-**Open Source Models**
+**Event Types:**
 
-- Local deployment with Ollama, LM Studio
-- Self-hosted inference servers (vLLM, TensorRT-LLM)
-- Fine-tuned domain-specific models
-- Quantized models for resource-constrained environments
+- **Agent events**: Messages, decisions, state changes
+- **Tool events**: Execution, results, errors
+- **Team events**: Speaker selection, termination
+- **Memory events**: Storage, retrieval, cleanup
+- **System events**: Initialization, configuration changes
 
-**Specialized AI Services**
+## 5. Opinionated Integration Details
 
-- Code generation models (GitHub Copilot, CodeT5)
-- Multimodal models (GPT-4 Vision, LLaVA)
-- Domain-specific models (legal, medical, financial)
-- Real-time inference and streaming capabilities
+### 5.1 Web Capabilities
 
-**Provider Configuration**
+**Firecrawl for Content Extraction**
+
+```python
+from roboco.tools import extract_web_content
+
+content = await extract_web_content(
+    url="https://example.com",
+    formats=["markdown", "html"],
+    include_links=True
+)
+```
+
+**browser-use for AI Automation**
+
+```python
+from roboco.tools import automate_browser
+
+result = await automate_browser(
+    task="Find the latest AI research papers on arxiv.org",
+    max_steps=10
+)
+```
+
+### 5.2 Memory Intelligence
+
+**Mem0 Integration**
+
+```python
+# Automatic intelligent memory
+agent = Agent(name="researcher")
+
+# Add with automatic processing
+await agent.memory.add("Research shows AI adoption increased 40% in 2024")
+
+# Intelligent search
+results = await agent.memory.search("AI adoption trends")
+# Returns: Relevant memories with importance scores
+```
+
+### 5.3 Code Execution
+
+**Daytona Integration**
+
+```python
+# Agent with code execution
+agent = Agent(
+    name="coder",
+    role=AgentRole.USER,
+    code_execution=True,
+    execution_config={
+        "provider": "daytona",
+        "timeout": 30
+    }
+)
+
+# Sub-90ms sandbox creation
+result = await agent.execute_code("""
+import pandas as pd
+df = pd.read_csv('data.csv')
+print(df.describe())
+""")
+```
+
+## 6. Configuration System
+
+### 6.1 Agent Configuration
 
 ```yaml
-llm_providers:
-  primary:
-    provider: "openai"
-    model: "gpt-4o"
-    api_key: ${OPENAI_API_KEY}
+# agents.yaml
+agents:
+  researcher:
+    role: assistant
+    system_message: "You are a research specialist..."
+    brain_config:
+      model: "gpt-4"
+      temperature: 0.7
+    tools: ["search", "web_extraction", "memory"]
 
-  fallback:
-    provider: "anthropic"
-    model: "claude-3-5-sonnet-20241022"
-    api_key: ${ANTHROPIC_API_KEY}
-
-  local:
-    provider: "ollama"
-    model: "llama3.1:8b"
-    endpoint: "http://localhost:11434"
+  executor:
+    role: user
+    enable_human_interaction: true
+    enable_code_execution: true
+    execution_config:
+      provider: "daytona"
+      timeout: 30
 ```
 
-### 7.4 Observability Platform Integration
-
-The Event System enables integration with diverse monitoring and observability platforms:
-
-**Application Performance Monitoring (APM)**
-
-- Datadog for comprehensive application monitoring
-- New Relic for performance insights and alerting
-- Dynatrace for AI-powered application intelligence
-- Custom metrics collection and dashboard creation
-
-**Log Management Systems**
-
-- ELK Stack (Elasticsearch, Logstash, Kibana) for log analytics
-- Splunk for enterprise log management and security
-- Fluentd/Fluent Bit for unified logging layers
-- CloudWatch, Azure Monitor for cloud-native logging
-
-**Event Streaming Platforms**
-
-- Apache Kafka for high-throughput event streaming
-- Redis Streams for lightweight event processing
-- Amazon EventBridge for serverless event routing
-- Custom webhook endpoints for real-time notifications
-
-**Business Intelligence & Analytics**
-
-- Grafana for custom visualization dashboards
-- Tableau for business intelligence integration
-- Power BI for Microsoft ecosystem integration
-- Custom analytics pipelines with Apache Spark
-
-**Observability Configuration**
+### 6.2 Team Configuration
 
 ```yaml
-observability:
-  metrics:
-    provider: "datadog"
-    api_key: ${DATADOG_API_KEY}
-    tags:
-      environment: "production"
-      service: "roboco"
+# team.yaml
+team:
+  name: "research_team"
+  agents: ["researcher", "writer", "executor"]
+  config:
+    speaker_selection: "round_robin"
+    max_rounds: 10
+    termination_keywords: ["TERMINATE"]
 
-  logs:
-    provider: "elasticsearch"
-    endpoint: "https://elasticsearch:9200"
-    index_pattern: "roboco-logs-*"
-
-  events:
-    provider: "kafka"
-    brokers: ["kafka1:9092", "kafka2:9092"]
-    topic: "roboco-events"
+integrations:
+  search: "serp"
+  web_extraction: "firecrawl"
+  browser_automation: "browser-use"
+  memory: "mem0"
+  execution: "daytona"
 ```
 
-### 7.5 Integration Patterns
+## 7. Extensibility
 
-**Configuration-Driven Extension**
+### 7.1 MCP Tool Integration
 
-- YAML/JSON configuration for new integrations
-- Environment variable injection for secrets
-- Runtime configuration updates without restarts
-- Validation and schema checking for configurations
+```python
+# Connect to external MCP server
+agent.register_mcp_server("http://data-science-tools:8080")
 
-**Plugin Discovery & Loading**
-
-- Automatic plugin detection in configured directories
-- Dependency resolution and compatibility checking
-- Hot-loading capabilities for development workflows
-- Plugin lifecycle management (install, update, remove)
-
-**API Gateway Pattern**
-
-- Unified API interface for external integrations
-- Rate limiting and authentication middleware
-- Request/response transformation capabilities
-- Circuit breaker patterns for resilience
-
-**Event-Driven Integration**
-
-- Publish-subscribe patterns for loose coupling
-- Event schemas for integration contracts
-- Dead letter queues for failed event processing
-- Event replay capabilities for debugging
-
-This extensible architecture ensures the framework can evolve with changing technological landscapes while maintaining backward compatibility and operational stability.
-
-## 8. Cross-Cutting Concerns
-
-Several concerns are fundamental to the entire framework and are addressed systematically across multiple subsystems.
-
-### Security
-
-Security is a first-class citizen in the Roboco framework, not an afterthought. It is implemented through a defense-in-depth strategy:
-
-- **Authentication**: All external interactions, particularly with tools via the **MCP**, require authenticated agents and services (via OAuth 2.0 or API keys).
-- **Authorization**: The **Config System** defines fine-grained permissions, specifying which agents can access which tools. These policies are enforced by the **Tool System's** execution engine.
-- **Auditing**: The **Event System** provides a comprehensive and immutable audit log of all actions, including every tool call and configuration change.
-
-### Observability
-
-System-wide observability is achieved through the **Event-First Architecture**.
-
-- **Centralized Event Bus**: The **Event System** acts as the single source of truth for system state and activity, capturing everything from agent messages to tool performance.
-- **Structured Events**: The use of a unified event schema allows for consistent processing, monitoring, and alerting by external platforms.
-- **Real-time Control**: The bidirectional nature of the event bus allows monitoring systems to inject control events, enabling dynamic, human-in-the-loop oversight.
-
-### Configuration Management
-
-The framework's behavior is driven by declarative configuration, managed as code.
-
-- **Declarative Definitions**: The **Config System** allows the entire agent team structure, including roles, tools, and workflows, to be defined in version-controllable files.
-- **Dynamic Reloading**: The system can dynamically reload configurations in response to `control.configuration.reload` events from the **Event System**, allowing for updates without requiring a full system restart.
-
-## 9. Scenario: Market Research Writing Task
-
-The Roboco architecture is particularly well-suited for building sophisticated, multi-step content creation workflows. Here's how the components align in a market research writing scenario:
-
-### Agents
-
-| Agent               | Role                  | Key Memory Tools Used                                      | Function                                                                     |
-| ------------------- | --------------------- | ---------------------------------------------------------- | ---------------------------------------------------------------------------- |
-| **PlannerAgent**    | Content structuring   | `add_memory`, `update_memory`                              | Creates research outline and writing plan, stores content strategy in memory |
-| **ResearcherAgent** | Information gathering | `add_memory`, `search_memory`, `query_memory`              | Gathers market data, industry reports, and competitive intelligence          |
-| **ReviewerAgent**   | Quality assurance     | `get_memory`, `search_memory`, `list_memory`               | Reviews research quality, validates sources, and reviews content drafts      |
-| **WriterAgent**     | Content creation      | `get_memory`, `add_memory`, `update_memory`, `list_memory` | Drafts sections, creates content, stores drafts and revisions                |
-| **TeamManager**     | Workflow coordination | N/A (coordinates other agents)                             | Sequences tasks between agents; manages dependencies and deadlines           |
-
-### Memory Tool Usage Examples
-
-| Tool            | Usage Context                      | Data Pattern                       |
-| --------------- | ---------------------------------- | ---------------------------------- |
-| `add_memory`    | Save research findings & drafts    | Structured content with metadata   |
-| `get_memory`    | Retrieve specific data or sections | Chunked reading for large reports  |
-| `search_memory` | Find related research or sources   | Semantic and keyword matching      |
-| `query_memory`  | Discover relevant past reports     | Vector-based semantic search       |
-| `update_memory` | Revise drafts and content versions | Update existing content blocks     |
-| `list_memory`   | Track writing progress and status  | Session memory management          |
-| `clear_memory`  | Backup before major revisions      | Point-in-time content preservation |
-
-### Key Workflow: Market Research Report Creation
-
-The content creation workflow demonstrates memory-driven collaboration between specialized writing agents:
-
-#### Part 1: Planning
-
-```mermaid
-sequenceDiagram
-    autonumber
-    actor User
-    participant TM as TeamManager
-    participant PA as PlannerAgent
-    participant MemSys as Memory System
-
-    User->>TM: Create market research report on "AI Tools Market"
-
-    Note over TM,PA: PLANNING PHASE
-    TM->>PA: Dispatch for planning
-    PA->>PA: Draft initial requirements
-    PA->>MemSys: add_memory("draft_requirements", initial_analysis)
-    PA->>User: Send targeted requirements survey<br/>(based on draft requirements)
-    User->>PA: Return completed survey
-    PA->>MemSys: add_memory("user_requirements", survey_responses)
-    PA->>MemSys: add_memory("outline", content_structure)
-    PA->>MemSys: add_memory("specifications", target_audience_specs)
-    PA-->>TM: Content plan finalized
+# Tools automatically discovered and registered
+# Agent can now use: analyze_data, create_visualization, etc.
 ```
 
-#### Part 2: Research & Validation
+### 7.2 Custom Tool Development
 
-```mermaid
-sequenceDiagram
-    autonumber
-    participant TM as TeamManager
-    participant ResA as ResearcherAgent
-    participant RevA as ReviewerAgent
-    participant MemSys as Memory System
+```python
+from roboco.core import Tool
 
-    Note over TM,ResA: RESEARCH PHASE
-    TM->>ResA: Dispatch for research
-    ResA->>MemSys: get_memory("user_requirements")
-    ResA->>MemSys: search_memory("ai_tools_previous_research")
-    ResA->>MemSys: add_memory("market_data", industry_reports)
-    ResA->>MemSys: add_memory("competitor_analysis", competitive_landscape)
-    ResA->>MemSys: add_memory("research_sources", source_documentation)
-    ResA-->>TM: Initial research complete
+class CustomTool(Tool):
+    async def execute(self, **kwargs):
+        # Custom implementation
+        return "Custom result"
 
-    Note over TM,RevA: VALIDATION PHASE
-    TM->>RevA: Dispatch for research review
-    RevA->>MemSys: get_memory("market_data")
-    RevA->>MemSys: get_memory("competitor_analysis")
-    RevA->>MemSys: get_memory("research_sources")
-    RevA->>MemSys: query_memory("source_credibility_checks")
-    RevA->>MemSys: update_memory("market_data", validated_data)
-    RevA-->>TM: Research validation complete
+# Register with agent
+agent.register_tool(CustomTool())
 ```
 
-#### Part 3: Writing & Review
+### 7.3 Memory Backend Extension
 
-```mermaid
-sequenceDiagram
-    autonumber
-    participant TM as TeamManager
-    participant WA as WriterAgent
-    participant RevA as ReviewerAgent
-    participant MemSys as Memory System
-    actor User
+```python
+# Custom memory backend
+from roboco.core import Memory
 
-    Note over TM,WA: WRITING PHASE
-    TM->>WA: Dispatch for writing
-    WA->>MemSys: get_memory("outline")
-    WA->>MemSys: get_memory("market_data")
-    WA->>MemSys: add_memory("executive_summary", draft_content)
-    WA->>MemSys: get_memory("competitor_analysis")
-    WA->>MemSys: add_memory("market_analysis", detailed_analysis)
-    WA-->>TM: Content draft complete
+class CustomMemory(Memory):
+    async def add(self, content: str) -> str:
+        # Custom storage implementation
+        pass
 
-    Note over TM,RevA: REVIEW PHASE
-    TM->>RevA: Dispatch for content review
-    RevA->>MemSys: get_memory("executive_summary")
-    RevA->>MemSys: get_memory("market_analysis")
-    RevA->>MemSys: query_memory("fact_check_sources")
-    RevA->>MemSys: update_memory("executive_summary", revised_content)
-    RevA-->>TM: Content review complete
-
-    Note right of TM: Final report combines<br/>all memory components<br/>into deliverable
-
-    TM-->>User: Market research report delivered
+# Use with agent
+agent = Agent(name="test", memory=CustomMemory())
 ```
 
-This workflow is collaborative and iterative. The `ReviewerAgent` might request revisions, leading the `TeamManager` to re-engage the `WriterAgent` with specific feedback. Users can also provide feedback or content direction at any stage through control events, and the memory system ensures all research, drafts, and revisions are preserved for future reference or similar projects.
+## 8. Performance Characteristics
 
-## 10. Deployment and Maintenance
+| Component            | Performance Target     | Implementation                |
+| -------------------- | ---------------------- | ----------------------------- |
+| **Code Execution**   | <90ms sandbox creation | Daytona vs Docker's ~5s       |
+| **Memory Search**    | <100ms semantic search | Mem0 optimized vectors        |
+| **Web Extraction**   | <2s content extraction | Firecrawl parallel processing |
+| **Event Processing** | <10ms event delivery   | In-memory event bus           |
+| **Tool Execution**   | <500ms average         | Async execution with timeouts |
 
-In a typical Roboco deployment:
+## 9. Security Model
 
-- **Tool Services**: External tool services (for web search, databases, etc.) are deployed as independent services. These can be containerized and managed by orchestrators like Kubernetes for scalability and resilience.
-- **Storage Infrastructure**: Storage backend (local filesystem, AWS S3, Azure Blob) is configured based on deployment requirements. Cloud deployments typically use object storage for scalability and durability.
-- **Roboco Backend**: The core Roboco application, which includes the agent definitions, team orchestration logic, and event processing, is deployed as a central service. This backend communicates with external tool services and storage through their respective systems.
-- **Agents**: The agents themselves are part of the Roboco backend's execution environment. They are instantiated and run as processes or threads within the backend application.
-- **Configuration**: Agent configurations, system messages, LLM API keys, and storage provider settings are managed through configuration files or environment variables.
+### 9.1 Multi-Layer Security
 
-Maintenance involves updating tool services as needed, updating the Roboco backend with new agent logic or orchestration strategies, and managing the LLM configurations and dependencies.
+- **Workspace Isolation**: All file operations within sandboxed workspace
+- **Tool Permissions**: Fine-grained access control per agent
+- **Code Execution**: Secure Daytona sandboxes with resource limits
+- **API Security**: Encrypted API keys and secure credential management
+- **Audit Trail**: Complete event logging for all operations
 
-## 11. Conclusion
+### 9.2 Permission Matrix
 
-The framework provides a powerful and flexible platform for developing sophisticated multi-agent applications. Its core emphasis on modularity, extensibility, observability, and human-in-the-loop collaboration makes it particularly suitable for complex, iterative tasks.
+```yaml
+permissions:
+  researcher:
+    tools: ["search", "web_extraction", "memory"]
+    file_access: "read"
+    network_access: true
 
-By clearly defining component responsibilities and their interactions through a robust, event-driven architecture, the framework enables the creation of advanced AI-driven solutions that can tackle challenges beyond the scope of single-agent systems.
+  executor:
+    tools: ["all"]
+    file_access: "write"
+    code_execution: true
+    human_interaction: true
+```
+
+## 10. Migration from Legacy Systems
+
+### 10.1 From AG2/AutoGen
+
+```python
+# Old AG2 approach
+from autogen import ConversableAgent, GroupChat, GroupChatManager
+
+assistant = ConversableAgent(name="assistant", llm_config=config)
+user_proxy = UserProxyAgent(name="user", code_execution_config=True)
+group_chat = GroupChat(agents=[assistant, user_proxy])
+manager = GroupChatManager(groupchat=group_chat)
+
+# New Roboco approach
+from roboco.core import Agent, Team, AgentRole
+
+assistant = Agent(name="assistant", role=AgentRole.ASSISTANT, llm_config=config)
+executor = Agent(name="executor", role=AgentRole.USER, code_execution=True)
+team = Team(name="team", agents=[assistant, executor])
+```
+
+### 10.2 Benefits of Migration
+
+- **Simplified API**: Single classes instead of complex hierarchies
+- **Better Performance**: Sub-90ms execution vs Docker's slow startup
+- **Superior Tools**: Firecrawl vs Jina, browser-use vs Playwright
+- **Intelligent Memory**: Mem0 vs basic storage
+- **Real-time Events**: Built-in observability
+- **Type Safety**: Full type hints and validation
+
+## 11. Deployment Architecture
+
+### 11.1 Production Deployment
+
+```yaml
+# docker-compose.yml
+services:
+  roboco:
+    image: roboco:latest
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - SERP_API_KEY=${SERP_API_KEY}
+      - FIRECRAWL_API_KEY=${FIRECRAWL_API_KEY}
+    volumes:
+      - ./workspace:/app/workspace
+      - ./config:/app/config
+
+  daytona:
+    image: daytona/daytona:latest
+    privileged: true
+
+  mem0:
+    image: mem0/mem0:latest
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+```
+
+### 11.2 Scaling Considerations
+
+- **Horizontal Scaling**: Multiple Roboco instances with shared memory
+- **Load Balancing**: Event bus clustering for high availability
+- **Resource Management**: Daytona sandbox pooling
+- **Monitoring**: Comprehensive metrics and alerting
+
+## 12. Example: Complete Research Workflow
+
+```python
+from roboco.core import Agent, Team, AgentRole
+
+# Create specialized agents
+researcher = Agent(
+    name="researcher",
+    role=AgentRole.ASSISTANT,
+    system_message="You are a research specialist. Use web search and content extraction to gather comprehensive information.",
+    tools=["search", "web_extraction", "memory"]
+)
+
+writer = Agent(
+    name="writer",
+    role=AgentRole.ASSISTANT,
+    system_message="You are a technical writer. Create well-structured documents from research.",
+    tools=["memory", "basic"]
+)
+
+executor = Agent(
+    name="executor",
+    role=AgentRole.USER,
+    enable_human_interaction=True,
+    enable_code_execution=True,
+    tools=["all"]
+)
+
+# Create team
+team = Team(
+    name="research_team",
+    agents=[researcher, writer, executor],
+    config=TeamConfig(
+        speaker_selection=SpeakerSelectionMethod.ROUND_ROBIN,
+        max_rounds=10,
+        termination_keywords=["TERMINATE"]
+    )
+)
+
+# Execute research workflow
+result = await team.start_conversation(
+    initial_message="Research the latest AI agent frameworks and write a comprehensive comparison report"
+)
+
+print(f"Research completed: {result}")
+```
+
+This example demonstrates the complete workflow:
+
+1. **Researcher** uses SERP API and Firecrawl to gather information
+2. **Writer** accesses shared memory to create structured content
+3. **Executor** handles human interaction and code execution
+4. **Team** coordinates the entire process automatically
+
+## 13. Conclusion
+
+The Roboco framework provides a modern, opinionated approach to multi-agent systems with:
+
+**Unified Architecture**: Single Agent/Team classes eliminate complexity while maintaining full functionality.
+
+**Best-in-Class Integrations**: Carefully chosen tools (Firecrawl, browser-use, Mem0, Daytona) provide superior capabilities out of the box.
+
+**Complete Extensibility**: MCP protocol support and plugin architecture enable unlimited customization.
+
+**Production Ready**: Sub-90ms performance, comprehensive security, real-time observability, and horizontal scaling support.
+
+The framework transforms multi-agent development from complex orchestration to simple, declarative configuration while providing the performance and capabilities needed for production deployments.

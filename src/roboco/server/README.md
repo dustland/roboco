@@ -1,283 +1,290 @@
-# RoboCo Server
+# RoboCo REST API
 
-Multi-user server implementation with session management and context isolation.
+A simple FastAPI-based REST API for task execution and memory management in the RoboCo framework.
 
 ## Overview
 
-The RoboCo server provides a REST API for running multi-agent collaborations with complete session isolation. Each session gets its own:
+The RoboCo server provides a straightforward RESTful interface for:
 
-- Context store (isolated memory)
-- Event bus (isolated events)
-- Team instances (isolated agents)
-- Collaboration history
-
-This makes it perfect for:
-
-- **Multi-user environments** - Each user gets isolated sessions
-- **Web applications** - Easy HTTP API integration
-- **Concurrent collaborations** - Multiple teams can work simultaneously
-- **Session management** - Automatic cleanup and resource management
+- Creating and managing tasks
+- Accessing task and agent memory
+- Monitoring task execution status
 
 ## Quick Start
 
-### 1. Start the Server
+```python
+from roboco.server import run_server
 
-```bash
-# Using uv (recommended)
-uv run dev server
-
-# Or using the server command directly
-uv run server
-
-# Or programmatically
-python -c "from roboco.server.api import run_server; run_server()"
+# Start the server
+run_server(host="0.0.0.0", port=8000)
 ```
 
-The server starts on `http://localhost:8000` by default.
+## API Endpoints
 
-### 2. Create a Session
+### Health Check
 
-```bash
-curl -X POST "http://localhost:8000/sessions" \
-  -H "Content-Type: application/json" \
-  -d '{"user_id": "user123"}'
+**GET** `/health`
+
+Returns server health status and active task count.
+
+```json
+{
+  "status": "healthy",
+  "timestamp": "2024-01-01T12:00:00",
+  "version": "0.4.0",
+  "active_tasks": 5
+}
+```
+
+### Task Management
+
+#### Create Task
+
+**POST** `/tasks`
+
+Create and start a new task.
+
+Request body:
+
+```json
+{
+  "config_path": "path/to/config.yaml",
+  "task_description": "Write a research report on AI",
+  "context": {
+    "topic": "artificial intelligence",
+    "length": "5000 words"
+  }
+}
 ```
 
 Response:
 
 ```json
 {
-  "session_id": "uuid-here",
-  "status": "active",
-  "created_at": "2024-01-01T12:00:00Z",
-  "user_id": "user123",
-  "total_requests": 0,
-  "total_collaborations": 0,
-  "context_entries": 0
+  "task_id": "task_123",
+  "status": "pending",
+  "created_at": "2024-01-01T12:00:00"
 }
 ```
 
-### 3. Save Context Data
+#### List Tasks
 
-```bash
-curl -X POST "http://localhost:8000/context" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "session_id": "your-session-id",
-    "operation": "save",
-    "key": "project_info",
-    "data": {"name": "My Project", "version": "1.0"}
-  }'
+**GET** `/tasks`
+
+List all tasks with their current status.
+
+Response:
+
+```json
+[
+  {
+    "task_id": "task_123",
+    "status": "running",
+    "config_path": "path/to/config.yaml",
+    "task_description": "Write a research report on AI",
+    "context": { "topic": "artificial intelligence" },
+    "created_at": "2024-01-01T12:00:00",
+    "completed_at": null
+  }
+]
 ```
 
-### 4. Start a Collaboration
+#### Get Task
 
-```bash
-curl -X POST "http://localhost:8000/collaborations" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "session_id": "your-session-id",
-    "team_config_path": "examples/superwriter/config/team.yaml",
-    "task": "Write a blog post about AI collaboration",
-    "context": {"style": "professional", "length": "medium"}
-  }'
+**GET** `/tasks/{task_id}`
+
+Get detailed information about a specific task.
+
+Response:
+
+```json
+{
+  "task_id": "task_123",
+  "status": "completed",
+  "result": {
+    "output": "Research report content...",
+    "agents_used": ["planner", "researcher", "writer"]
+  },
+  "error": null,
+  "created_at": "2024-01-01T12:00:00",
+  "completed_at": "2024-01-01T12:30:00"
+}
 ```
 
-## API Endpoints
+#### Delete Task
 
-### Session Management
+**DELETE** `/tasks/{task_id}`
 
-- `POST /sessions` - Create new session
-- `GET /sessions` - List sessions (with optional filtering)
-- `GET /sessions/{id}` - Get session info
-- `DELETE /sessions/{id}` - Delete session
-- `GET /sessions/{id}/stats` - Get session statistics
+Delete a task and all its associated memory.
 
-### Context Operations
+Response:
 
-- `POST /context` - Save/load/list/delete context data
+```json
+{
+  "message": "Task deleted successfully"
+}
+```
 
-### Collaborations
+### Memory Management
 
-- `POST /collaborations` - Start collaboration (async)
-- `GET /collaborations/{id}` - Get collaboration status
-- `POST /collaborations/stream` - Start streaming collaboration
+#### Add Memory
 
-### Health & Monitoring
+**POST** `/tasks/{task_id}/memory`
 
-- `GET /health` - Health check and server stats
+Add content to task or agent memory.
+
+Request body:
+
+```json
+{
+  "task_id": "task_123",
+  "agent_id": "researcher", // Optional: for agent-specific memory
+  "content": "Important research finding about AI safety"
+}
+```
+
+Response:
+
+```json
+{
+  "task_id": "task_123",
+  "agent_id": "researcher",
+  "success": true
+}
+```
+
+#### Search Memory
+
+**GET** `/tasks/{task_id}/memory?query=search_term&agent_id=agent_name`
+
+Search task or agent memory.
+
+Query parameters:
+
+- `query` (optional): Search term
+- `agent_id` (optional): Agent ID for agent-specific memory
+
+Response:
+
+```json
+{
+  "task_id": "task_123",
+  "agent_id": "researcher",
+  "success": true,
+  "data": [
+    {
+      "content": "Research finding about AI safety",
+      "timestamp": "2024-01-01T12:15:00"
+    }
+  ]
+}
+```
+
+#### Clear Memory
+
+**DELETE** `/tasks/{task_id}/memory?agent_id=agent_name`
+
+Clear task or agent memory.
+
+Query parameters:
+
+- `agent_id` (optional): Agent ID for agent-specific memory clearing
+
+Response:
+
+```json
+{
+  "message": "Memory cleared successfully"
+}
+```
+
+## Task Status Values
+
+- `pending`: Task created but not yet started
+- `running`: Task is currently executing
+- `completed`: Task finished successfully
+- `failed`: Task encountered an error
+
+## Usage Examples
+
+### Python Client
+
+```python
+import requests
+
+# Create a task
+response = requests.post("http://localhost:8000/tasks", json={
+    "config_path": "config/team.yaml",
+    "task_description": "Analyze market trends",
+    "context": {"market": "technology"}
+})
+task_id = response.json()["task_id"]
+
+# Check task status
+status = requests.get(f"http://localhost:8000/tasks/{task_id}")
+print(status.json())
+
+# Search task memory
+memory = requests.get(f"http://localhost:8000/tasks/{task_id}/memory?query=trends")
+print(memory.json())
+```
+
+### cURL Examples
+
+```bash
+# Create task
+curl -X POST "http://localhost:8000/tasks" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "config_path": "config/team.yaml",
+    "task_description": "Write a blog post",
+    "context": {"topic": "AI trends"}
+  }'
+
+# Get task status
+curl "http://localhost:8000/tasks/task_123"
+
+# Add memory
+curl -X POST "http://localhost:8000/tasks/task_123/memory" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "task_id": "task_123",
+    "agent_id": "writer",
+    "content": "Key insight about AI trends"
+  }'
+
+# Search memory
+curl "http://localhost:8000/tasks/task_123/memory?query=trends&agent_id=writer"
+```
 
 ## Configuration
 
-### Session Configuration
+The server can be configured when starting:
 
 ```python
-from roboco.server import SessionConfig
-from datetime import timedelta
+from roboco.server import run_server
 
-config = SessionConfig(
-    max_idle_time=timedelta(hours=2),    # Session expires after 2h idle
-    max_session_time=timedelta(hours=8), # Max 8h total session time
-    auto_cleanup=True,                   # Auto-cleanup expired sessions
-    context_limit=1000                   # Max context entries per session
+run_server(
+    host="0.0.0.0",      # Host to bind to
+    port=8000,           # Port to bind to
+    reload=True,         # Enable auto-reload for development
+    log_level="info"     # Logging level
 )
 ```
 
-### Server Configuration
+## Error Handling
 
-```python
-from roboco.server import create_app
+The API returns standard HTTP status codes:
 
-app = create_app(
-    title="My RoboCo Server",
-    description="Custom multi-agent server",
-    enable_cors=True  # Enable CORS for web apps
-)
+- `200`: Success
+- `400`: Bad request (invalid parameters)
+- `404`: Resource not found (task doesn't exist)
+- `500`: Internal server error
+
+Error responses include details:
+
+```json
+{
+  "detail": "Task not found"
+}
 ```
-
-## Direct Python Usage
-
-You can also use the server components directly in Python:
-
-```python
-import asyncio
-from roboco.server import SessionManager, SessionConfig
-
-async def main():
-    # Create session manager
-    config = SessionConfig(max_idle_time=3600)
-    manager = SessionManager(config)
-    await manager.start()
-
-    try:
-        # Create session
-        session_info = await manager.create_session(user_id="python_user")
-
-        # Use session with context manager
-        async with manager.session_context(session_info.session_id) as session:
-            # Save context
-            await session.context_store.save("key", {"data": "value"})
-
-            # Start collaboration
-            result = await session.team_manager.collaborate(
-                "path/to/team.yaml",
-                "Generate a haiku about coding"
-            )
-            print(f"Result: {result}")
-
-    finally:
-        await manager.stop()
-
-asyncio.run(main())
-```
-
-## Examples
-
-### Web Integration
-
-```javascript
-// Create session
-const sessionResponse = await fetch("/sessions", {
-  method: "POST",
-  headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({ user_id: "web_user_123" }),
-});
-const session = await sessionResponse.json();
-
-// Start collaboration
-const collabResponse = await fetch("/collaborations", {
-  method: "POST",
-  headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({
-    session_id: session.session_id,
-    team_config_path: "config/creative_team.yaml",
-    task: "Write a product description for our new app",
-  }),
-});
-const collaboration = await collabResponse.json();
-
-// Poll for results
-const checkResult = async () => {
-  const result = await fetch(
-    `/collaborations/${collaboration.collaboration_id}?session_id=${session.session_id}`
-  );
-  return await result.json();
-};
-```
-
-### Streaming Collaboration
-
-```python
-import aiohttp
-import asyncio
-
-async def stream_collaboration():
-    async with aiohttp.ClientSession() as session:
-        # Start streaming collaboration
-        data = {
-            'session_id': 'your-session-id',
-            'team_config_path': 'config/team.yaml',
-            'task': 'Generate creative content'
-        }
-
-        async with session.post('/collaborations/stream', json=data) as resp:
-            async for line in resp.content:
-                if line.startswith(b'data: '):
-                    event_data = line[6:].decode().strip()
-                    print(f"Event: {event_data}")
-
-asyncio.run(stream_collaboration())
-```
-
-## Demo Script
-
-Run the included demo to see the server in action:
-
-```bash
-# Start server in one terminal
-uv run dev server
-
-# Run demo in another terminal
-python examples/server_demo.py
-
-# Or run direct Python API demo
-python examples/server_demo.py direct
-```
-
-## Architecture
-
-```
-┌─────────────────┐
-│   FastAPI App   │
-├─────────────────┤
-│ Session Manager │
-├─────────────────┤
-│   Session 1     │ ← Isolated context, events, agents
-│   Session 2     │ ← Isolated context, events, agents
-│   Session N     │ ← Isolated context, events, agents
-└─────────────────┘
-```
-
-Each session contains:
-
-- `InMemoryContextStore` - Isolated context storage
-- `InMemoryEventBus` - Isolated event handling
-- `TeamManager` - Isolated agent teams
-- Session metadata and statistics
-
-## Benefits
-
-✅ **Complete Isolation** - Sessions don't interfere with each other  
-✅ **Automatic Cleanup** - Expired sessions are cleaned up automatically  
-✅ **Resource Management** - Configurable limits and timeouts  
-✅ **RESTful API** - Easy integration with any language/framework  
-✅ **Streaming Support** - Real-time collaboration events  
-✅ **Optional** - Use direct framework if you don't need multi-user support
-
-Perfect for building:
-
-- Multi-user web applications
-- API services
-- Microservices architectures
-- Development environments
-- Production deployments

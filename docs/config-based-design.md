@@ -1,539 +1,760 @@
 # Configuration-Based Design
 
-The Roboco framework provides a flexible, configuration-based approach to defining and creating a team of AI agents. This document explains how to use this system to create a custom agent team without writing specialized agent classes. All agent system prompts, tool selections, and workflows (including handoff rules) are fully defined in configuration files (YAML and Jinja2 templates), enabling visualization and monitoring of agent configurations and status.
+The Roboco framework provides a flexible, configuration-based approach to defining and creating teams of AI agents using our unified architecture. This document explains how to use declarative configuration to create agent teams without writing specialized code, leveraging our opinionated integrations and simplified Agent/Team classes.
 
 ## Overview
 
-The configuration-based team system consists of four main components:
+The configuration-based system consists of three main components:
 
-1. **Role Definitions**: Jinja2 template files containing detailed prompts for each agent role
-2. **Team Configuration**: YAML files defining team composition, workflow, tool selections, and handoff rules
-3. **Team Builder**: A utility for loading and creating a team from configuration files
-4. **Visualization & Monitoring**: Tools for visualizing configurations and monitoring agent status
+1. **Agent Configuration**: YAML files defining individual agent properties, roles, and capabilities
+2. **Team Configuration**: YAML files defining team composition, collaboration patterns, and workflows
+3. **Integration Configuration**: Settings for our opinionated best-in-class integrations
 
 This approach offers several advantages:
 
-- Easily create and modify the team without changing code
-- Share and version team configuration as simple text files
-- Separate agent behavior (prompts) from team structure (composition and workflow)
-- Experiment with different configurations without code changes
-- Integrate with external teams via MCP servers
+- Create and modify teams through simple YAML configuration
+- Share and version team configurations as declarative files
+- Leverage opinionated integrations with minimal setup
+- Experiment with different team compositions without code changes
+- Type-safe configuration with validation and error checking
+
+## Architecture Integration
+
+Our configuration system works seamlessly with the unified architecture:
+
+**Architecture Pattern**: `Task → Team → Agent → (Chat, Tool, Memory, Event)`
+
+```mermaid
+graph TB
+    Config[Configuration Files]
+
+    subgraph "Configuration Layer"
+        AgentConfig[Agent Config YAML]
+        TeamConfig[Team Config YAML]
+        IntegrationConfig[Integration Config YAML]
+    end
+
+    subgraph "Core Framework"
+        Agent[Agent Unified Class]
+        Team[Team Unified Class]
+        Task[Task High Level API]
+    end
+
+    subgraph "Opinionated Integrations"
+        SERP[SERP API]
+        Firecrawl[Firecrawl]
+        BrowserUse[browser-use]
+        Mem0[Mem0]
+        Daytona[Daytona]
+        MCP[MCP]
+        OpenAI[OpenAI]
+    end
+
+    Config --> AgentConfig
+    Config --> TeamConfig
+    Config --> IntegrationConfig
+
+    AgentConfig --> Agent
+    TeamConfig --> Team
+    IntegrationConfig --> SERP
+    IntegrationConfig --> Firecrawl
+    IntegrationConfig --> BrowserUse
+    IntegrationConfig --> Mem0
+    IntegrationConfig --> Daytona
+    IntegrationConfig --> MCP
+    IntegrationConfig --> OpenAI
+
+    Team --> Agent
+    Task --> Team
+```
 
 ## Directory Structure
 
 ```
 roboco/
 ├── config/
-│   ├── roles/                  # Role-specific template files
-│   │   ├── executive.md
-│   │   ├── product_manager.md
-│   │   └── ...
-│   ├── config.yaml             # System-level configurations
-│   ├── roles.yaml              # Role configuration mapping
-│   └── team.yaml               # Team configuration
+│   ├── agents/                 # Agent configuration files
+│   │   ├── researcher.yaml
+│   │   ├── writer.yaml
+│   │   └── executor.yaml
+│   ├── teams/                  # Team configuration files
+│   │   ├── research_team.yaml
+│   │   └── writing_team.yaml
+│   ├── integrations/           # Integration configurations
+│   │   ├── web_tools.yaml
+│   │   ├── memory.yaml
+│   │   └── execution.yaml
+│   └── prompts/                # System message templates
+│       ├── researcher.md
+│       ├── writer.md
+│       └── executor.md
 └── src/
     └── roboco/
         ├── core/
-        │   └── team_builder.py # Team building functionality
-        └── presets/            # Preset team configurations
-            ├── planning.py
-            └── ...
+        │   ├── agent.py        # Unified Agent class
+        │   ├── team.py         # Unified Team class
+        │   └── task.py         # High-level Task API
+        └── config/             # Configuration loading
+            └── loader.py
 ```
 
-## Role Definitions
+## Agent Configuration
 
-Role definitions are stored as Jinja2 template files in the `roles` directory. Each file contains:
+Agent configurations define individual agent properties using our unified Agent class:
 
-- **System Prompt**: The primary instructions for the agent with variable placeholders
-- **Role-specific information**: Specialized knowledge or instructions
-- **Interaction Guidelines**: How the agent should communicate
-- **Variable Definitions**: Placeholders that will be filled at runtime
+### Basic Agent Configuration
 
-Example directory structure:
+```yaml
+# config/agents/researcher.yaml
+name: "researcher"
+role: "assistant" # assistant, user, system
 
+# System message (can reference template file)
+system_message: |
+  You are a research specialist with expertise in AI and technology trends.
+  Use web search and content extraction to gather comprehensive information.
+  Always cite your sources and provide detailed analysis.
+
+# Alternative: Reference template file
+# system_message_template: "prompts/researcher.md"
+# template_variables:
+#   expertise_area: "AI and technology"
+#   research_depth: "comprehensive"
+
+# LLM Configuration
+llm_config:
+  model: "gpt-4o"
+  temperature: 0.7
+  max_tokens: 4000
+  timeout: 30
+
+# Tool Configuration (opinionated defaults)
+tools:
+  - "search" # SERP API web search
+  - "web_extraction" # Firecrawl content extraction
+  - "memory" # Mem0 intelligent memory
+
+# Memory Configuration
+memory_config:
+  provider: "mem0"
+  max_memories: 1000
+  cleanup_threshold: 0.3
+  auto_cleanup: true
+
+# Event Configuration
+events:
+  emit_message_events: true
+  emit_tool_events: true
+  emit_memory_events: true
 ```
-roles/
-  programmer.md
-  product_manager.md
-  reviewer.md
-  ...
+
+### Code Execution Agent
+
+```yaml
+# config/agents/executor.yaml
+name: "executor"
+role: "user" # User role for human interaction + code execution
+
+system_message: |
+  You are a code execution specialist. You can run Python code, 
+  interact with users, and handle file operations safely.
+
+# Human interaction settings
+human_input_mode: "ALWAYS" # ALWAYS, NEVER, TERMINATE
+
+# Code execution with Daytona
+code_execution: true
+execution_config:
+  provider: "daytona"
+  timeout: 30
+  memory_limit: "512MB"
+  cpu_limit: "1.0"
+  allowed_languages: ["python", "bash"]
+
+# Full tool access
+tools: ["all"]
+
+# Workspace configuration
+workspace_config:
+  path: "/workspaces/executor"
+  max_size: "1GB"
+  allowed_extensions: [".py", ".txt", ".md", ".json", ".csv"]
 ```
 
-Example template file (programmer.md):
+### System Agent
 
-```jinja
-You are a {{ programming_language }} programmer with {{ experience_level }} experience.
+```yaml
+# config/agents/coordinator.yaml
+name: "coordinator"
+role: "system" # System role for automated coordination
 
-Your task is to implement code for the {{ project_name }} project using best practices for {{ programming_language }}.
+system_message: |
+  You are a team coordinator. Monitor team progress, 
+  manage handoffs, and ensure tasks are completed efficiently.
 
-Current workspace: {{ workspace_path }}
+# System agents typically don't need LLM calls
+llm_config: null
+
+# Limited tool access
+tools:
+  - "memory"
+  - "basic"
+
+# Event handling for coordination
+event_handlers:
+  - event: "team.speaker_selected"
+    action: "log_speaker_change"
+  - event: "task.completed"
+    action: "archive_results"
+```
+
+## Team Configuration
+
+Team configurations define collaboration patterns using our unified Team class:
+
+### Research Team Example
+
+```yaml
+# config/teams/research_team.yaml
+name: "research_team"
+description: "AI research and analysis team"
+
+# Agent composition
+agents:
+  - "researcher" # References config/agents/researcher.yaml
+  - "writer" # References config/agents/writer.yaml
+  - "executor" # References config/agents/executor.yaml
+
+# Collaboration settings
+speaker_selection_method: "auto" # auto, round_robin, manual
+max_round: 10
+termination_condition: "TERMINATE"
+
+# Team-level memory sharing
+shared_memory: true
+memory_namespace: "research_team"
+
+# Team events
+events:
+  emit_speaker_events: true
+  emit_termination_events: true
+  log_conversations: true
+
+# Integration overrides (optional)
+integrations:
+  search: "serp"
+  web_extraction: "firecrawl"
+  memory: "mem0"
+  execution: "daytona"
+```
+
+### Sequential Workflow Team
+
+```yaml
+# config/teams/sequential_team.yaml
+name: "sequential_workflow"
+description: "Sequential processing team"
+
+agents:
+  - "planner"
+  - "researcher"
+  - "writer"
+  - "reviewer"
+
+# Sequential speaker selection
+speaker_selection_method: "round_robin"
+speaker_transitions:
+  - from: "planner"
+    to: "researcher"
+    condition: "plan_approved"
+  - from: "researcher"
+    to: "writer"
+    condition: "research_complete"
+  - from: "writer"
+    to: "reviewer"
+    condition: "draft_ready"
+  - from: "reviewer"
+    to: "planner"
+    condition: "revision_needed"
+
+max_round: 20
+termination_condition: "reviewer_approved"
+```
+
+## Integration Configuration
+
+Configure our opinionated integrations:
+
+### Web Tools Configuration
+
+```yaml
+# config/integrations/web_tools.yaml
+search:
+  provider: "serp"
+  api_key: "${SERP_API_KEY}"
+  default_results: 10
+  rate_limit: "100/hour"
+
+web_extraction:
+  provider: "firecrawl"
+  api_key: "${FIRECRAWL_API_KEY}"
+  default_format: "markdown"
+  include_links: true
+  wait_for_js: true
+  rate_limit: "1000/hour"
+
+browser_automation:
+  provider: "browser-use"
+  headless: true
+  max_steps: 10
+  screenshot: true
+  timeout: 30
+```
+
+### Memory Configuration
+
+```yaml
+# config/integrations/memory.yaml
+provider: "mem0"
+api_key: "${MEM0_API_KEY}"
+
+# Global memory settings
+global_config:
+  embedding_model: "text-embedding-3-small"
+  vector_store: "qdrant"
+  graph_store: "neo4j"
+
+# Per-agent memory limits
+agent_limits:
+  default:
+    max_memories: 1000
+    cleanup_threshold: 0.3
+  researcher:
+    max_memories: 2000 # Researchers need more memory
+    cleanup_threshold: 0.2
+  executor:
+    max_memories: 500 # Executors need less memory
+    cleanup_threshold: 0.4
+```
+
+### Code Execution Configuration
+
+```yaml
+# config/integrations/execution.yaml
+provider: "daytona"
+api_key: "${DAYTONA_API_KEY}"
+
+# Default execution settings
+default_config:
+  timeout: 30
+  memory_limit: "512MB"
+  cpu_limit: "1.0"
+  disk_limit: "100MB"
+
+# Language-specific settings
+languages:
+  python:
+    timeout: 60
+    memory_limit: "1GB"
+    allowed_packages: ["pandas", "numpy", "matplotlib", "requests"]
+  bash:
+    timeout: 10
+    memory_limit: "256MB"
+    restricted_commands: ["rm -rf", "sudo", "chmod +x"]
+
+# Security settings
+security:
+  network_access: true
+  internet_domains:
+    - "api.openai.com"
+    - "api.serp.com"
+    - "api.firecrawl.dev"
+  file_access: "workspace_only"
+```
+
+## System Message Templates
+
+Use Jinja2 templates for dynamic system messages:
+
+### Researcher Template
+
+```jinja2
+{# config/prompts/researcher.md #}
+You are a {{ expertise_level }} research specialist with deep knowledge in {{ domain }}.
+
+Your primary responsibilities:
+- Conduct thorough research using web search and content extraction
+- Analyze information for accuracy and relevance
+- Provide detailed citations and source attribution
+- Synthesize findings into clear, actionable insights
+
+Research Guidelines:
+- Always verify information from multiple sources
+- Focus on {{ research_focus }} when gathering information
+- Use recent sources (within {{ recency_threshold }} months when possible)
+- Maintain objectivity and highlight any potential biases
 
 {% if tools_available %}
-You have access to the following tools:
+Available Tools:
 {% for tool in tools_available %}
 - {{ tool.name }}: {{ tool.description }}
 {% endfor %}
 {% endif %}
 
-Follow these coding standards:
-{{ coding_standards }}
+Current Research Context:
+- Project: {{ project_name }}
+- Target Audience: {{ target_audience }}
+- Research Depth: {{ research_depth }}
+
+Remember to store important findings in memory for team collaboration.
 ```
 
-### Jinja2 Template Rendering
-
-The Roboco framework uses Jinja2 for dynamic prompt template rendering. This allows for:
-
-1. **Variable Injection**: Insert runtime values like workspace paths, project details, and tool information
-2. **Conditional Logic**: Include or exclude sections based on runtime conditions
-3. **Loops and Iteration**: Generate content based on collections of data
-4. **Template Inheritance**: Share common prompt components across multiple roles
-
-At runtime, the system will render these templates with the appropriate context variables:
-
-```python
-from jinja2 import Environment, FileSystemLoader
-import os
-
-# Set up Jinja2 environment
-templates_dir = os.path.join(os.environ.get("ROBOCO_DATA_PATH", "."), "roles")
-env = Environment(loader=FileSystemLoader(templates_dir))
-
-# Load a template
-template = env.get_template("programmer.md")
-
-# Render with context variables
-system_prompt = template.render(
-    programming_language="Python",
-    experience_level="expert",
-    project_name="Roboco",
-    workspace_path="/Users/username/projects/roboco",
-    tools_available=[
-        {"name": "filesystem", "description": "Access and modify files"},
-        {"name": "terminal", "description": "Run shell commands"}
-    ],
-    coding_standards="PEP 8 style guide for Python code"
-)
-```
-
-## Team Configuration
-
-The team is defined in YAML files, with the main configuration in `config/team.yaml` and individual role configurations in `config/roles.yaml`. These configuration files fully define agent system prompts, tool selections, and workflows (including handoff rules).
-
-### Team Configuration
-
-The configuration in `config/team.yaml` defines the team structure and its basic properties:
+### Agent Configuration with Template
 
 ```yaml
-# config/team.yaml
-name: "ResearchWritingTeam"
-description: "A team that collaborates to research topics and write documentation."
-output_dir: "workspace/research_writing"
-roles:
-  - executive
-  - product_manager
-  - software_engineer
-  - report_writer
-  - human_proxy
-workflow:
-  - from: product_manager
-    to: software_engineer
-    condition: "{{ 'code_implementation' in message.content }}"
-  - from: software_engineer
-    to: report_writer
-    condition: "{{ message.content | contains_keyword('documentation') }}"
-  - from: report_writer
-    to: product_manager
-tools:
-  - name: filesystem
-    allowed_for:
-      - software_engineer
-      - report_writer
-  - name: web_search
-    allowed_for:
-      - product_manager
-      - software_engineer
-  - name: terminal
-    allowed_for:
-      - software_engineer
-tool_executor: human_proxy
-external_mcp_servers:
-  - name: "data_science_team"
-    url: "http://data-science-team:8080"
-    description: "External data science team for advanced analytics"
-  - name: "security_team"
-    url: "http://security-team:8080"
-    description: "Security team for code review and vulnerability assessment"
-```
+# config/agents/researcher.yaml
+name: "researcher"
+role: "assistant"
 
-### Role Configuration
+# Reference template with variables
+system_message_template: "prompts/researcher.md"
+template_variables:
+  expertise_level: "senior"
+  domain: "artificial intelligence and machine learning"
+  research_focus: "practical applications and industry trends"
+  recency_threshold: 12
+  project_name: "AI Market Analysis"
+  target_audience: "technical executives"
+  research_depth: "comprehensive"
 
-Role configurations are defined in `config/roles.yaml` and specify the templates, parameters, and template variables for each agent role:
-
-```yaml
-# config/roles.yaml
-roles:
-  executive:
-    template_file: "executive.md"
-    temperature: 0.3
-    max_tokens: 2000
-    template_variables:
-      experience_level: "senior"
-      management_style: "strategic"
-      reporting_format: "executive summary"
-  product_manager:
-    template_file: "product_manager.md"
-    temperature: 0.7
-    max_tokens: 4000
-    template_variables:
-      product_domain: "healthcare robotics"
-      market_research: true
-      user_personas:
-        - name: "Hospital Administrator"
-          needs: ["efficiency", "compliance", "cost management"]
-        - name: "Nurse"
-          needs: ["patient care support", "reduced workload"]
-  software_engineer:
-    template_file: "software_engineer.md"
-    temperature: 0.5
-    max_tokens: 4000
-    template_variables:
-      programming_language: "Python"
-      experience_level: "expert"
-      coding_standards: "PEP 8 style guide for Python code"
-```
-
-At runtime, the system will combine these role-specific template variables with global context variables (like workspace paths, available tools, etc.) when rendering the Jinja2 templates.
-
-## Using the Configuration-Based System
-
-### Creating a Team with TeamBuilder
-
-You can create a team using the `TeamBuilder`, which loads configurations from YAML files and renders Jinja2 templates:
-
-```python
-from roboco.core import TeamBuilder
-
-# Create a team from the default configuration
-team = TeamBuilder.create_team()
-
-# Create a team from a preset configuration for a specific business purpose
-research_writing_team = TeamBuilder.create_team_from_preset("research_writing")
-
-# Create a team with custom template variables
-custom_team = TeamBuilder.create_team(
-    template_variables={
-        "project_name": "Hospital Assistant Robot",
-        "workspace_path": "/path/to/project",
-        "programming_language": "Python"
-    }
-)
-
-# Use the team
-result = await research_writing_team.run(
-    initial_agent_name="product_manager",
-    query="Create a project plan for a humanoid robot control system"
-)
-```
-
-### Using Specialized Team Implementations
-
-For common team types, you can use specialized team implementations that build on the configuration system:
-
-```python
-from roboco.teams import PlanningTeam
-
-# Create a planning team
-planning_team = PlanningTeam(
-    name="MyPlanningTeam",
-    output_dir="workspace/my_plans"  # Override output directory
-)
-
-# Use team-specific methods
-result = await planning_team.create_planning_suite(
-    vision="Create a robot control system that adapts to different environments"
-)
-```
-
-## Creating Your Own Team Configuration
-
-To create a custom team configuration:
-
-1. Define your team in `config/team.yaml`:
-
-```yaml
-# config/team.yaml
-name: "MyCustomTeam"
-description: "Description of your custom team"
-output_dir: "workspace/custom"
-roles:
-  - role1
-  - role2
-  - role3
-workflow:
-  - from: role1
-    to: role2
-  - from: role2
-    to: role3
-  - from: role3
-    to: role1
-tools:
-  - name: filesystem
-    allowed_for:
-      - role1
-      - role3
-  - name: web_search
-    allowed_for:
-      - role2
-```
-
-2. Add or update role entries in `config/roles.yaml` for each role:
-
-```yaml
-# config/roles.yaml
-roles:
-  role1:
-    prompt_file: "role1.md"
-    temperature: 0.5
-  role2:
-    prompt_file: "role2.md"
-    temperature: 0.3
-  role3:
-    prompt_file: "role3.md"
-    temperature: 0.7
-```
-
-3. Create role-specific prompts in `config/prompts/` for each role:
-
-   - `config/prompts/role1.md`
-   - `config/prompts/role2.md`
-   - `config/prompts/role3.md`
-
-4. Create and use your team:
-
-```python
-from roboco.core import TeamBuilder
-
-my_team = TeamBuilder.create_team("my_custom_team")
-```
-
-## Advanced Configuration
-
-### Conditional Handoffs
-
-You can define conditional handoffs based on message content:
-
-```yaml
-workflow:
-  - from: product_manager
-    to: software_engineer
-    condition:
-      check: "content"
-      contains: ["implementation", "code", "develop"]
-  - from: product_manager
-    to: executive
-    condition:
-      check: "content"
-      contains: ["approve", "review", "budget"]
-```
-
-### Tool Configuration
-
-Configure which tools are available to the team and which agent executes them:
-
-```yaml
-tools:
-  - filesystem
-  - browser_use
-  - terminal
-tool_executor: human_proxy
-```
-
-### System Configuration
-
-The `config/config.yaml` file contains system-wide settings, including paths, LLM configuration, and monitoring settings:
-
-```yaml
-# Core settings
-core:
-  workspace_base: "./workspace"
-  workspace_root: "workspace"
-  data_path: "${ROBOCO_DATA_PATH}"
-  template_path: "${ROBOCO_DATA_PATH}/roles"
-
-# LLM settings
-llm:
+llm_config:
   model: "gpt-4o"
-  api_key: "${OPENAI_API_KEY}"
-  max_tokens: 8000
   temperature: 0.7
-  base_url: "https://api.openai.com/v1"
 
-# Visualization settings
-visualization:
-  enabled: true
-  output_dir: "${ROBOCO_DATA_PATH}/visualizations"
-  format: "png"
-
-# Monitoring settings
-monitoring:
-  enabled: true
-  metrics_collection_interval: 5 # seconds
-  log_level: "info"
-  agentok_integration: true
-  agentok_url: "http://localhost:3000"
+tools:
+  - "search"
+  - "web_extraction"
+  - "memory"
 ```
 
-## Tool Registration
+## Configuration Loading and Usage
 
-When creating a team with tool capabilities, you need to register tools with their executor agent:
-
-```python
-from roboco.core import TeamBuilder
-from roboco.tools import FileSystemTool, WebSearchTool
-
-# Create a team from a preset
-team = TeamBuilder.create_team_from_preset("research_writing")
-
-# Get the executor agent (typically HumanProxy)
-executor = team.get_agent("human_proxy")
-
-# Create and register tools
-fs_tool = FileSystemTool()
-web_tool = WebSearchTool()
-
-# Register tools with the executor
-executor.register_tool(fs_tool)
-executor.register_tool(web_tool)
-
-# Now other agents can use these tools through the executor
-```
-
-## Visualization and Monitoring
-
-The configuration-based design system supports visualization and monitoring of agent configurations and status. This enables real-time insights into team behavior and performance.
-
-### Configuration Visualization
-
-The Roboco framework provides built-in tools to visualize team configurations:
+### Programmatic Usage
 
 ```python
-from roboco.core import TeamBuilder, TeamVisualizer
+from roboco.config import load_agent_config, load_team_config, create_team_from_config
 
-# Create a team from a preset
-team = TeamBuilder.create_team_from_preset("research_writing")
+# Load individual agent
+agent_config = load_agent_config("config/agents/researcher.yaml")
+researcher = Agent.from_config(agent_config)
 
-# Generate a visualization of the team structure
-TeamVisualizer.generate_team_diagram(team, output_path="team_diagram.png")
+# Load and create team
+team_config = load_team_config("config/teams/research_team.yaml")
+team = create_team_from_config(team_config)
 
-# Generate a visualization of the workflow
-TeamVisualizer.generate_workflow_diagram(team, output_path="workflow_diagram.png")
-
-# Generate a visualization of tool assignments
-TeamVisualizer.generate_tool_diagram(team, output_path="tool_diagram.png")
-```
-
-### Status Monitoring
-
-Roboco integrates with monitoring tools to provide real-time insights into agent status and performance:
-
-```python
-from roboco.core import TeamBuilder
-from roboco.monitoring import AgentMonitor
-
-# Create a team from a preset
-team = TeamBuilder.create_team_from_preset("research_writing")
-
-# Create a monitor
-monitor = AgentMonitor(team)
-
-# Start monitoring
-monitor.start()
-
-# Run the team
-await team.run(
-    initial_agent_name="product_manager",
-    query="Create a project plan for a humanoid robot that can assist in hospitals"
+# Execute team task
+result = await team.run(
+    message="Research the latest trends in AI agent frameworks",
+    sender=researcher
 )
-
-# Get monitoring data
-status_report = monitor.get_status_report()
-performance_metrics = monitor.get_performance_metrics()
-
-# Stop monitoring
-monitor.stop()
 ```
 
-### Integration with AgentOK
-
-Roboco can integrate with AgentOK for real-time UI-based configuration and monitoring:
+### High-Level Task API
 
 ```python
-from roboco.core import TeamBuilder
-from roboco.integrations import AgentOKIntegration
+from roboco.core import Task
 
-# Create a team
-team = TeamBuilder.create_team_from_preset("research_writing")
+# Create task from configuration
+task = Task.from_config("config/teams/research_team.yaml")
 
-# Connect to AgentOK
-agentok = AgentOKIntegration()
-agentok.connect_team(team)
+# Execute with simple interface
+result = await task.run("Research AI agent market trends and write a report")
 
-# Start UI server (accessible at http://localhost:3000)
-agentok.start_ui_server()
+print(f"Task completed: {result.success}")
+print(f"Output: {result.output}")
+print(f"Files created: {result.files}")
+```
 
-# Run the team (status will be visible in the AgentOK UI)
-await team.run_swarm(
-    initial_agent_name="product_manager",
-    query="Create a project plan for a humanoid robot that can assist in hospitals"
-)
+### CLI Usage
+
+```bash
+# Create team from configuration
+roboco create-team --config config/teams/research_team.yaml
+
+# Run task with team
+roboco run --team research_team --message "Research AI trends"
+
+# Validate configuration
+roboco validate --config config/teams/research_team.yaml
+
+# List available configurations
+roboco list-configs
+```
+
+## Configuration Validation
+
+### Schema Validation
+
+```python
+# Automatic validation on load
+from roboco.config import ConfigValidator
+
+validator = ConfigValidator()
+
+# Validate agent configuration
+agent_errors = validator.validate_agent_config("config/agents/researcher.yaml")
+if agent_errors:
+    print(f"Agent config errors: {agent_errors}")
+
+# Validate team configuration
+team_errors = validator.validate_team_config("config/teams/research_team.yaml")
+if team_errors:
+    print(f"Team config errors: {team_errors}")
+```
+
+### Configuration Schema
+
+```yaml
+# Agent configuration schema
+agent_schema:
+  required: ["name", "role"]
+  properties:
+    name:
+      type: string
+      pattern: "^[a-zA-Z0-9_]+$"
+    role:
+      type: string
+      enum: ["assistant", "user", "system"]
+    system_message:
+      type: string
+      minLength: 10
+    llm_config:
+      type: object
+      properties:
+        model:
+          type: string
+          enum: ["gpt-4o", "gpt-4", "gpt-3.5-turbo"]
+        temperature:
+          type: number
+          minimum: 0.0
+          maximum: 2.0
+    tools:
+      type: array
+      items:
+        type: string
+        enum: ["search", "web_extraction", "memory", "basic", "all"]
+```
+
+## Environment Configuration
+
+### Environment Variables
+
+```bash
+# API Keys for integrations
+export OPENAI_API_KEY="sk-..."
+export SERP_API_KEY="..."
+export FIRECRAWL_API_KEY="fc-..."
+export MEM0_API_KEY="..."
+export DAYTONA_API_KEY="..."
+
+# Configuration paths
+export ROBOCO_CONFIG_PATH="/path/to/config"
+export ROBOCO_WORKSPACE_PATH="/path/to/workspace"
+
+# Integration settings
+export ROBOCO_SEARCH_PROVIDER="serp"
+export ROBOCO_MEMORY_PROVIDER="mem0"
+export ROBOCO_EXECUTION_PROVIDER="daytona"
+```
+
+### Configuration Precedence
+
+1. **Environment Variables**: Highest priority
+2. **Configuration Files**: Medium priority
+3. **Default Values**: Lowest priority
+
+```python
+# Configuration loading with precedence
+config = {
+    "search_provider": os.getenv("ROBOCO_SEARCH_PROVIDER", config_file.get("search_provider", "serp")),
+    "api_key": os.getenv("SERP_API_KEY", config_file.get("api_key")),
+    "max_results": int(os.getenv("SERP_MAX_RESULTS", config_file.get("max_results", 10)))
+}
 ```
 
 ## Best Practices
 
-1. **Use Jinja2 templates for prompts**: This enables dynamic content and variable injection
-2. **Structure template variables in roles.yaml**: Define role-specific variables for template rendering
-3. **Define conditional handoff workflows**: Use conditions to create dynamic agent interactions
-4. **Specify tool permissions per role**: Control which agents can access which tools
-5. **Use descriptive role names**: Role names should clearly indicate the agent's purpose
-6. **Specify a tool executor**: Make sure to designate which agent will execute tools
-7. **Keep agent responsibilities focused**: Each agent should have a clear, specific role
-8. **Leverage visualization tools**: Use diagrams to understand team structure and workflow
-9. **Monitor agent performance**: Track metrics to identify bottlenecks and improve efficiency
+### 1. Configuration Organization
 
-## Example: Using a Research Writing Preset
+```
+config/
+├── environments/
+│   ├── development.yaml
+│   ├── staging.yaml
+│   └── production.yaml
+├── agents/
+│   ├── base/               # Base configurations
+│   │   ├── assistant.yaml
+│   │   └── user.yaml
+│   └── specialized/        # Specialized agents
+│       ├── researcher.yaml
+│       └── writer.yaml
+├── teams/
+│   ├── research/
+│   │   ├── basic.yaml
+│   │   └── advanced.yaml
+│   └── writing/
+│       └── collaborative.yaml
+└── integrations/
+    ├── development.yaml
+    └── production.yaml
+```
 
-Here's a complete example of creating and using a research and writing team from a preset configuration:
+### 2. Template Reuse
+
+```yaml
+# Base agent template
+base_assistant: &base_assistant
+  role: "assistant"
+  llm_config:
+    model: "gpt-4o"
+    temperature: 0.7
+  tools:
+    - "memory"
+    - "basic"
+
+# Specialized agents inherit from base
+researcher:
+  <<: *base_assistant
+  name: "researcher"
+  tools:
+    - "search"
+    - "web_extraction"
+    - "memory"
+
+writer:
+  <<: *base_assistant
+  name: "writer"
+  llm_config:
+    temperature: 0.8 # Override for more creativity
+```
+
+### 3. Environment-Specific Configurations
+
+```yaml
+# config/environments/production.yaml
+integrations:
+  search:
+    rate_limit: "1000/hour"
+    timeout: 10
+  memory:
+    max_memories: 5000
+    cleanup_threshold: 0.1
+  execution:
+    timeout: 60
+    memory_limit: "2GB"
+
+security:
+  workspace_isolation: true
+  network_restrictions: true
+  audit_logging: true
+```
+
+### 4. Configuration Testing
 
 ```python
-import asyncio
-from roboco.core import TeamBuilder
-from roboco.tools import FileSystemTool
+# Test configuration validity
+import pytest
+from roboco.config import load_team_config, create_team_from_config
 
-async def main():
-    # Create a team from a preset
-    team = TeamBuilder.create_team_from_preset("research_writing")
+def test_research_team_config():
+    """Test research team configuration loads correctly."""
+    config = load_team_config("config/teams/research_team.yaml")
 
-    # Get the human proxy agent
-    human_proxy = team.get_agent("human_proxy")
+    assert config.name == "research_team"
+    assert len(config.agents) == 3
+    assert "researcher" in config.agents
 
-    # Register tools
-    fs_tool = FileSystemTool()
-    human_proxy.register_tool(fs_tool)
+    # Test team creation
+    team = create_team_from_config(config)
+    assert team.name == "research_team"
+    assert len(team.agents) == 3
 
-    # Run the team
-    result = await team.run(
-        initial_agent_name="product_manager",
-        query="Create a project plan for a humanoid robot that can assist in hospitals"
-    )
+def test_agent_config_validation():
+    """Test agent configuration validation."""
+    from roboco.config import ConfigValidator
 
-    print(f"Team finished with result: {result}")
+    validator = ConfigValidator()
+    errors = validator.validate_agent_config("config/agents/researcher.yaml")
 
-    # Results are typically saved to the team's output directory
-    print(f"Check results in: {team.output_dir}")
-
-if __name__ == "__main__":
-    asyncio.run(main())
+    assert len(errors) == 0, f"Configuration errors: {errors}"
 ```
+
+## Migration from Code-Based Approach
+
+### Old Approach (Code-Based)
+
+```python
+# Old: Manual agent creation
+from roboco.core import Agent, Team, AgentRole
+
+researcher = Agent(
+    name="researcher",
+    role=AgentRole.ASSISTANT,
+    system_message="You are a research specialist...",
+    llm_config={"model": "gpt-4o", "temperature": 0.7},
+    tools=["search", "web_extraction", "memory"]
+)
+
+writer = Agent(
+    name="writer",
+    role=AgentRole.ASSISTANT,
+    system_message="You are a technical writer...",
+    llm_config={"model": "gpt-4o", "temperature": 0.8},
+    tools=["memory", "basic"]
+)
+
+team = Team(
+    name="research_team",
+    agents=[researcher, writer],
+    speaker_selection_method=SpeakerSelectionMethod.AUTO
+)
+```
+
+### New Approach (Configuration-Based)
+
+```yaml
+# New: Declarative configuration
+# config/teams/research_team.yaml
+name: "research_team"
+agents: ["researcher", "writer"]
+speaker_selection_method: "auto"
+```
+
+```python
+# Simple loading
+from roboco.config import create_team_from_config
+
+team = create_team_from_config("config/teams/research_team.yaml")
+```
+
+## Conclusion
+
+The configuration-based design provides:
+
+**Declarative Simplicity**: Define complex agent teams through simple YAML files without writing code.
+
+**Opinionated Defaults**: Leverage best-in-class integrations (Firecrawl, browser-use, Mem0, Daytona) with minimal configuration.
+
+**Type Safety**: Full validation and error checking ensure configurations are correct before runtime.
+
+**Environment Flexibility**: Easy switching between development, staging, and production configurations.
+
+**Template Power**: Jinja2 templates enable dynamic, reusable system messages and configurations.
+
+**Version Control**: Configuration files can be versioned, shared, and collaborated on like code.
+
+The system transforms agent team creation from complex programming to simple configuration management while maintaining the full power and flexibility of the underlying unified architecture.
 
 ```
 

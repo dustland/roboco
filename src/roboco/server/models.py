@@ -1,112 +1,76 @@
 """
 Server Models
 
-Data models for the RoboCo server including session management.
+Data models for the RoboCo REST API.
 """
 
-from datetime import datetime, timedelta
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Optional, Dict, Any, List
 from pydantic import BaseModel, Field
-from uuid import uuid4
 
 
-class SessionStatus(str, Enum):
-    """Session status enumeration"""
-    ACTIVE = "active"
-    IDLE = "idle"
-    EXPIRED = "expired"
-    TERMINATED = "terminated"
+def utc_now() -> datetime:
+    """Get current UTC datetime - replaces deprecated datetime.now()"""
+    return datetime.now(timezone.utc)
 
 
-class SessionConfig(BaseModel):
-    """Configuration for a session"""
-    max_idle_time: timedelta = Field(default=timedelta(hours=1), description="Maximum idle time before session expires")
-    max_session_time: timedelta = Field(default=timedelta(hours=8), description="Maximum total session time")
-    auto_cleanup: bool = Field(default=True, description="Whether to auto-cleanup expired sessions")
-    context_limit: int = Field(default=1000, description="Maximum context entries per session")
-    
-    class Config:
-        json_encoders = {
-            timedelta: lambda td: td.total_seconds()
-        }
+class TaskStatus(str, Enum):
+    """Task status enumeration"""
+    PENDING = "pending"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
 
 
-class SessionInfo(BaseModel):
-    """Information about a session"""
-    session_id: str = Field(default_factory=lambda: str(uuid4()))
-    status: SessionStatus = SessionStatus.ACTIVE
-    created_at: datetime = Field(default_factory=datetime.now)
-    last_activity: datetime = Field(default_factory=datetime.now)
-    expires_at: Optional[datetime] = None
-    user_id: Optional[str] = None
-    metadata: Dict[str, Any] = Field(default_factory=dict)
-    
-    # Statistics
-    total_requests: int = 0
-    total_collaborations: int = 0
-    context_entries: int = 0
-    
-    class Config:
-        json_encoders = {
-            datetime: lambda dt: dt.isoformat()
-        }
+class TaskRequest(BaseModel):
+    """Request to create and run a task"""
+    config_path: str = Field(description="Path to the task configuration file")
+    task_description: str = Field(description="Description of the task to execute")
+    context: Optional[Dict[str, Any]] = Field(default=None, description="Additional context for the task")
 
 
-class CollaborationRequest(BaseModel):
-    """Request to start a collaboration"""
-    session_id: str
-    team_config_path: str
-    task: str
-    context: Optional[Dict[str, Any]] = None
-    stream: bool = False
-
-
-class CollaborationResponse(BaseModel):
-    """Response from a collaboration"""
-    collaboration_id: str
-    session_id: str
-    status: str
+class TaskResponse(BaseModel):
+    """Response from task operations"""
+    task_id: str
+    status: TaskStatus
     result: Optional[Dict[str, Any]] = None
     error: Optional[str] = None
-    created_at: datetime = Field(default_factory=datetime.now)
+    created_at: datetime = Field(default_factory=utc_now)
     completed_at: Optional[datetime] = None
-    
-    class Config:
-        json_encoders = {
-            datetime: lambda dt: dt.isoformat()
-        }
 
 
-class ContextRequest(BaseModel):
-    """Request for context operations"""
-    session_id: str
-    operation: str  # save, load, list, delete
-    key: Optional[str] = None
-    data: Optional[Dict[str, Any]] = None
-    metadata: Optional[Dict[str, Any]] = None
+class TaskInfo(BaseModel):
+    """Information about a task"""
+    task_id: str
+    status: TaskStatus
+    config_path: str
+    task_description: str
+    context: Optional[Dict[str, Any]] = None
+    created_at: datetime
+    completed_at: Optional[datetime] = None
 
 
-class ContextResponse(BaseModel):
-    """Response from context operations"""
-    session_id: str
-    operation: str
+class MemoryRequest(BaseModel):
+    """Request for memory operations"""
+    task_id: str
+    agent_id: Optional[str] = Field(default=None, description="Agent ID for agent-specific memory operations")
+    content: Optional[str] = Field(default=None, description="Content to add to memory")
+    query: Optional[str] = Field(default=None, description="Query to search memory")
+
+
+class MemoryResponse(BaseModel):
+    """Response from memory operations"""
+    task_id: str
+    agent_id: Optional[str] = None
     success: bool
     data: Optional[Any] = None
     error: Optional[str] = None
-    
-    
+
+
 class HealthResponse(BaseModel):
     """Health check response"""
     status: str = "healthy"
-    timestamp: datetime = Field(default_factory=datetime.now)
+    timestamp: datetime = Field(default_factory=utc_now)
     version: str = "0.4.0"
-    active_sessions: int = 0
-    total_sessions: int = 0
-    uptime: timedelta = Field(default_factory=lambda: timedelta(0))
-    
-    class Config:
-        json_encoders = {
-            datetime: lambda dt: dt.isoformat(),
-            timedelta: lambda td: td.total_seconds()
-        } 
+    active_tasks: int = 0 

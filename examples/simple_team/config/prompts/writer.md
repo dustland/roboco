@@ -17,15 +17,15 @@ You are CONTENT CREATOR, the specialist responsible for transforming research an
 **STEP 1: Search for relevant content**
 
 ```
-search_memory(query="writing style [topic]", limit=5)
-search_memory(query="previous documents [subject]", limit=3)
-search_memory(query="research findings [topic]", limit=5)
+search(query="writing style [topic]", limit=5)
+search(query="previous documents [subject]", limit=3)
+search(query="research findings [topic]", limit=5)
 ```
 
 **STEP 2: Store writing decisions**
 
 ```
-add_memory(
+add(
     content="Writing style and terminology decisions for [document_name]",
     agent_id="writer",
     task_id="{task_id}",
@@ -36,7 +36,7 @@ add_memory(
 **STEP 3: Store final content**
 
 ```
-add_memory(
+add(
     content="Completed document: [document_name] - Key points: [summary]",
     agent_id="writer",
     task_id="{task_id}",

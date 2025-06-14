@@ -34,18 +34,16 @@ session = task.get_chat()
 history = session.get_chat_history()
 await session.send_message("message")
 
-# Memory Operations (Mem0-aligned)
-memory = task.get_memory()
-memory.add(messages, agent_id="planner")
-memory.search("keyword", agent_id="planner")
-memory.get_all(agent_id="researcher")
+# Memory Operations (via agents)
+# Each agent has its own elegant Memory instance
+agent.save_memory("content")
+agent.search_memory("query")
 """
 
 # Task Management API
-from .core.task import create_task, get_task, list_tasks, Task, TaskInfo, ChatSession, TaskMemory
+from .core.task import create_task, get_task, list_tasks, Task, TaskInfo, ChatSession, TaskResult
 
 # Core types for advanced usage
-from .core.models import TaskResult
 from .core.exceptions import ConfigurationError
 
 # Version info
@@ -62,7 +60,6 @@ __all__ = [
     "Task",            # Main task class
     "TaskInfo",        # Task information
     "ChatSession",     # Chat interface
-    "TaskMemory",      # Memory interface
     
     # Result types
     "TaskResult",

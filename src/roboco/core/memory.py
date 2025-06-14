@@ -1,441 +1,313 @@
 """
-Memory management system using Mem0 for intelligent memory operations.
+Memory component for context and knowledge management.
+
+This module provides the main Memory interface that agents use, backed by
+intelligent memory backends (Mem0) for semantic search and advanced operations.
 """
 
-import os
+import logging
+import asyncio
 from typing import Dict, List, Optional, Any, Union
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, field
 from datetime import datetime
-import json
+from uuid import uuid4
 
-from mem0 import Memory
+from ..memory import create_memory_backend, MemoryBackend, MemoryQuery, MemoryType
 from ..config.models import MemoryConfig
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
-class MemoryEntry:
-    """Represents a memory entry with metadata."""
-    id: str
+class MemoryItem:
+    """A single memory item - backward compatibility wrapper."""
     content: str
-    user_id: Optional[str] = None
-    agent_id: Optional[str] = None
-    task_id: Optional[str] = None
-    metadata: Optional[Dict[str, Any]] = None
-    created_at: Optional[str] = None
-    updated_at: Optional[str] = None
-
+    agent_name: str
+    timestamp: datetime = field(default_factory=datetime.now)
+    memory_id: str = field(default_factory=lambda: str(uuid4()))
+    metadata: Dict[str, Any] = field(default_factory=dict)
+    importance: float = 1.0  # 0.0 to 1.0
+    
     def to_dict(self) -> Dict[str, Any]:
-        return asdict(self)
-
-
-class TaskMemory:
-    """
-    Task-scoped memory operations using Mem0 backend.
+        """Convert to dictionary."""
+        return {
+            "content": self.content,
+            "agent_name": self.agent_name,
+            "timestamp": self.timestamp.isoformat(),
+            "memory_id": self.memory_id,
+            "metadata": self.metadata,
+            "importance": self.importance
+        }
     
-    This class provides memory operations automatically scoped to a specific task,
-    leveraging Mem0's intelligent memory extraction, semantic search, and graph-based storage.
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "MemoryItem":
+        """Create from dictionary."""
+        data = data.copy()
+        if "timestamp" in data and isinstance(data["timestamp"], str):
+            data["timestamp"] = datetime.fromisoformat(data["timestamp"])
+        return cls(**data)
+
+
+class Memory:
     """
-
-    def __init__(self, task_id: Optional[str] = None, config: Optional[MemoryConfig] = None):
-        """Initialize task memory with Mem0 backend.
+    Memory component for individual agents.
+    
+    Provides a simple interface backed by intelligent memory backends
+    for semantic search and advanced memory operations.
+    """
+    
+    def __init__(self, agent: "Agent", config: Optional[MemoryConfig] = None):
+        self.agent = agent
+        self._backend: Optional[MemoryBackend] = None
+        self._config = config
         
-        Args:
-            task_id: Optional task ID to scope all operations to
-            config: Optional memory configuration
-        """
-        self.task_id = task_id
-        self.config = config or MemoryConfig()
-        self._client = None
-        self._setup_mem0()
-
-    def _setup_mem0(self):
-        """Setup Mem0 client with configuration."""
-        # Use configuration directly if provided, otherwise use defaults
-        if hasattr(self.config, '__dict__'):
-            # Handle our MemoryConfig dataclass
-            mem0_config = {}
-            
-            if hasattr(self.config, 'vector_store') and self.config.vector_store:
-                mem0_config["vector_store"] = self.config.vector_store
-            if hasattr(self.config, 'llm') and self.config.llm:
-                mem0_config["llm"] = self.config.llm
-            if hasattr(self.config, 'embedder') and self.config.embedder:
-                mem0_config["embedder"] = self.config.embedder
-            if hasattr(self.config, 'graph_store') and self.config.graph_store:
-                mem0_config["graph_store"] = self.config.graph_store
-            if hasattr(self.config, 'version') and self.config.version:
-                mem0_config["version"] = self.config.version
-            if hasattr(self.config, 'custom_fact_extraction_prompt') and self.config.custom_fact_extraction_prompt:
-                mem0_config["custom_fact_extraction_prompt"] = self.config.custom_fact_extraction_prompt
-            if hasattr(self.config, 'history_db_path') and self.config.history_db_path:
-                mem0_config["history_db_path"] = self.config.history_db_path
-                
-        elif isinstance(self.config, dict):
-            # Handle dictionary configuration directly
-            mem0_config = self.config
-        else:
-            # Default configuration
-            mem0_config = {}
-
-        # Set up defaults if nothing provided
-        if not mem0_config:
-            # Default to ChromaDB which comes with mem0ai and doesn't require external services
-            mem0_config = {
-                "vector_store": {
-                    "provider": "chroma",
-                    "config": {
-                        "collection_name": "roboco_memories",
-                        "path": "./workspace/memory_db"
-                    }
-                },
-                "version": "v1.1"
-            }
-            
-            # Add LLM config if OpenAI key is available
-            openai_api_key = os.getenv("OPENAI_API_KEY")
-            if openai_api_key:
-                mem0_config["llm"] = {
-                    "provider": "openai",
-                    "config": {
-                        "api_key": openai_api_key,
-                        "model": "gpt-4o-mini",
-                        "temperature": 0.1,
-                        "max_tokens": 2048,
-                    }
-                }
-                mem0_config["embedder"] = {
-                    "provider": "openai",
-                    "config": {
-                        "api_key": openai_api_key,
-                        "model": "text-embedding-3-small"
-                    }
-                }
-
-        # Initialize Mem0 client
-        try:
-            if mem0_config:
-                self._client = Memory.from_config(mem0_config)
-            else:
-                # Fallback to default configuration
-                self._client = Memory()
-        except Exception as e:
-            print(f"Warning: Could not initialize Mem0 with config: {e}")
-            # Try with minimal config
+        # Memory configuration
+        self.max_memories = 1000
+        self.importance_threshold = 0.1
+        
+        # Backward compatibility - keep simple storage for fallback
+        self.memories: List[MemoryItem] = []
+        self._memory_index: Dict[str, MemoryItem] = {}
+        
+        logger.debug(f"Initialized memory for agent '{agent.name}'")
+    
+    async def _get_backend(self) -> MemoryBackend:
+        """Get or create the memory backend."""
+        if self._backend is None:
             try:
-                minimal_config = {
-                    "vector_store": {
-                        "provider": "chroma",
-                        "config": {
-                            "collection_name": "roboco_memories",
-                            "path": "./workspace/memory_db"
-                        }
-                    }
-                }
-                self._client = Memory.from_config(minimal_config)
-            except Exception as e2:
-                print(f"Warning: Could not initialize Mem0 with minimal config: {e2}")
-                # Final fallback
-                self._client = Memory()
-
-    def add(
-        self,
-        content: Union[str, List[Dict[str, str]]],
-        agent_id: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None
-    ) -> Dict[str, Any]:
-        """
-        Add a memory for this task.
-        
-        Args:
-            content: Text content or conversation messages to store
-            agent_id: Optional agent identifier  
-            metadata: Optional metadata to associate with the memory
-            
-        Returns:
-            Dict containing the result of the memory addition
-        """
-        try:
-            # Prepare keyword arguments
-            kwargs = {}
-            if agent_id:
-                kwargs["agent_id"] = agent_id
-            if self.task_id:
-                kwargs["run_id"] = self.task_id  # Mem0 still uses run_id internally
-            if metadata:
-                kwargs["metadata"] = metadata
-
-            # Add memory using Mem0
-            result = self._client.add(content, **kwargs)
-            return result
-
-        except Exception as e:
-            return {"error": str(e), "success": False}
-
-    def search(
-        self,
-        query: str,
-        agent_id: Optional[str] = None,
-        limit: int = 10
-    ) -> List[Dict[str, Any]]:
-        """
-        Search memories for this task using semantic similarity.
-        
-        Args:
-            query: Search query
-            agent_id: Optional agent identifier to filter by
-            limit: Maximum number of results to return
-            
-        Returns:
-            List of relevant memories
-        """
-        try:
-            # Prepare keyword arguments
-            kwargs = {"limit": limit}
-            if agent_id:
-                kwargs["agent_id"] = agent_id
-            if self.task_id:
-                kwargs["run_id"] = self.task_id  # Mem0 still uses run_id internally
-
-            # Search memories using Mem0
-            results = self._client.search(query, **kwargs)
-            
-            # Convert to our standard format
-            memories = []
-            if isinstance(results, dict) and "results" in results:
-                for item in results["results"]:
-                    memory = MemoryEntry(
-                        id=item.get("id", ""),
-                        content=item.get("memory", ""),
-                        user_id=item.get("user_id"),
-                        agent_id=item.get("agent_id"),
-                        task_id=item.get("run_id"),  # Map run_id back to task_id
-                        metadata=item.get("metadata", {}),
-                        created_at=item.get("created_at"),
-                        updated_at=item.get("updated_at")
-                    )
-                    memories.append(memory.to_dict())
-            
-            return memories
-
-        except Exception as e:
-            print(f"Error searching memories: {e}")
-            return []
-
-    def get(self, memory_id: str) -> Optional[Dict[str, Any]]:
-        """
-        Get a specific memory by ID.
-        
-        Args:
-            memory_id: The ID of the memory to retrieve
-            
-        Returns:
-            Memory entry if found, None otherwise
-        """
-        try:
-            result = self._client.get(memory_id)
-            if result:
-                memory = MemoryEntry(
-                    id=result.get("id", ""),
-                    content=result.get("memory", ""),
-                    user_id=result.get("user_id"),
-                    agent_id=result.get("agent_id"),
-                    task_id=result.get("run_id"),  # Map run_id back to task_id
-                    metadata=result.get("metadata", {}),
-                    created_at=result.get("created_at"),
-                    updated_at=result.get("updated_at")
-                )
-                return memory.to_dict()
-            return None
-
-        except Exception as e:
-            print(f"Error getting memory {memory_id}: {e}")
-            return None
-
-    def get_all(
-        self,
-        agent_id: Optional[str] = None,
-        limit: int = 100
-    ) -> List[Dict[str, Any]]:
-        """
-        Get all memories for this task.
-        
-        Args:
-            agent_id: Optional agent identifier to filter by
-            limit: Maximum number of memories to return
-            
-        Returns:
-            List of memory entries
-        """
-        try:
-            # Prepare keyword arguments
-            kwargs = {"limit": limit}
-            if agent_id:
-                kwargs["agent_id"] = agent_id
-            if self.task_id:
-                kwargs["run_id"] = self.task_id  # Mem0 still uses run_id internally
-
-            # Get all memories using Mem0
-            results = self._client.get_all(**kwargs)
-            
-            # Convert to our standard format
-            memories = []
-            if isinstance(results, list):
-                for item in results:
-                    memory = MemoryEntry(
-                        id=item.get("id", ""),
-                        content=item.get("memory", ""),
-                        user_id=item.get("user_id"),
-                        agent_id=item.get("agent_id"),
-                        task_id=item.get("run_id"),  # Map run_id back to task_id
-                        metadata=item.get("metadata", {}),
-                        created_at=item.get("created_at"),
-                        updated_at=item.get("updated_at")
-                    )
-                    memories.append(memory.to_dict())
-            
-            return memories
-
-        except Exception as e:
-            print(f"Error listing memories: {e}")
-            return []
-
-    def update(self, memory_id: str, content: str) -> Dict[str, Any]:
-        """
-        Update an existing memory.
-        
-        Args:
-            memory_id: The ID of the memory to update
-            content: New content for the memory
-            
-        Returns:
-            Dict containing the result of the update
-        """
-        try:
-            result = self._client.update(memory_id, content)
-            return result
-
-        except Exception as e:
-            return {"error": str(e), "success": False}
-
-    def delete(self, memory_id: str) -> Dict[str, Any]:
-        """
-        Delete a specific memory.
-        
-        Args:
-            memory_id: The ID of the memory to delete
-            
-        Returns:
-            Dict containing the result of the deletion
-        """
-        try:
-            result = self._client.delete(memory_id)
-            return result
-
-        except Exception as e:
-            return {"error": str(e), "success": False}
-
-    def clear(self, agent_id: Optional[str] = None) -> Dict[str, Any]:
-        """
-        Clear all memories for this task.
-        
-        Args:
-            agent_id: Optional agent identifier to filter by
-            
-        Returns:
-            Dict containing the result of the operation
-        """
-        try:
-            # Prepare keyword arguments
-            kwargs = {}
-            if agent_id:
-                kwargs["agent_id"] = agent_id
-            if self.task_id:
-                kwargs["run_id"] = self.task_id  # Mem0 still uses run_id internally
-
-            # Delete all memories using Mem0
-            result = self._client.delete_all(**kwargs)
-            return result
-
-        except Exception as e:
-            return {"error": str(e), "success": False}
-
-    def get_history(self, memory_id: str) -> List[Dict[str, Any]]:
-        """
-        Get the history of changes for a specific memory.
-        
-        Args:
-            memory_id: The ID of the memory
-            
-        Returns:
-            List of history entries
-        """
-        try:
-            result = self._client.history(memory_id)
-            return result if result else []
-
-        except Exception as e:
-            print(f"Error getting memory history: {e}")
-            return []
-
-    def get_stats(self) -> Dict[str, Any]:
-        """
-        Get statistics about the memory system.
-        
-        Returns:
-            Dict containing memory statistics
-        """
-        try:
-            # Get all memories for this task to calculate stats
-            all_memories = self.get_all()
-            
-            stats = {
-                "total_memories": len(all_memories),
-                "task_id": self.task_id,
-                "agents": list(set(m.get("agent_id") for m in all_memories if m.get("agent_id"))),
-                "memory_types": list(set(m.get("metadata", {}).get("type") for m in all_memories if m.get("metadata", {}).get("type")))
-            }
-            
-            return stats
-
-        except Exception as e:
-            return {"error": str(e), "total_memories": 0}
-
-
-class AgentMemory:
-    """
-    Agent-scoped memory operations.
+                self._backend = create_memory_backend(self._config)
+            except Exception as e:
+                logger.warning(f"Failed to create memory backend, using fallback: {e}")
+                # Could implement a simple fallback backend here
+                raise
+        return self._backend
     
-    This class provides memory operations automatically scoped to a specific agent,
-    optionally within a task context.
-    """
-
-    def __init__(self, agent_id: str, task_id: Optional[str] = None, config: Optional[MemoryConfig] = None):
-        """Initialize agent memory.
+    def save(self, content: str, metadata: Optional[Dict[str, Any]] = None, importance: float = 1.0):
+        """Save content to memory (sync wrapper)."""
+        # Run async method in event loop
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                # If we're already in an async context, create a task
+                task = asyncio.create_task(self.save_async(content, metadata, importance))
+                # For now, we can't wait for it in sync context
+                logger.warning("save() called in async context, use save_async() instead")
+            else:
+                loop.run_until_complete(self.save_async(content, metadata, importance))
+        except Exception as e:
+            logger.error(f"Failed to save memory: {e}")
+            # Fallback to simple storage
+            self._save_fallback(content, metadata, importance)
+    
+    async def save_async(self, content: str, metadata: Optional[Dict[str, Any]] = None, importance: float = 1.0) -> str:
+        """Save content to memory (async)."""
+        try:
+            backend = await self._get_backend()
+            memory_id = await backend.add(
+                content=content,
+                memory_type=MemoryType.TEXT,  # Default to text
+                agent_name=self.agent.name,
+                metadata=metadata,
+                importance=importance
+            )
+            logger.debug(f"Saved memory {memory_id} for {self.agent.name}: {content[:50]}...")
+            return memory_id
+            
+        except Exception as e:
+            logger.error(f"Failed to save memory to backend: {e}")
+            # Fallback to simple storage
+            return self._save_fallback(content, metadata, importance)
+    
+    def _save_fallback(self, content: str, metadata: Optional[Dict[str, Any]] = None, importance: float = 1.0) -> str:
+        """Fallback save to simple storage."""
+        memory_item = MemoryItem(
+            content=content,
+            agent_name=self.agent.name,
+            metadata=metadata or {},
+            importance=importance
+        )
         
-        Args:
-            agent_id: Agent identifier to scope operations to
-            task_id: Optional task ID to further scope operations
-            config: Optional memory configuration
-        """
-        self.agent_id = agent_id
-        self.task_memory = TaskMemory(task_id=task_id, config=config)
-
-    def add(
-        self,
-        content: Union[str, List[Dict[str, str]]],
-        metadata: Optional[Dict[str, Any]] = None
-    ) -> Dict[str, Any]:
-        """Add a memory for this agent."""
-        return self.task_memory.add(content=content, agent_id=self.agent_id, metadata=metadata)
-
-    def search(self, query: str, limit: int = 10) -> List[Dict[str, Any]]:
-        """Search memories for this agent."""
-        return self.task_memory.search(query=query, agent_id=self.agent_id, limit=limit)
-
-    def get_all(self, limit: int = 100) -> List[Dict[str, Any]]:
-        """Get all memories for this agent."""
-        return self.task_memory.get_all(agent_id=self.agent_id, limit=limit)
-
-    def clear(self) -> Dict[str, Any]:
-        """Clear all memories for this agent."""
-        return self.task_memory.clear(agent_id=self.agent_id) 
+        self.memories.append(memory_item)
+        self._memory_index[memory_item.memory_id] = memory_item
+        
+        # Cleanup old memories if needed
+        self._cleanup_memories()
+        
+        logger.debug(f"Saved memory (fallback) for {self.agent.name}: {content[:50]}...")
+        return memory_item.memory_id
+    
+    def search(self, query: str, limit: int = 10) -> List[MemoryItem]:
+        """Search memories by content (sync wrapper)."""
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                logger.warning("search() called in async context, use search_async() instead")
+                return self._search_fallback(query, limit)
+            else:
+                return loop.run_until_complete(self.search_async(query, limit))
+        except Exception as e:
+            logger.error(f"Failed to search memory: {e}")
+            return self._search_fallback(query, limit)
+    
+    async def search_async(self, query: str, limit: int = 10) -> List[MemoryItem]:
+        """Search memories by content (async)."""
+        try:
+            backend = await self._get_backend()
+            memory_query = MemoryQuery(
+                query=query,
+                agent_name=self.agent.name,
+                limit=limit
+            )
+            
+            result = await backend.search(memory_query)
+            
+            # Convert backend MemoryItems to local MemoryItems for compatibility
+            return [self._convert_backend_item(item) for item in result.items]
+            
+        except Exception as e:
+            logger.error(f"Failed to search memory in backend: {e}")
+            return self._search_fallback(query, limit)
+    
+    def _search_fallback(self, query: str, limit: int = 10) -> List[MemoryItem]:
+        """Fallback search using simple text matching."""
+        query_lower = query.lower()
+        
+        matches = []
+        for memory in self.memories:
+            if query_lower in memory.content.lower():
+                matches.append(memory)
+        
+        # Sort by importance and recency
+        matches.sort(key=lambda m: (m.importance, m.timestamp), reverse=True)
+        
+        return matches[:limit]
+    
+    def _convert_backend_item(self, backend_item) -> MemoryItem:
+        """Convert backend MemoryItem to local MemoryItem."""
+        return MemoryItem(
+            content=backend_item.content,
+            agent_name=backend_item.agent_name,
+            timestamp=backend_item.timestamp,
+            memory_id=backend_item.memory_id,
+            metadata=backend_item.metadata,
+            importance=backend_item.importance
+        )
+    
+    def get_recent(self, limit: int = 10) -> List[MemoryItem]:
+        """Get recent memories."""
+        return sorted(self.memories, key=lambda m: m.timestamp, reverse=True)[:limit]
+    
+    def get_important(self, limit: int = 10) -> List[MemoryItem]:
+        """Get most important memories."""
+        return sorted(self.memories, key=lambda m: m.importance, reverse=True)[:limit]
+    
+    def get_by_id(self, memory_id: str) -> Optional[MemoryItem]:
+        """Get memory by ID."""
+        return self._memory_index.get(memory_id)
+    
+    def update_importance(self, memory_id: str, importance: float):
+        """Update memory importance."""
+        memory = self.get_by_id(memory_id)
+        if memory:
+            memory.importance = max(0.0, min(1.0, importance))
+            logger.debug(f"Updated memory importance: {memory_id} -> {importance}")
+    
+    def delete(self, memory_id: str):
+        """Delete a memory."""
+        memory = self._memory_index.pop(memory_id, None)
+        if memory:
+            self.memories.remove(memory)
+            logger.debug(f"Deleted memory: {memory_id}")
+    
+    def clear(self):
+        """Clear all memories."""
+        self.memories.clear()
+        self._memory_index.clear()
+        logger.debug(f"Cleared all memories for {self.agent.name}")
+    
+    def _cleanup_memories(self):
+        """Clean up old or unimportant memories."""
+        if len(self.memories) <= self.max_memories:
+            return
+        
+        # Remove memories below importance threshold first
+        low_importance = [m for m in self.memories if m.importance < self.importance_threshold]
+        for memory in low_importance:
+            self.delete(memory.memory_id)
+        
+        # If still too many, remove oldest
+        if len(self.memories) > self.max_memories:
+            sorted_memories = sorted(self.memories, key=lambda m: m.timestamp)
+            excess_count = len(self.memories) - self.max_memories
+            
+            for memory in sorted_memories[:excess_count]:
+                self.delete(memory.memory_id)
+        
+        logger.debug(f"Memory cleanup completed for {self.agent.name}")
+    
+    def get_context(self, query: str = "", max_items: int = 5) -> str:
+        """Get relevant context for a query."""
+        if query:
+            relevant_memories = self.search(query, max_items)
+        else:
+            relevant_memories = self.get_recent(max_items)
+        
+        if not relevant_memories:
+            return ""
+        
+        context_parts = []
+        for memory in relevant_memories:
+            context_parts.append(f"- {memory.content}")
+        
+        return "\n".join(context_parts)
+    
+    def save_conversation_summary(self, summary: str, participants: List[str]):
+        """Save a conversation summary."""
+        metadata = {
+            "type": "conversation_summary",
+            "participants": participants
+        }
+        self.save(summary, metadata, importance=0.8)
+    
+    def save_learning(self, learning: str, topic: str):
+        """Save a learning or insight."""
+        metadata = {
+            "type": "learning",
+            "topic": topic
+        }
+        self.save(learning, metadata, importance=0.9)
+    
+    def get_stats(self) -> Dict[str, Any]:
+        """Get memory statistics."""
+        if not self.memories:
+            return {
+                "total_memories": 0,
+                "avg_importance": 0.0,
+                "oldest_memory": None,
+                "newest_memory": None
+            }
+        
+        return {
+            "total_memories": len(self.memories),
+            "avg_importance": sum(m.importance for m in self.memories) / len(self.memories),
+            "oldest_memory": min(self.memories, key=lambda m: m.timestamp).timestamp.isoformat(),
+            "newest_memory": max(self.memories, key=lambda m: m.timestamp).timestamp.isoformat()
+        }
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary."""
+        return {
+            "agent_name": self.agent.name,
+            "memories": [m.to_dict() for m in self.memories],
+            "stats": self.get_stats()
+        }
+    
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any], agent: "Agent") -> "Memory":
+        """Create from dictionary."""
+        memory = cls(agent)
+        for memory_data in data.get("memories", []):
+            memory_item = MemoryItem.from_dict(memory_data)
+            memory.memories.append(memory_item)
+            memory._memory_index[memory_item.memory_id] = memory_item
+        return memory 

@@ -1,17 +1,16 @@
-> [!Warning]
-> This project is currently under development. Functionality and stability are not guaranteed.
-
 # Roboco - Multi-Agent Collaboration Framework
 
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
-Roboco is a configuration-driven framework for building collaborative AI agent teams. Built on AG2 (AutoGen), it enables sophisticated multi-agent workflows through YAML configuration and a clean Task-centric API.
+Roboco is a modern, configuration-driven framework for building collaborative AI agent teams. It features a clean Task-centric API, intelligent Brain-powered reasoning, secure code execution with Daytona sandboxes, and intelligent memory management for sophisticated multi-agent workflows.
 
 ## 🚀 Key Features
 
-- **Task-Centric API**: Clean, intuitive object-oriented interface
+- **Brain-Powered Intelligence**: Each agent has a Brain component that handles all LLM reasoning, tool orchestration, and intelligent decision-making
+- **Task-Centric API**: Clean, intuitive object-oriented interface with task-level conversation management
 - **Configuration-Based**: Define agents, tools, and workflows in YAML
+- **Secure Code Execution**: Daytona-powered sandboxes for safe AI code execution
 - **Memory System**: Intelligent storage with Mem0 integration (26% higher accuracy, 91% faster)
 - **Search Integration**: Web search with SerpAPI backend
 - **Tool Ecosystem**: Built-in tools (filesystem, memory, search) plus extensible registry
@@ -32,24 +31,24 @@ uv sync  # or pip install -e .
 - Python 3.11+
 - OpenAI API key (`OPENAI_API_KEY`)
 - Optional: SerpAPI key (`SERPAPI_KEY`) for web search
+- Optional: Daytona for secure code execution
 
 ## 🏃‍♂️ Quick Start
-
-### New Task-Centric API (v0.8.0+)
 
 ```python
 import asyncio
 import roboco
 
 async def main():
-    # Create a task (but don't start it yet)
+    # Create a task with your team configuration
     task = roboco.create_task("config/team.yaml")
 
-    # Start the collaboration
+    # Start the collaboration - agents will use their Brains to think and collaborate
     result = await task.start("Write a brief report on renewable energy trends")
 
     print(f"Success: {result.success}")
     print(f"Summary: {result.summary}")
+    print(f"Conversation rounds: {len(result.conversation_history)}")
 
 asyncio.run(main())
 ```
@@ -73,10 +72,10 @@ await task.stop()                     # Stop if running
 await task.delete()                   # Clean up
 ```
 
-### Integrated Memory Operations
+### Memory Operations
 
 ```python
-# Memory operations are scoped to the task automatically
+# Memory operations are automatically scoped to the task
 memory = task.get_memory()
 
 # Add memories (task_id is automatic)
@@ -115,11 +114,11 @@ Complete working examples in `examples/`:
 
 ### [Simple Team](examples/simple_team/) - Basic Collaboration
 
-Basic multi-agent collaboration with the new API:
+Basic multi-agent collaboration demonstrating Brain-powered reasoning:
 
 ```bash
 cd examples/simple_team
-python api_comparison_demo.py  # See old vs new API
+python demo.py  # Full framework demonstration
 ```
 
 ### [SuperWriter](examples/superwriter/) - Production Multi-Agent System
@@ -128,7 +127,7 @@ A comprehensive writing system with research, planning, writing, and review agen
 
 ```bash
 cd examples/superwriter
-python demo.py  # Will be updated to new API
+python demo.py  # Advanced multi-agent workflows
 ```
 
 ## 🏗️ Architecture
@@ -138,27 +137,37 @@ flowchart TB
     User["User"] --> Task["Task"]
 
     subgraph TaskAPI["Task-Centric API"]
-        direction LR
-        Task --> Memory["Memory"]
-        Task --> Chat["Chat"]
-        Task --> Events["Events"]
-        Task --> Team["Team Manager"]
-    subgraph Agents["Agents"]
         direction TB
-        A1["Agent1"]:::agent
-        A2["Agent2"]:::agent
-        A3["Agent3"]:::agent
-        A4["..."]:::agent
-    end
+        Task --> Memory["Memory"]
+        Task --> Chat["ChatHistory"]
+        Task --> Events["Events"]
+        Task --> Team["Team"]
     end
 
-    Team --> Agents
+    subgraph Team["Team Management"]
+        direction TB
+        TeamMgr["Team Manager"] --> Agent1["Agent 1"]
+        TeamMgr --> Agent2["Agent 2"]
+        TeamMgr --> Agent3["Agent 3"]
+    end
+
+    subgraph Agent1["Agent Architecture (All Agents Same Structure)"]
+        direction TB
+        Brain["🧠 Brain<br/>(LLM Reasoning)"]
+        Tools["🔧 Tools"]
+        Memory["💾 Memory"]
+        Events["📡 Events"]
+    end
+
+    TaskAPI --> Team
+    Team --> Agent1
+    Team --> Agent2
+    Team --> Agent3
 
     subgraph CS["Core Subsystems"]
-        direction TB
+        direction LR
         Config["Config System"]:::sub
         MemSys["Memory System"]:::sub
-        Tool["Tool System"]:::sub
         EventSys["Event System"]:::sub
     end
 
@@ -169,49 +178,39 @@ flowchart TB
 
 1. **Task**: Central API object managing collaboration lifecycle
 2. **TeamManager**: Orchestrates agent collaboration
-3. **Memory System**: Mem0-powered intelligent storage and retrieval
-4. **Search System**: Web search with multiple backend support
-5. **Tool System**: Extensible plugin architecture
-6. **Config System**: YAML-based configuration with Jinja2 templates
+3. **Agent**: Coordinates Brain, Tools, Memory, and Events as peer modules
+4. **Brain**: LLM reasoning and intelligent decision-making
+5. **Memory System**: Mem0-powered intelligent storage and retrieval
+6. **Tool System**: Extensible plugin architecture
+7. **Config System**: YAML-based configuration with Jinja2 templates
 
-## 🆕 API Evolution
+### Brain Architecture
 
-### v0.8.0: Task-Centric API
+The **Brain** component handles all LLM-related intelligence:
 
-The new API is much cleaner and more intuitive:
+- **LLM Integration**: Direct interface to OpenAI/providers
+- **Reasoning Engine**: Complex thinking and decision-making
+- **Tool Decision Making**: Determines which tools to call (Agent executes)
+- **Context Management**: Token counting, window management
+- **Response Generation**: Thoughtful, contextual responses
 
-```python
-# OLD (v0.7.x) - Global functions
-from roboco import start_task, stop_task, get_task_status
-task_id = await start_task("config.yaml", "description")
-status = get_task_status(task_id)
-await stop_task(task_id)
-
-# NEW (v0.8.0+) - Task-centric
-import roboco
-task = roboco.create_task("config.yaml")
-await task.start("description")
-await task.stop()
-```
-
-**Benefits:**
-
-- ✅ Single Task class with all functionality
-- ✅ No task_id parameters needed (automatic scoping)
-- ✅ Integrated memory, chat, and events
-- ✅ Object-oriented and discoverable
-- ✅ Clean separation of concerns
+The Agent coordinates between Brain (for reasoning), Tools (for execution), Memory (for context), and Events (for communication), ensuring proper separation of concerns.
 
 ## 📖 Documentation
 
-- **[System Architecture](docs/system-architecture.md)** - Overall design and patterns
-- **[Configuration Guide](docs/config-based-design.md)** - YAML configuration reference
+- **[System Architecture](docs/system-architecture.md)** - Overall design and Brain architecture
+- **[Configuration Based Design](docs/config-based-design.md)** - YAML configuration reference
 - **[Memory System](docs/memory-system.md)** - Mem0 integration and usage
 - **[Tool System](docs/tool-system.md)** - Plugin architecture and development
+- **[Event System](docs/event-system.md)** - Real-time monitoring and events
 
 ## 🤝 Contributing
 
 We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+
+## 🙏 Acknowledgments
+
+This project was initially inspired by and built upon concepts from [AG2 (AutoGen)](https://github.com/ag2ai/ag2), an excellent multi-agent conversation framework. While Roboco has evolved into its own distinct architecture and approach, we're grateful for the foundational ideas and patterns that AG2 provided to the multi-agent AI community.
 
 ## 📄 License
 

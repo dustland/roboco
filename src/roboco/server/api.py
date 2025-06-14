@@ -1,58 +1,39 @@
 """
 RoboCo Server API
 
-FastAPI-based REST API for multi-user session management and collaboration.
-Provides endpoints for session management, collaboration execution, and context operations.
+FastAPI-based REST API for task execution and memory management.
+Provides endpoints for creating and managing tasks, and accessing task memory.
 """
 
 import asyncio
 from datetime import datetime
-from typing import Dict, Any, Optional, List, AsyncGenerator
-from contextlib import asynccontextmanager
+from typing import Dict, Any, Optional, List
 import logging
 import json
 
-from fastapi import FastAPI, HTTPException, BackgroundTasks, Depends
+from fastapi import FastAPI, HTTPException, BackgroundTasks
 from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 
-from .session_manager import SessionManager
+from ..core.task import create_task, Task
+from ..core.memory import TaskMemory, AgentMemory
 from .models import (
-    SessionConfig, SessionInfo, SessionStatus,
-    CollaborationRequest, CollaborationResponse,
-    ContextRequest, ContextResponse,
+    TaskRequest, TaskResponse, TaskInfo, TaskStatus,
+    MemoryRequest, MemoryResponse,
     HealthResponse
 )
 
 logger = logging.getLogger(__name__)
 
-# Global session manager
-session_manager: Optional[SessionManager] = None
+# In-memory task storage (in production, use a proper database)
+active_tasks: Dict[str, Task] = {}
 server_start_time = datetime.now()
 
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    """Application lifespan management"""
-    global session_manager
-    
-    # Startup
-    session_manager = SessionManager()
-    await session_manager.start()
-    logger.info("RoboCo server started")
-    
-    yield
-    
-    # Shutdown
-    if session_manager:
-        await session_manager.stop()
-    logger.info("RoboCo server stopped")
-
-
 def create_app(
-    title: str = "RoboCo Server",
-    description: str = "Multi-user collaboration server for RoboCo framework",
+    title: str = "RoboCo API",
+    description: str = "REST API for RoboCo task execution and memory management",
     version: str = "0.4.0",
     enable_cors: bool = True
 ) -> FastAPI:
@@ -71,8 +52,7 @@ def create_app(
     app = FastAPI(
         title=title,
         description=description,
-        version=version,
-        lifespan=lifespan
+        version=version
     )
     
     # Add CORS middleware if enabled
@@ -91,363 +71,241 @@ def create_app(
     return app
 
 
-def get_session_manager() -> SessionManager:
-    """Dependency to get the session manager"""
-    if session_manager is None:
-        raise HTTPException(status_code=500, detail="Session manager not initialized")
-    return session_manager
-
-
 def add_routes(app: FastAPI):
     """Add API routes to the FastAPI application"""
     
     @app.get("/health", response_model=HealthResponse)
-    async def health_check(sm: SessionManager = Depends(get_session_manager)):
+    async def health_check():
         """Health check endpoint"""
-        stats = await sm.get_stats()
-        uptime = datetime.now() - server_start_time
-        
         return HealthResponse(
-            active_sessions=stats["active_sessions"],
-            total_sessions=stats["total_sessions"],
-            uptime=uptime
+            active_tasks=len(active_tasks)
         )
     
-    @app.post("/sessions", response_model=SessionInfo)
-    async def create_session(
-        user_id: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
-        config: Optional[SessionConfig] = None,
-        sm: SessionManager = Depends(get_session_manager)
+    @app.post("/tasks", response_model=TaskResponse)
+    async def create_task_endpoint(
+        request: TaskRequest,
+        background_tasks: BackgroundTasks
     ):
-        """Create a new session"""
+        """Create and start a new task"""
         try:
-            session_info = await sm.create_session(user_id, metadata, config)
-            return session_info
-        except Exception as e:
-            logger.error(f"Failed to create session: {e}")
-            raise HTTPException(status_code=500, detail=str(e))
-    
-    @app.get("/sessions", response_model=List[SessionInfo])
-    async def list_sessions(
-        user_id: Optional[str] = None,
-        status: Optional[SessionStatus] = None,
-        sm: SessionManager = Depends(get_session_manager)
-    ):
-        """List sessions with optional filtering"""
-        try:
-            sessions = await sm.list_sessions(user_id, status)
-            return sessions
-        except Exception as e:
-            logger.error(f"Failed to list sessions: {e}")
-            raise HTTPException(status_code=500, detail=str(e))
-    
-    @app.get("/sessions/{session_id}", response_model=SessionInfo)
-    async def get_session(
-        session_id: str,
-        sm: SessionManager = Depends(get_session_manager)
-    ):
-        """Get session information"""
-        try:
-            session = await sm.get_session(session_id)
-            if not session:
-                raise HTTPException(status_code=404, detail="Session not found")
-            return session.info
-        except HTTPException:
-            raise
-        except Exception as e:
-            logger.error(f"Failed to get session {session_id}: {e}")
-            raise HTTPException(status_code=500, detail=str(e))
-    
-    @app.delete("/sessions/{session_id}")
-    async def delete_session(
-        session_id: str,
-        sm: SessionManager = Depends(get_session_manager)
-    ):
-        """Delete a session"""
-        try:
-            deleted = await sm.delete_session(session_id)
-            if not deleted:
-                raise HTTPException(status_code=404, detail="Session not found")
-            return {"message": "Session deleted successfully"}
-        except HTTPException:
-            raise
-        except Exception as e:
-            logger.error(f"Failed to delete session {session_id}: {e}")
-            raise HTTPException(status_code=500, detail=str(e))
-    
-    @app.post("/collaborations", response_model=CollaborationResponse)
-    async def start_collaboration(
-        request: CollaborationRequest,
-        background_tasks: BackgroundTasks,
-        sm: SessionManager = Depends(get_session_manager)
-    ):
-        """Start a new collaboration"""
-        try:
-            async with sm.session_context(request.session_id) as session:
-                collaboration_id = await session.run(
-                    team_config_path=request.team_config_path,
-                    task=request.task,
-                    context=request.context
-                )
-                
-                # Start collaboration in background
-                background_tasks.add_task(
-                    _execute_collaboration,
-                    session,
-                    collaboration_id,
-                    request.team_config_path,
-                    request.task
-                )
-                
-                response = CollaborationResponse(
-                    collaboration_id=collaboration_id,
-                    session_id=request.session_id,
-                    status="started"
-                )
-                
-                return response
-                
-        except ValueError as e:
-            raise HTTPException(status_code=400, detail=str(e))
-        except Exception as e:
-            logger.error(f"Failed to start collaboration: {e}")
-            raise HTTPException(status_code=500, detail=str(e))
-    
-    @app.get("/collaborations/{collaboration_id}", response_model=CollaborationResponse)
-    async def get_collaboration(
-        collaboration_id: str,
-        session_id: str,
-        sm: SessionManager = Depends(get_session_manager)
-    ):
-        """Get collaboration status"""
-        try:
-            async with sm.session_context(session_id) as session:
-                collab = await session.get_collaboration(collaboration_id)
-                if not collab:
-                    raise HTTPException(status_code=404, detail="Collaboration not found")
-                
-                response = CollaborationResponse(
-                    collaboration_id=collaboration_id,
-                    session_id=session_id,
-                    status=collab["status"],
-                    result=collab.get("result"),
-                    error=collab.get("error"),
-                    created_at=collab["created_at"],
-                    completed_at=collab.get("completed_at")
-                )
-                
-                return response
-                
-        except HTTPException:
-            raise
-        except ValueError as e:
-            raise HTTPException(status_code=400, detail=str(e))
-        except Exception as e:
-            logger.error(f"Failed to get collaboration {collaboration_id}: {e}")
-            raise HTTPException(status_code=500, detail=str(e))
-    
-    @app.post("/collaborations/stream")
-    async def stream_collaboration(
-        request: CollaborationRequest,
-        sm: SessionManager = Depends(get_session_manager)
-    ):
-        """Start a streaming collaboration"""
-        try:
-            async with sm.session_context(request.session_id) as session:
-                collaboration_id = await session.run(
-                    team_config_path=request.team_config_path,
-                    task=request.task,
-                    context=request.context
-                )
-                
-                async def generate_stream():
-                    try:
-                        async for event in _stream_collaboration(
-                            session,
-                            collaboration_id,
-                            request.team_config_path,
-                            request.task
-                        ):
-                            yield f"data: {event}\n\n"
-                    except Exception as e:
-                        error_event = json.dumps({
-                            "error": str(e), 
-                            "collaboration_id": collaboration_id
-                        })
-                        yield f"data: {error_event}\n\n"
-                
-                return StreamingResponse(
-                    generate_stream(),
-                    media_type="text/plain",
-                    headers={
-                        "Cache-Control": "no-cache",
-                        "Connection": "keep-alive",
-                        "Content-Type": "text/event-stream"
-                    }
-                )
-                
-        except ValueError as e:
-            raise HTTPException(status_code=400, detail=str(e))
-        except Exception as e:
-            logger.error(f"Failed to start streaming collaboration: {e}")
-            raise HTTPException(status_code=500, detail=str(e))
-    
-    @app.post("/context", response_model=ContextResponse)
-    async def context_operation(
-        request: ContextRequest,
-        sm: SessionManager = Depends(get_session_manager)
-    ):
-        """Perform context operations (save, load, list, delete)"""
-        try:
-            async with sm.session_context(request.session_id) as session:
-                context_store = session.context_store
-                
-                if request.operation == "save":
-                    if not request.key or request.data is None:
-                        raise HTTPException(status_code=400, detail="Key and data required for save operation")
-                    
-                    await context_store.set_scratchpad(request.session_id, request.key, request.data)
-                    session.info.context_entries += 1
-                    
-                    return ContextResponse(
-                        session_id=request.session_id,
-                        operation=request.operation,
-                        success=True
-                    )
-                
-                elif request.operation == "load":
-                    if not request.key:
-                        raise HTTPException(status_code=400, detail="Key required for load operation")
-                    
-                    data = await context_store.get_scratchpad(request.session_id, request.key)
-                    
-                    return ContextResponse(
-                        session_id=request.session_id,
-                        operation=request.operation,
-                        success=True,
-                        data=data
-                    )
-                
-                elif request.operation == "list":
-                    # For list, we'll need to implement a method to get all keys for a session
-                    # For now, return empty list
-                    return ContextResponse(
-                        session_id=request.session_id,
-                        operation=request.operation,
-                        success=True,
-                        data={"keys": []}  # Would need custom implementation
-                    )
-                
-                elif request.operation == "delete":
-                    if not request.key:
-                        raise HTTPException(status_code=400, detail="Key required for delete operation")
-                    
-                    deleted = await context_store.delete_scratchpad(request.session_id, request.key)
-                    if deleted:
-                        session.info.context_entries = max(0, session.info.context_entries - 1)
-                    
-                    return ContextResponse(
-                        session_id=request.session_id,
-                        operation=request.operation,
-                        success=True,
-                        data={"deleted": deleted}
-                    )
-                
-                else:
-                    raise HTTPException(status_code=400, detail=f"Unsupported operation: {request.operation}")
-                    
-        except HTTPException:
-            raise
-        except ValueError as e:
-            raise HTTPException(status_code=400, detail=str(e))
-        except Exception as e:
-            logger.error(f"Context operation failed: {e}")
-            return ContextResponse(
-                session_id=request.session_id,
-                operation=request.operation,
-                success=False,
-                error=str(e)
+            # Create the task
+            task = create_task(request.config_path)
+            active_tasks[task.task_id] = task
+            
+            # Start task execution in background
+            background_tasks.add_task(
+                _execute_task,
+                task,
+                request.task_description,
+                request.context
             )
-    
-    @app.get("/sessions/{session_id}/stats")
-    async def get_session_stats(
-        session_id: str,
-        sm: SessionManager = Depends(get_session_manager)
-    ):
-        """Get session statistics"""
-        try:
-            async with sm.session_context(session_id) as session:
-                return {
-                    "session_id": session_id,
-                    "status": session.info.status,
-                    "created_at": session.info.created_at,
-                    "last_activity": session.info.last_activity,
-                    "total_requests": session.info.total_requests,
-                    "total_collaborations": session.info.total_collaborations,
-                    "context_entries": session.info.context_entries,
-                    "active_collaborations": len(session.collaborations)
-                }
-        except ValueError as e:
-            raise HTTPException(status_code=400, detail=str(e))
+            
+            return TaskResponse(
+                task_id=task.task_id,
+                status=TaskStatus.PENDING
+            )
+            
         except Exception as e:
-            logger.error(f"Failed to get session stats {session_id}: {e}")
+            logger.error(f"Failed to create task: {e}")
+            raise HTTPException(status_code=500, detail=str(e))
+    
+    @app.get("/tasks", response_model=List[TaskInfo])
+    async def list_tasks():
+        """List all tasks"""
+        try:
+            task_infos = []
+            for task in active_tasks.values():
+                state = task.get_memory().get_state()
+                task_infos.append(TaskInfo(
+                    task_id=task.task_id,
+                    status=TaskStatus(state.get("status", "pending")),
+                    config_path=task.config_path,
+                    task_description=state.get("task_description", ""),
+                    context=state.get("context"),
+                    created_at=datetime.fromisoformat(state.get("created_at", datetime.now().isoformat())),
+                    completed_at=datetime.fromisoformat(state["completed_at"]) if state.get("completed_at") else None
+                ))
+            return task_infos
+            
+        except Exception as e:
+            logger.error(f"Failed to list tasks: {e}")
+            raise HTTPException(status_code=500, detail=str(e))
+    
+    @app.get("/tasks/{task_id}", response_model=TaskResponse)
+    async def get_task(task_id: str):
+        """Get task status and result"""
+        try:
+            task = active_tasks.get(task_id)
+            if not task:
+                raise HTTPException(status_code=404, detail="Task not found")
+            
+            state = task.get_memory().get_state()
+            
+            return TaskResponse(
+                task_id=task_id,
+                status=TaskStatus(state.get("status", "pending")),
+                result=state.get("result"),
+                error=state.get("error"),
+                created_at=datetime.fromisoformat(state.get("created_at", datetime.now().isoformat())),
+                completed_at=datetime.fromisoformat(state["completed_at"]) if state.get("completed_at") else None
+            )
+            
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Failed to get task {task_id}: {e}")
+            raise HTTPException(status_code=500, detail=str(e))
+    
+    @app.delete("/tasks/{task_id}")
+    async def delete_task(task_id: str):
+        """Delete a task and its memory"""
+        try:
+            task = active_tasks.get(task_id)
+            if not task:
+                raise HTTPException(status_code=404, detail="Task not found")
+            
+            # Delete task memory and state
+            await task.delete()
+            
+            # Remove from active tasks
+            del active_tasks[task_id]
+            
+            return {"message": "Task deleted successfully"}
+            
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Failed to delete task {task_id}: {e}")
+            raise HTTPException(status_code=500, detail=str(e))
+    
+    @app.post("/tasks/{task_id}/memory", response_model=MemoryResponse)
+    async def add_memory(task_id: str, request: MemoryRequest):
+        """Add content to task memory"""
+        try:
+            task = active_tasks.get(task_id)
+            if not task:
+                raise HTTPException(status_code=404, detail="Task not found")
+            
+            if not request.content:
+                raise HTTPException(status_code=400, detail="Content is required")
+            
+            if request.agent_id:
+                # Add to agent-specific memory
+                agent_memory = AgentMemory(agent_id=request.agent_id, task_id=task_id)
+                agent_memory.add(request.content)
+            else:
+                # Add to task memory
+                task.get_memory().add(request.content)
+            
+            return MemoryResponse(
+                task_id=task_id,
+                agent_id=request.agent_id,
+                success=True
+            )
+            
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Failed to add memory to task {task_id}: {e}")
+            raise HTTPException(status_code=500, detail=str(e))
+    
+    @app.get("/tasks/{task_id}/memory", response_model=MemoryResponse)
+    async def search_memory(task_id: str, query: Optional[str] = None, agent_id: Optional[str] = None):
+        """Search task memory"""
+        try:
+            task = active_tasks.get(task_id)
+            if not task:
+                raise HTTPException(status_code=404, detail="Task not found")
+            
+            if agent_id:
+                # Search agent-specific memory
+                agent_memory = AgentMemory(agent_id=agent_id, task_id=task_id)
+                if query:
+                    results = agent_memory.search(query)
+                else:
+                    results = agent_memory.get_all()
+            else:
+                # Search task memory
+                if query:
+                    results = task.get_memory().search(query)
+                else:
+                    results = task.get_memory().get_all()
+            
+            return MemoryResponse(
+                task_id=task_id,
+                agent_id=agent_id,
+                success=True,
+                data=results
+            )
+            
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Failed to search memory for task {task_id}: {e}")
+            raise HTTPException(status_code=500, detail=str(e))
+    
+    @app.delete("/tasks/{task_id}/memory")
+    async def clear_memory(task_id: str, agent_id: Optional[str] = None):
+        """Clear task memory"""
+        try:
+            task = active_tasks.get(task_id)
+            if not task:
+                raise HTTPException(status_code=404, detail="Task not found")
+            
+            if agent_id:
+                # Clear agent-specific memory
+                agent_memory = AgentMemory(agent_id=agent_id, task_id=task_id)
+                agent_memory.clear()
+            else:
+                # Clear task memory
+                task.get_memory().clear()
+            
+            return {"message": "Memory cleared successfully"}
+            
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Failed to clear memory for task {task_id}: {e}")
             raise HTTPException(status_code=500, detail=str(e))
 
 
-async def _execute_collaboration(session, collaboration_id: str, team_config_path: str, task: str):
-    """Execute a collaboration in the background"""
+async def _execute_task(task: Task, task_description: str, context: Optional[Dict[str, Any]] = None):
+    """Execute a task in the background"""
     try:
-        # Create team manager for this collaboration
-        team_manager = session.create_team_manager(team_config_path)
+        # Update task state
+        memory = task.get_memory()
+        memory.set_state({
+            "status": "running",
+            "task_description": task_description,
+            "context": context,
+            "created_at": datetime.now().isoformat()
+        })
         
-        # Execute collaboration
-        result = await team_manager.collaborate(team_config_path, task)
+        # Execute the task
+        result = await task.run(task_description, context or {})
         
-        await session.complete_collaboration(collaboration_id, result)
-        logger.info(f"Collaboration {collaboration_id} completed successfully")
+        # Update completion state
+        memory.set_state({
+            "status": "completed",
+            "task_description": task_description,
+            "context": context,
+            "result": result.model_dump() if hasattr(result, 'model_dump') else result,
+            "created_at": memory.get_state().get("created_at"),
+            "completed_at": datetime.now().isoformat()
+        })
         
     except Exception as e:
-        await session.complete_collaboration(collaboration_id, None, str(e))
-        logger.error(f"Collaboration {collaboration_id} failed: {e}")
-
-
-async def _stream_collaboration(session, collaboration_id: str, team_config_path: str, task: str) -> AsyncGenerator[str, None]:
-    """Stream collaboration events"""
-    try:
-        # Create team manager for this collaboration
-        team_manager = session.create_team_manager(team_config_path)
-        
-        # Stream events from the collaboration
-        async for event in team_manager.stream_collaborate(team_config_path, task):
-            event_data = {
-                "collaboration_id": collaboration_id,
-                "event": event,
-                "timestamp": datetime.now().isoformat()
-            }
-            yield json.dumps(event_data)
-        
-        # Mark as completed
-        await session.complete_collaboration(collaboration_id, {"status": "completed"})
-        
-        # Send completion event
-        completion_event = {
-            "collaboration_id": collaboration_id,
-            "event": {"type": "completed"},
-            "timestamp": datetime.now().isoformat()
-        }
-        yield json.dumps(completion_event)
-        
-    except Exception as e:
-        await session.complete_collaboration(collaboration_id, None, str(e))
-        
-        # Send error event
-        error_event = {
-            "collaboration_id": collaboration_id,
-            "event": {"type": "error", "error": str(e)},
-            "timestamp": datetime.now().isoformat()
-        }
-        yield json.dumps(error_event)
+        logger.error(f"Task {task.task_id} failed: {e}")
+        # Update error state
+        memory = task.get_memory()
+        memory.set_state({
+            "status": "failed",
+            "task_description": task_description,
+            "context": context,
+            "error": str(e),
+            "created_at": memory.get_state().get("created_at"),
+            "completed_at": datetime.now().isoformat()
+        })
 
 
 def run_server(
@@ -466,7 +324,6 @@ def run_server(
         log_level: Logging level
     """
     app = create_app()
-    
     uvicorn.run(
         app,
         host=host,

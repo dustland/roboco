@@ -2,23 +2,27 @@
 
 ## 1. Overview
 
-The Event System serves as the central nervous system of the RoboCo framework, providing unified observability and control across all agent activities. The system follows a publish-subscribe architecture that decouples event producers from consumers, enabling real-time monitoring, debugging, and dynamic intervention capabilities.
+The Event System provides real-time observability and control across all agent activities in the Roboco framework. Using our unified Brain-powered architecture, the system offers a simplified, efficient approach to monitoring agent thinking, tool executions, and team collaborations through a clean publish-subscribe pattern.
 
 ## 2. Design Goals
 
 ### 2.1 Core Objectives
 
-- **Unified Observability**: Provide a single view of all system activities regardless of underlying agent frameworks
-- **Framework Agnostic**: Support any agent framework (AG2, LangChain, CrewAI) through standardized event translation
-- **Real-time Control**: Enable dynamic intervention and workflow modification during execution
-- **Performance Monitoring**: Collect comprehensive metrics for system optimization
-- **Extensibility**: Allow easy addition of new event types and handlers
+- **Unified Observability**: Single view of all agent, Brain, team, and tool activities
+- **Real-time Monitoring**: Live tracking of conversations, Brain thinking, decisions, and executions
+- **Performance Insights**: Comprehensive metrics for optimization including Brain reasoning performance
+- **Simple Integration**: Built into every Agent, Brain, and Team automatically
+- **Extensibility**: Easy addition of custom event handlers and processors
 
-### 2.2 Non-Goals
+### 2.2 Simplified Architecture
 
-- Replace existing agent framework event systems
-- Provide synchronous request-response communication
-- Store long-term event data (delegated to external systems)
+Unlike complex multi-framework event systems, Roboco's event system is designed specifically for our unified Brain-powered architecture:
+
+- **Agent-Level Events**: Each agent has its own event bus
+- **Brain Events**: Dedicated events for Brain thinking and reasoning processes
+- **Global Events**: System-wide event bus for cross-agent monitoring
+- **Built-in Integration**: Events automatically emitted by core components including Brain
+- **Simple Callbacks**: Function-based event handlers instead of complex async systems
 
 ## 3. Architectural Design
 
@@ -26,443 +30,613 @@ The Event System serves as the central nervous system of the RoboCo framework, p
 
 ```mermaid
 graph TB
-    subgraph "Agent Frameworks"
-        AG2[AG2 Events]
-        LC[LangChain Events]
-        CC[CrewAI Events]
-    end
 
-    subgraph "RoboCo Event System"
-        EB[Event Bus]
-        subgraph "Event Bridges"
-            AG2B[AG2 Bridge]
-            LCB[LangChain Bridge]
-            CCB[CrewAI Bridge]
+
+    subgraph "Team"
+        subgraph "Agent 1"
+            Agent1
+            Brain1[🧠 Brain]
+            Tools1[🔧 Tools]
+            Memory1[💾 Memory]
+            Agent1 --> Brain1
+            Agent1 --> Tools1
+            Agent1 --> Memory1
         end
-        subgraph "Event Processors"
-            MON[Monitor]
-            CTRL[Controller]
-            ANAL[Analyzer]
-        end
+        Agent2["Agent 2"]
+        Agent3["Agent 3"]
     end
 
-    subgraph "External Systems"
-        UI[Monitoring UI]
-        LOG[Logging System]
-        ALERT[Alert System]
-        AGENTOPS[AgentOps Platform]
+    subgraph "Event System"
+        GlobalBus[Event Bus]
+
+        Monitor[Real-time Monitor]
+        Logger[Event Logger]
+        Metrics[Metrics Collector]
+        Debugger[Debug Handler]
     end
 
-    AG2 --> AG2B
-    LC --> LCB
-    CC --> CCB
 
-    AG2B --> EB
-    LCB --> EB
-    CCB --> EB
 
-    EB --> MON
-    EB --> CTRL
-    EB --> ANAL
+    Agent1 --> GlobalBus
+    Brain1 --> GlobalBus
+    Tools1 --> GlobalBus
+    Memory1 --> GlobalBus
+    Agent2 --> GlobalBus
+    Agent3 --> GlobalBus
+    Team --> GlobalBus
 
-    MON --> UI
-    MON --> AGENTOPS
-    ANAL --> LOG
-    ANAL --> AGENTOPS
-    CTRL --> ALERT
+    GlobalBus --> Monitor
+    GlobalBus --> Logger
+    GlobalBus --> Metrics
+    GlobalBus --> Debugger
 ```
 
 ### 3.2 Component Responsibilities
 
-#### Event Bus
+#### Global Event Bus
 
-- **Purpose**: Central message broker for all system events
-- **Responsibilities**: Route events between producers and consumers, maintain subscriptions
-- **Design**: Asynchronous, topic-based routing with wildcard support
+- **Purpose**: Central event coordination across all agents, Brains, and teams
+- **Responsibilities**: Route events, manage global subscriptions, emit system events
+- **Design**: Simple callback-based system with topic filtering
 
-#### Event Bridges
+#### Agent Event Bus
 
-- **Purpose**: Translate framework-specific events into RoboCo's unified event schema
-- **Responsibilities**: Event normalization, metadata enrichment, error handling
-- **Design**: Pluggable adapters for each supported framework
+- **Purpose**: Agent-specific event handling and local subscriptions
+- **Responsibilities**: Emit agent and Brain events, handle local subscriptions, forward to global bus
+- **Design**: Lightweight, synchronous event emission with async handler support
 
-#### Event Processors
+#### Event Handlers
 
-- **Monitor**: Real-time collaboration tracking and performance metrics
-- **Controller**: Dynamic workflow control through event injection
-- **Analyzer**: Pattern detection and performance analysis
+- **Monitor**: Real-time activity tracking and visualization including Brain thinking processes
+- **Logger**: Structured event logging for debugging and audit
+- **Metrics**: Performance metrics collection and analysis including Brain reasoning metrics
+- **Debugger**: Development-time debugging and inspection
 
 ## 4. Event Schema Design
 
 ### 4.1 Unified Event Structure
 
-All events follow a standardized schema regardless of their origin:
+All events follow a simple, consistent schema:
 
-```json
-{
-  "eventId": "uuid",
-  "timestamp": "ISO8601",
-  "sessionId": "uuid",
-  "source": "component.subcomponent",
-  "eventType": "domain.action.state",
-  "payload": {
-    "domain-specific": "data"
-  }
-}
+```python
+@dataclass
+class Event:
+    id: str
+    timestamp: datetime
+    source: str          # agent_id, team_id, or "system"
+    event_type: str      # "brain.thinking.started", "agent.message.sent", etc.
+    data: Dict[str, Any] # Event-specific payload
+    session_id: Optional[str] = None
+    trace_id: Optional[str] = None
 ```
 
-### 4.2 Event Taxonomy
+### 4.2 Event Types
 
-#### Collaboration Events
+#### Brain Events
 
-- `collaboration.started` - Team collaboration begins
-- `collaboration.paused` - Collaboration temporarily halted
-- `collaboration.completed` - Collaboration finished successfully
-- `collaboration.failed` - Collaboration terminated due to error
+```python
+# Brain thinking events
+"brain.thinking.started"    # Brain begins thinking process
+"brain.thinking.completed"  # Brain completes thinking
+"brain.reasoning.trace"     # Brain reasoning step (if enabled)
+"brain.tool.orchestrated"   # Brain orchestrates tool usage
+"brain.memory.integrated"   # Brain integrates memory into thinking
+"brain.response.generated"  # Brain generates response
+"brain.error.occurred"      # Brain encounters error
+
+# Brain configuration events
+"brain.configured"          # Brain configuration updated
+"brain.model.changed"       # Brain LLM model changed
+```
 
 #### Agent Events
 
-- `agent.message.sent` - Agent sends message to another agent
-- `agent.message.received` - Agent receives message
-- `agent.decision.made` - Agent makes a decision point
-- `agent.error.occurred` - Agent encounters an error
+```python
+# Message events
+"agent.message.sent"     # Agent sends message
+"agent.message.received" # Agent receives message
+"agent.decision.made"    # Agent makes decision
+"agent.error.occurred"   # Agent encounters error
+
+# Lifecycle events
+"agent.created"          # Agent instantiated
+"agent.activated"        # Agent becomes active
+"agent.deactivated"      # Agent becomes inactive
+"agent.reset"            # Agent state reset
+```
 
 #### Tool Events
 
-- `tool.call.initiated` - Tool execution begins
-- `tool.call.completed` - Tool execution finishes
-- `tool.call.failed` - Tool execution fails
-
-#### Context Events
-
-- `context.updated` - Context store modified
-- `context.accessed` - Context data retrieved
-
-## 5. Framework Integration Strategy
-
-### 5.1 Bridge Pattern
-
-Each supported agent framework requires a dedicated bridge component that:
-
-1. **Subscribes** to the framework's native event system
-2. **Translates** framework events to RoboCo's unified schema
-3. **Enriches** events with additional metadata (session tracking, performance metrics)
-4. **Publishes** normalized events to the RoboCo event bus
-
-### 5.2 Translation Mapping
-
-| Framework Event         | RoboCo Event          | Notes                       |
-| ----------------------- | --------------------- | --------------------------- |
-| AG2 TextEvent           | agent.message.sent    | Map sender/recipient        |
-| AG2 ToolCallEvent       | tool.call.initiated   | Extract tool name/args      |
-| LangChain on_tool_start | tool.call.initiated   | Different payload structure |
-| CrewAI task_started     | collaboration.started | Map to collaboration scope  |
-
-### 5.3 Framework Independence
-
-The event system maintains framework independence through:
-
-- **Abstraction Layer**: RoboCo events hide framework implementation details
-- **Consistent Interface**: Same event types across all frameworks
-- **Pluggable Bridges**: Add new frameworks without core system changes
-
-## 6. Observability Design
-
-### 6.1 Real-time Monitoring
-
-The system provides multiple observability layers:
-
-#### Session Tracking
-
-- Track collaboration lifecycle from start to completion
-- Monitor active sessions and their current state
-- Correlate events across the collaboration timeline
-
-#### Performance Metrics
-
-- Tool execution times and success rates
-- Agent response latencies
-- System resource utilization
-- Error rates and patterns
-
-#### Activity Visualization
-
-- Real-time event streams for live monitoring
-- Historical event replay for debugging
-- Collaboration flow diagrams
-
-### 6.2 Metrics Collection Strategy
-
-**Push Model**: Components actively emit events rather than being polled
-**Structured Data**: All metrics embedded in event payloads
-**Time-series Ready**: Events designed for time-series database ingestion
-**Correlation**: Session and trace IDs for event correlation
-
-## 7. Control Plane Design
-
-### 7.1 Bidirectional Communication
-
-The event bus supports both outbound observability and inbound control:
-
-#### Outbound (Observability)
-
-- System components publish events about their activities
-- External systems consume events for monitoring and analysis
-
-#### Inbound (Control)
-
-- External systems publish control events
-- System components subscribe to control events and modify behavior
-
-### 7.2 Control Event Types
-
-#### Workflow Control
-
-- `control.collaboration.pause` - Halt collaboration execution
-- `control.collaboration.resume` - Resume paused collaboration
-- `control.collaboration.terminate` - Force stop collaboration
-
-#### Agent Control
-
-- `control.agent.override` - Override agent's next action
-- `control.agent.redirect` - Change agent's current focus
-- `control.agent.inject_guidance` - Provide human guidance
-
-#### System Control
-
-- `control.system.scale` - Adjust system resources
-- `control.system.failover` - Switch to backup systems
-
-### 7.3 Safety Mechanisms
-
-**Event Validation**: All control events validated before processing
-**Permission Checks**: Control events require appropriate authorization
-**Circuit Breakers**: Prevent control event storms
-**Audit Trail**: All control actions logged for accountability
-
-## 8. Performance Considerations
-
-### 8.1 Scalability Design
-
-#### Asynchronous Processing
-
-- Non-blocking event publishing and consumption
-- Buffered event queues to handle traffic spikes
-- Backpressure handling to prevent system overload
-
-#### Event Batching
-
-- Group related events for efficient processing
-- Configurable batch sizes based on system load
-- Time-based and count-based batching strategies
-
-#### Resource Management
-
-- Memory-bounded event queues
-- Configurable event retention policies
-- Automatic cleanup of completed sessions
-
-### 8.2 Reliability Design
-
-#### Event Durability
-
-- Optional event persistence for critical events
-- Configurable retention periods
-- Integration with external event stores
-
-#### Fault Tolerance
-
-- Graceful degradation when event system unavailable
-- Retry mechanisms for failed event deliveries
-- Dead letter queues for unprocessable events
-
-## 9. Security Considerations
-
-### 9.1 Event Content Security
-
-**Sensitive Data Handling**: Events may contain sensitive information requiring protection
-**Payload Sanitization**: Remove or mask sensitive data before event publishing
-**Encryption**: Encrypt event payloads when containing confidential information
-
-### 9.2 Access Control
-
-**Consumer Authorization**: Verify consumers have permission to access specific event types
-**Producer Authentication**: Validate event sources to prevent spoofing
-**Control Event Security**: Strict authorization for control events affecting system behavior
-
-## 10. Scenario Study: Dynamic Human Intervention
-
-### 10.1 Scenario Overview
-
-During a collaborative writing task, a human supervisor observes the team's progress in real-time and identifies quality issues that require immediate course correction. The system must dynamically adjust the ongoing collaboration based on human feedback.
-
-### 10.2 Concrete Example: Writing Quality Control
-
-**Initial State**: A research team (PlannerAgent, ResearcherAgent, WriterAgent, ReviewerAgent) is producing a technical report. The collaboration is 60% complete when the human supervisor reviews the current draft.
-
-**Human Observation**:
-
-- "Section 3 is only 800 words but should be at least 4000 words"
-- "The analysis lacks depth - need 3 more technical diagrams"
-- "Sources are insufficient - require at least 10 peer-reviewed papers"
-
-### 10.3 Event Flow Sequence
-
-#### Phase 1: Real-time Observation
-
-```
-1. collaboration.progress.updated
-   → sessionId: "collab_001"
-   → payload: { section: "section_3", wordCount: 800, status: "draft_complete" }
-
-2. content.quality.assessed
-   → source: "HumanSupervisor"
-   → payload: { section: "section_3", qualityScore: 3/10, issues: [...] }
+```python
+# Tool execution events
+"tool.started"           # Tool execution begins
+"tool.completed"         # Tool execution completes
+"tool.failed"            # Tool execution fails
+
+# Specific tool events
+"code.executed"          # Code execution (Daytona)
+"web.extracted"          # Web content extraction (Firecrawl)
+"browser.automated"      # Browser automation (browser-use)
+"search.performed"       # Web search (SERP API)
 ```
 
-#### Phase 2: Human Intervention
+#### Memory Events
 
-```
-3. control.collaboration.pause
-   → source: "HumanSupervisor"
-   → payload: { reason: "quality_review", sessionId: "collab_001" }
-
-4. control.requirements.updated
-   → payload: {
-       section: "section_3",
-       newRequirements: {
-         minWordCount: 4000,
-         requiredDiagrams: 3,
-         minSources: 10,
-         sourceTypes: ["peer-reviewed"]
-       }
-     }
+```python
+# Memory operations
+"memory.saved"           # Memory item stored
+"memory.searched"        # Memory search performed
+"memory.updated"         # Memory item modified
+"memory.deleted"         # Memory item removed
+"memory.cleaned"         # Memory cleanup performed
 ```
 
-#### Phase 3: Dynamic Workflow Adjustment
+#### Team Events
 
-```
-5. orchestration.workflow.modified
-   → payload: {
-       addedTasks: [
-         "research.additional_sources",
-         "content.diagram_creation",
-         "writing.section_expansion"
-       ],
-       modifiedAgents: ["ResearcherAgent", "WriterAgent"]
-     }
-
-6. agent.instructions.updated
-   → target: "ResearcherAgent"
-   → payload: {
-       newObjective: "Find 7 additional peer-reviewed sources for Section 3",
-       priority: "high"
-     }
+```python
+# Team collaboration
+"team.created"           # Team instantiated
+"team.conversation.started"  # Team conversation begins
+"team.speaker.selected"  # Speaker selection made
+"team.conversation.completed" # Team conversation ends
+"team.conversation.terminated" # Team conversation terminated
+"team.reset"             # Team state reset
 ```
 
-#### Phase 4: Collaborative Re-execution
+#### Task Events
 
-```
-7. collaboration.resumed
-   → payload: { modifiedWorkflow: true, newRequirements: {...} }
-
-8. tool.call.initiated
-   → agent: "ResearcherAgent"
-   → tool: "academic_search"
-   → payload: { query: "technical analysis methodology", limit: 10 }
-
-9. content.updated
-   → section: "section_3"
-   → payload: { wordCount: 4200, diagramCount: 3, sourceCount: 12 }
+```python
+# High-level task events
+"task.created"           # Task instantiated
+"task.started"           # Task execution begins
+"task.completed"         # Task execution completes
+"task.failed"            # Task execution fails
+"task.status.changed"    # Task status updated
 ```
 
-### 10.4 System Requirements
+## 5. Event Usage Patterns
 
-#### Event System Requirements
+### 5.1 Global Event Monitoring
 
-- **Real-time Event Streaming**: Low-latency event delivery to human interfaces
-- **Bidirectional Communication**: Support both observability and control events
-- **Event Correlation**: Link control events to specific collaboration sessions
-- **Event Validation**: Ensure control events are authorized and well-formed
+```python
+from roboco.core import global_events
 
-#### Orchestration System Requirements
+# Monitor all Brain thinking processes
+@global_events.on("brain.thinking.started")
+async def log_brain_activity(event):
+    print(f"[{event.timestamp}] {event.source} Brain started thinking")
 
-- **Pauseable Workflows**: Ability to halt collaboration at any point
-- **Dynamic Reconfiguration**: Modify agent instructions and workflow steps during execution
-- **State Preservation**: Maintain collaboration context during intervention
-- **Incremental Execution**: Resume from pause point with new requirements
+# Monitor Brain reasoning traces
+@global_events.on("brain.reasoning.trace")
+async def log_reasoning(event):
+    if event.data.get('reasoning_enabled'):
+        print(f"Brain reasoning: {event.data['reasoning_step']}")
 
-### 10.5 Technical Challenges
+# Monitor all agent messages
+@global_events.on("agent.message.sent")
+async def log_all_messages(event):
+    print(f"[{event.timestamp}] {event.source}: {event.data['content']}")
 
-#### State Management
+# Monitor tool executions
+@global_events.on("tool.*")  # Wildcard pattern
+async def track_tool_usage(event):
+    metrics.increment(f"tool.{event.data['tool_name']}.executions")
+    metrics.timing(f"tool.{event.data['tool_name']}.duration", event.data.get('duration', 0))
 
-- **Collaboration Checkpointing**: Save workflow state before accepting control events
-- **Rollback Capability**: Ability to revert changes if intervention fails
-- **Context Continuity**: Ensure agents understand requirement changes in context
+# Monitor team activities
+@global_events.on("team.speaker.selected")
+async def track_speaker_changes(event):
+    print(f"Speaker changed to: {event.data['speaker_name']}")
+```
 
-#### Event Ordering
+### 5.2 Agent-Level Event Handling
 
-- **Control Event Priority**: Control events must preempt normal workflow events
-- **Dependency Resolution**: New requirements may create task dependencies
-- **Conflict Resolution**: Handle conflicting requirements from multiple supervisors
+```python
+from roboco.core import Agent, AgentRole
 
-#### Human-AI Interface
+# Create agent with event handling
+agent = Agent(name="researcher", role=AgentRole.ASSISTANT)
 
-- **Intuitive Controls**: Simple interface for non-technical supervisors
-- **Real-time Feedback**: Immediate confirmation of control event reception
-- **Impact Visualization**: Show how changes will affect workflow completion
+# Agent-specific event handlers
+@agent.events.on("tool.completed")
+async def handle_tool_completion(event):
+    if event.data['tool_name'] == 'web_search':
+        # Store search results in memory
+        await agent.memory.add(f"Search results: {event.data['result']}")
 
-### 10.6 Architecture Implications
+@agent.events.on("memory.added")
+async def track_memory_growth(event):
+    memory_count = len(agent.memory.items)
+    if memory_count > 1000:
+        await agent.memory.cleanup()
+```
 
-This scenario reveals additional architectural requirements:
+### 5.3 Team Event Coordination
 
-#### Enhanced Event Bus
+```python
+from roboco.core import Team
 
-- **Priority Queues**: Control events need higher priority than standard events
-- **Event Filtering**: Supervisors need filtered views of relevant events only
-- **Real-time Subscriptions**: WebSocket connections for immediate event delivery
+team = Team(name="research_team", agents=[researcher, writer, executor])
 
-#### Workflow Engine Integration
+# Team-level event handling
+@team.events.on("speaker.selected")
+async def coordinate_handoff(event):
+    current_speaker = event.data['speaker']
+    previous_speaker = event.data.get('previous_speaker')
 
-- **Dynamic DAG Modification**: Workflow graphs must support runtime changes
-- **Agent State Synchronization**: Ensure all agents understand new requirements
-- **Resource Reallocation**: Adjust computational resources for modified workflows
+    if previous_speaker:
+        # Share context between agents
+        context = await previous_speaker.memory.search("current task context")
+        await current_speaker.memory.add(f"Handoff context: {context}")
 
-#### Monitoring Dashboard
+@team.events.on("conversation.completed")
+async def archive_results(event):
+    # Archive conversation and results
+    conversation = event.data['conversation']
+    await archive_conversation(team.name, conversation)
+```
 
-- **Live Collaboration View**: Real-time visualization of agent activities
-- **Intervention Controls**: User-friendly controls for workflow modification
-- **Impact Simulation**: Preview effects of proposed changes before applying
+## 6. Built-in Event Handlers
 
-This scenario demonstrates how the event system enables sophisticated human-AI collaboration where humans can actively guide and correct AI workflows in real-time, rather than just observing them passively.
+### 6.1 Real-time Monitor
 
-## 11. Future Extensions
+```python
+from roboco.events import RealTimeMonitor
 
-### 10.1 Planned Enhancements
+# Built-in real-time monitoring
+monitor = RealTimeMonitor()
 
-#### Event Analytics
+# Start monitoring all events
+await monitor.start()
 
-- Machine learning on event patterns
-- Predictive failure detection
-- Performance optimization recommendations
+# Access real-time metrics
+print(f"Active agents: {monitor.active_agents}")
+print(f"Messages per minute: {monitor.message_rate}")
+print(f"Tool execution rate: {monitor.tool_rate}")
+print(f"Average response time: {monitor.avg_response_time}")
+```
 
-#### External Integrations
+### 6.2 Event Logger
 
-- OpenTelemetry compatibility
-- Prometheus metrics export
-- Grafana dashboard templates
+```python
+from roboco.events import EventLogger
 
-#### Advanced Control
+# Structured event logging
+logger = EventLogger(
+    output_format="json",
+    log_level="INFO",
+    include_payload=True
+)
 
-- Conditional event routing
-- Event transformation pipelines
-- Complex event processing (CEP)
+# Automatic logging of all events
+global_events.add_handler("*", logger.log_event)
 
-### 10.2 Extensibility Points
+# Example log output:
+# {
+#   "timestamp": "2024-01-15T10:30:45Z",
+#   "event_type": "agent.message.sent",
+#   "source": "researcher",
+#   "data": {
+#     "content": "I found 10 relevant research papers...",
+#     "recipient": "writer",
+#     "message_id": "msg_123"
+#   }
+# }
+```
 
-The system design supports future extensions through:
+### 6.3 Metrics Collector
 
-- **Plugin Architecture**: Easy addition of new event processors
-- **Schema Evolution**: Backward-compatible event schema updates
-- **Custom Bridges**: Support for proprietary agent frameworks
-- **Integration APIs**: REST and WebSocket APIs for external systems
+```python
+from roboco.events import MetricsCollector
+
+# Performance metrics collection
+metrics = MetricsCollector()
+
+# Automatic metric collection
+global_events.add_handler("tool.*", metrics.collect_tool_metrics)
+global_events.add_handler("agent.*", metrics.collect_agent_metrics)
+
+# Access collected metrics
+print(f"Tool success rate: {metrics.tool_success_rate}")
+print(f"Average tool execution time: {metrics.avg_tool_time}")
+print(f"Agent response times: {metrics.agent_response_times}")
+```
+
+## 7. Custom Event Handlers
+
+### 7.1 Creating Custom Handlers
+
+```python
+from roboco.core import Event
+
+class CustomEventHandler:
+    def __init__(self, webhook_url: str):
+        self.webhook_url = webhook_url
+
+    async def handle_critical_events(self, event: Event):
+        """Handle critical system events."""
+        if event.event_type in ["agent.error.occurred", "tool.failed", "task.failed"]:
+            await self.send_alert(event)
+
+    async def send_alert(self, event: Event):
+        """Send alert to external system."""
+        payload = {
+            "alert_type": "roboco_error",
+            "timestamp": event.timestamp.isoformat(),
+            "source": event.source,
+            "error": event.data.get("error_message"),
+            "context": event.data
+        }
+
+        async with httpx.AsyncClient() as client:
+            await client.post(self.webhook_url, json=payload)
+
+# Register custom handler
+handler = CustomEventHandler("https://alerts.company.com/webhook")
+global_events.on("*.error.*", handler.handle_critical_events)
+global_events.on("*.failed", handler.handle_critical_events)
+```
+
+### 7.2 Event Filtering and Processing
+
+```python
+class EventProcessor:
+    def __init__(self):
+        self.event_buffer = []
+        self.processing_interval = 5  # seconds
+
+    async def buffer_events(self, event: Event):
+        """Buffer events for batch processing."""
+        self.event_buffer.append(event)
+
+        if len(self.event_buffer) >= 100:  # Process in batches
+            await self.process_batch()
+
+    async def process_batch(self):
+        """Process buffered events."""
+        if not self.event_buffer:
+            return
+
+        # Analyze event patterns
+        patterns = self.analyze_patterns(self.event_buffer)
+
+        # Send to analytics system
+        await self.send_to_analytics(patterns)
+
+        # Clear buffer
+        self.event_buffer.clear()
+
+    def analyze_patterns(self, events):
+        """Analyze event patterns for insights."""
+        patterns = {
+            "message_frequency": len([e for e in events if "message" in e.event_type]),
+            "tool_usage": {},
+            "error_rate": len([e for e in events if "error" in e.event_type]) / len(events)
+        }
+
+        # Tool usage analysis
+        for event in events:
+            if event.event_type == "tool.completed":
+                tool_name = event.data.get("tool_name")
+                if tool_name:
+                    patterns["tool_usage"][tool_name] = patterns["tool_usage"].get(tool_name, 0) + 1
+
+        return patterns
+
+# Register event processor
+processor = EventProcessor()
+global_events.on("*", processor.buffer_events)
+```
+
+## 8. Performance and Optimization
+
+### 8.1 Event System Performance
+
+| Component             | Performance Target | Implementation                 |
+| --------------------- | ------------------ | ------------------------------ |
+| **Event Emission**    | <1ms               | Synchronous callback execution |
+| **Event Routing**     | <5ms               | In-memory topic-based routing  |
+| **Handler Execution** | <10ms              | Async handler execution        |
+| **Global Event Bus**  | 10,000+ events/sec | Efficient callback management  |
+
+### 8.2 Optimization Strategies
+
+**Async Handlers**: Event handlers run asynchronously to avoid blocking
+**Selective Subscription**: Subscribe only to needed event types
+**Batch Processing**: Buffer events for efficient batch processing
+**Memory Management**: Automatic cleanup of old event handlers
+
+```python
+# Optimized event handling
+@global_events.on("agent.message.sent", max_handlers=100)  # Limit handlers
+async def optimized_handler(event):
+    # Fast, non-blocking processing
+    await asyncio.create_task(process_event_async(event))
+
+# Cleanup old handlers
+global_events.cleanup_handlers(max_age=3600)  # Remove handlers older than 1 hour
+```
+
+## 9. Integration with Opinionated Tools
+
+### 9.1 Tool-Specific Events
+
+**Daytona Code Execution**:
+
+```python
+@global_events.on("code.executed")
+async def track_code_execution(event):
+    execution_time = event.data['execution_time']
+    if execution_time > 5000:  # >5 seconds
+        print(f"Slow code execution detected: {execution_time}ms")
+```
+
+**Firecrawl Web Extraction**:
+
+```python
+@global_events.on("web.extracted")
+async def track_web_extraction(event):
+    content_size = len(event.data['content'])
+    url = event.data['url']
+    print(f"Extracted {content_size} chars from {url}")
+```
+
+**Mem0 Memory Operations**:
+
+```python
+@global_events.on("memory.added")
+async def track_memory_growth(event):
+    importance = event.data['importance']
+    if importance > 0.9:
+        print(f"High-importance memory added: {event.data['content'][:100]}...")
+```
+
+### 9.2 Integration Events
+
+```python
+# Monitor integration health
+@global_events.on("integration.error")
+async def handle_integration_errors(event):
+    integration = event.data['integration']  # "firecrawl", "mem0", etc.
+    error = event.data['error']
+
+    # Implement fallback strategies
+    if integration == "firecrawl":
+        # Fallback to basic HTTP request
+        await fallback_web_extraction(event.data['url'])
+    elif integration == "mem0":
+        # Fallback to local memory
+        await fallback_local_memory(event.data['content'])
+```
+
+## 10. Development and Debugging
+
+### 10.1 Debug Event Handler
+
+```python
+from roboco.events import DebugEventHandler
+
+# Enable debug mode
+debug_handler = DebugEventHandler(
+    log_level="DEBUG",
+    include_stack_trace=True,
+    filter_events=["agent.*", "tool.*"]  # Only debug specific events
+)
+
+global_events.add_handler("*", debug_handler.debug_event)
+
+# Example debug output:
+# [DEBUG] 2024-01-15 10:30:45 - agent.message.sent
+# Source: researcher
+# Data: {"content": "Research complete", "recipient": "writer"}
+# Stack: agent.py:123 -> team.py:456 -> task.py:789
+```
+
+### 10.2 Event Replay for Testing
+
+```python
+from roboco.events import EventRecorder, EventReplayer
+
+# Record events during development
+recorder = EventRecorder("test_session.json")
+global_events.add_handler("*", recorder.record_event)
+
+# Replay events for testing
+replayer = EventReplayer("test_session.json")
+await replayer.replay_events(speed=2.0)  # 2x speed replay
+```
+
+## 11. Best Practices
+
+### 11.1 Event Handler Guidelines
+
+**Keep Handlers Fast**: Avoid blocking operations in event handlers
+
+```python
+# Good: Non-blocking
+@global_events.on("agent.message.sent")
+async def fast_handler(event):
+    await asyncio.create_task(slow_operation(event))
+
+# Avoid: Blocking
+@global_events.on("agent.message.sent")
+async def slow_handler(event):
+    time.sleep(5)  # Blocks event system
+```
+
+**Use Specific Event Types**: Subscribe to specific events rather than wildcards when possible
+
+```python
+# Good: Specific subscription
+@global_events.on("tool.completed")
+async def handle_tool_completion(event):
+    pass
+
+# Less efficient: Wildcard with filtering
+@global_events.on("*")
+async def handle_all_events(event):
+    if event.event_type == "tool.completed":
+        pass
+```
+
+**Handle Errors Gracefully**: Event handlers should not crash the system
+
+```python
+@global_events.on("agent.error.occurred")
+async def safe_error_handler(event):
+    try:
+        await process_error(event)
+    except Exception as e:
+        logger.error(f"Error in error handler: {e}")
+        # Don't re-raise - would crash event system
+```
+
+### 11.2 Performance Optimization
+
+**Batch Event Processing**: Process multiple events together when possible
+
+```python
+class BatchProcessor:
+    def __init__(self, batch_size=50):
+        self.batch = []
+        self.batch_size = batch_size
+
+    async def add_event(self, event):
+        self.batch.append(event)
+        if len(self.batch) >= self.batch_size:
+            await self.process_batch()
+
+    async def process_batch(self):
+        # Process all events in batch
+        await analytics.send_events(self.batch)
+        self.batch.clear()
+```
+
+**Memory Management**: Clean up event handlers and data regularly
+
+```python
+# Automatic cleanup
+@global_events.on("system.cleanup")
+async def cleanup_old_data(event):
+    # Remove old event handlers
+    global_events.cleanup_handlers(max_age=3600)
+
+    # Clear old metrics
+    metrics.clear_old_data(max_age=86400)
+```
+
+## 12. Conclusion
+
+The Roboco Event System provides:
+
+**Unified Observability**: Complete visibility into agent activities, tool executions, and team collaborations through a single event system.
+
+**Simple Integration**: Built into every Agent, Brain, and Team automatically with no additional setup required.
+
+**Real-time Monitoring**: Live tracking of all system activities with sub-millisecond event emission.
+
+**Extensible Architecture**: Easy addition of custom event handlers and processors for specific monitoring needs.
+
+**Performance Optimized**: Efficient callback-based system designed for high-throughput agent operations.
+
+The event system transforms agent monitoring from complex instrumentation to simple event subscription, providing the observability needed for production agent deployments while maintaining the simplicity of our unified architecture.
