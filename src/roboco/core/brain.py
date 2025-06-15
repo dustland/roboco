@@ -128,9 +128,13 @@ class Brain:
             
             # Add system prompt if provided
             if system_prompt:
+                # Always append current date/time to system prompt
+                current_datetime = datetime.now().strftime("%A, %B %d, %Y at %I:%M %p")
+                enhanced_system_prompt = f"{system_prompt}\n\nCurrent date and time: {current_datetime}"
+                
                 formatted_messages.append({
                     "role": "system",
-                    "content": system_prompt
+                    "content": enhanced_system_prompt
                 })
             
             # Add conversation messages
@@ -213,9 +217,13 @@ class Brain:
             
             # Add system prompt if provided
             if system_prompt:
+                # Always append current date/time to system prompt
+                current_datetime = datetime.now().strftime("%A, %B %d, %Y at %I:%M %p")
+                enhanced_system_prompt = f"{system_prompt}\n\nCurrent date and time: {current_datetime}"
+                
                 formatted_messages.append({
                     "role": "system", 
-                    "content": system_prompt
+                    "content": enhanced_system_prompt
                 })
             
             # Add conversation messages
