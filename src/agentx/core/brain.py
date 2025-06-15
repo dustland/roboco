@@ -202,10 +202,19 @@ class Brain:
                     
                     # Execute the tool
                     tool_result = await execute_tool(tool_name, **tool_args)
+                    
+                    # Handle different tool result formats
+                    if hasattr(tool_result, 'success'):
+                        result_content = tool_result.result if tool_result.success else f"Error: {tool_result.error}"
+                    elif isinstance(tool_result, str):
+                        result_content = tool_result
+                    else:
+                        result_content = str(tool_result)
+                    
                     tool_responses.append({
                         "tool_call_id": tool_call.id,
                         "name": tool_name,
-                        "result": tool_result.result if tool_result.success else f"Error: {tool_result.error}"
+                        "result": result_content
                     })
                 
                 # Add tool call message and responses to conversation

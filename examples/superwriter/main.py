@@ -57,7 +57,7 @@ class SuperWriter:
         self.team = Team.from_config(self.config_path)
         
         # Create orchestrator with workspace
-        self.orchestrator = Orchestrator(self.team, workspace_dir=self.workspace_dir)
+        self.orchestrator = Orchestrator(self.team, max_rounds=150, timeout=10800)
         
         logger.info(f"SuperWriter initialized with team: {self.team.name}")
         logger.info(f"Workspace directory: {self.workspace_dir}")

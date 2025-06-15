@@ -9,7 +9,8 @@ agents:
     description: "Requirements gathering and project planning specialist"
     class: agentx.core.agents.Agent
     prompt_template: "prompts/consultant.md"
-    tools: []
+    tools:
+      - handoff
     llm_config:
       model: deepseek/deepseek-chat
       temperature: 0.3
@@ -23,6 +24,7 @@ agents:
     class: agentx.core.agents.Agent
     prompt_template: "prompts/researcher.md"
     tools:
+      - handoff
       - web_search
       - academic_search
       - data_analysis
@@ -39,10 +41,11 @@ agents:
     class: agentx.core.agents.Agent
     prompt_template: "prompts/writer.md"
     tools:
+      - handoff
       - document_formatter
       - citation_manager
     llm_config:
-      model: deepseek/deepseek-chat
+      model: gpt-4o-mini
       temperature: 0.4
       max_tokens: 8192
     guardrail_policies:
@@ -54,6 +57,7 @@ agents:
     class: agentx.core.agents.Agent
     prompt_template: "prompts/reviewer.md"
     tools:
+      - handoff
       - fact_checker
       - quality_analyzer
     llm_config:
@@ -66,6 +70,10 @@ agents:
 
 # Tool configurations
 tools:
+  - name: handoff
+    type: builtin
+    config: {}
+
   - name: web_search
     type: builtin
     config:

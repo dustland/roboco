@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import List, Dict, Any, Optional, Union, AsyncGenerator
 from datetime import datetime
 import asyncio
+import time
 
 from .team import Team
 from .task_step import TaskStep, TextPart, ToolCallPart, ToolResultPart, ArtifactPart
@@ -201,9 +202,16 @@ class Orchestrator:
     between agents, handles tool execution, and maintains task state.
     """
     
-    def __init__(self, team: Team, workspace_dir: Path = None):
+    def __init__(self, team: Team, max_rounds: int = 50, timeout: int = 3600):
         self.team = team
-        self.workspace_dir = workspace_dir or Path.cwd() / "agentx_workspace"
+        self.max_rounds = max_rounds
+        self.timeout = timeout
+        self.current_agent = None
+        self.conversation_history = []
+        self.task_id = None
+        self.context_variables = {}
+        self.execution_plan = {}
+        self.workspace_dir = Path.cwd() / "workspace"
         self.active_tasks: Dict[str, TaskState] = {}
     
     async def start_task(
@@ -295,7 +303,7 @@ class Orchestrator:
             # Main execution loop
             while not task_state.is_complete and not task_state.is_paused:
                 # Check round limit
-                if task_state.round_count >= self.team.max_rounds:
+                if task_state.round_count >= self.max_rounds:
                     break
                 
                 # Check for breakpoints before agent turn
@@ -396,7 +404,7 @@ class Orchestrator:
             # Main execution loop
             while not task_state.is_complete and not task_state.is_paused:
                 # Check round limit
-                if task_state.round_count >= self.team.max_rounds:
+                if task_state.round_count >= self.max_rounds:
                     break
                 
                 # Execute current agent turn with streaming
@@ -741,11 +749,34 @@ class Orchestrator:
             response_text = f"[Content blocked by guardrails: {guardrail_result.overall_status}]"
         
         # Check for handoff requests in the response
-        handoff_target = self._detect_handoff_request(response_text)
-        if handoff_target:
-            # Process handoff
-            await self._process_handoff(task_state, current_agent, handoff_target, response_text)
-            return
+        handoff_request = self._detect_handoff_request(response_text)
+        if handoff_request:
+            logger.info(f"🔄 Handoff detected: {handoff_request}")
+            # Execute handoff
+            if self._execute_handoff(handoff_request, task_state):
+                # Handoff successful, emit event
+                target_agent = handoff_request.get('destination_agent')
+                logger.info(f"✅ Handoff successful: {current_agent} → {target_agent}")
+                try:
+                    await publish_event(
+                        AgentHandoffEvent(
+                            from_agent=current_agent,
+                            to_agent=target_agent,
+                            reason=handoff_request.get('reason', 'agent_request'),
+                            timestamp=datetime.now(),
+                            context={"response_text": response_text[:100]}
+                        ),
+                        source=f"agent:{current_agent}",
+                        correlation_id=task_state.task_id
+                    )
+                except Exception as e:
+                    logger.warning(f"Failed to publish handoff event: {e}")
+                    # Continue anyway - handoff is more important than event publishing
+                return
+            else:
+                logger.warning(f"❌ Handoff failed: {current_agent} → {handoff_request.get('destination_agent')}")
+        else:
+            logger.debug(f"No handoff detected in response from {current_agent}")
         
         # Create task step with guardrail results
         step_parts = [TextPart(text=response_text)]
@@ -1000,27 +1031,62 @@ class Orchestrator:
         self.active_tasks[task_state.task_id] = task_state
         return task_state.task_id
     
-    def _detect_handoff_request(self, response_text: str) -> Optional[str]:
-        """Detect handoff requests in agent responses."""
-        # Simple pattern matching for handoff requests
-        # This could be enhanced with more sophisticated parsing
+    def _detect_handoff_request(self, response: str) -> Optional[Dict[str, Any]]:
+        """Detect handoff requests in agent responses using multiple patterns."""
         import re
+        import json
         
-        # Look for handoff patterns
-        handoff_patterns = [
-            r'🔄 HANDOFF_REQUEST:.*?"destination_agent":\s*"([^"]+)"',
-            r'handoff\s*\(\s*["\']([^"\']+)["\']',
-            r'hand.*off.*to\s+(\w+)',
-            r'transfer.*to\s+(\w+)',
+        # Pattern 1: Python-style handoff function calls (most common)
+        python_handoff_pattern = r'handoff\s*\(\s*destination_agent\s*=\s*["\']([^"\']+)["\']'
+        match = re.search(python_handoff_pattern, response, re.IGNORECASE | re.DOTALL)
+        if match:
+            agent_name = match.group(1)
+            
+            # Try to extract reason and context from the same call
+            reason_match = re.search(r'reason\s*=\s*["\']([^"\']+)["\']', response, re.IGNORECASE)
+            reason = reason_match.group(1) if reason_match else 'handoff_requested'
+            
+            # Try to extract context (can be complex JSON)
+            context_match = re.search(r'context\s*=\s*["\']([^"\']*)["\']', response, re.IGNORECASE | re.DOTALL)
+            context = context_match.group(1) if context_match else ''
+            
+            return {
+                'destination_agent': agent_name,
+                'reason': reason,
+                'context': context
+            }
+        
+        # Pattern 2: JSON-style handoff requests
+        json_handoff_pattern = r'🔄\s*HANDOFF_REQUEST:\s*({[^}]+})'
+        match = re.search(json_handoff_pattern, response, re.IGNORECASE)
+        if match:
+            try:
+                handoff_data = json.loads(match.group(1))
+                return {
+                    'destination_agent': handoff_data.get('destination_agent'),
+                    'reason': handoff_data.get('handoff_reason', 'handoff_requested'),
+                    'context': handoff_data.get('context', {})
+                }
+            except:
+                pass
+        
+        # Pattern 3: Simple handoff patterns
+        simple_patterns = [
+            r'transfer_to_(\w+)',
+            r'HANDOFF:\s*(\w+)',
+            r'handoff\s+to\s+(\w+)',
+            r'hand\s*off\s+to\s+(\w+)',
         ]
         
-        for pattern in handoff_patterns:
-            match = re.search(pattern, response_text, re.IGNORECASE)
+        for pattern in simple_patterns:
+            match = re.search(pattern, response, re.IGNORECASE)
             if match:
-                target_agent = match.group(1)
-                # Validate that the target agent exists
-                if target_agent in self.team.agents:
-                    return target_agent
+                agent_name = match.group(1)
+                return {
+                    'destination_agent': agent_name,
+                    'reason': 'handoff_requested',
+                    'context': ''
+                }
         
         return None
     
@@ -1050,3 +1116,223 @@ class Orchestrator:
             source=f"agent:{from_agent}",
             correlation_id=task_state.task_id
         )
+
+    async def run_task(self, task_prompt: str, initial_agent: str = None) -> Dict[str, Any]:
+        """Run a task with proper handoff support."""
+        self.task_id = self._generate_task_id()
+        start_time = time.time()
+        
+        # Initialize
+        self.current_agent = initial_agent or self.team.config.initial_agent
+        self.conversation_history = []
+        
+        # Add initial task message
+        self.conversation_history.append({
+            'role': 'user',
+            'content': task_prompt,
+            'agent': 'user',
+            'timestamp': datetime.now().isoformat()
+        })
+        
+        logger.info(f"🚀 Starting task {self.task_id} with agent: {self.current_agent}")
+        
+        round_count = 0
+        handoff_count = 0
+        
+        try:
+            while round_count < self.max_rounds:
+                if time.time() - start_time > self.timeout:
+                    raise TimeoutError(f"Task timeout after {self.timeout} seconds")
+                
+                round_count += 1
+                
+                # Get current agent
+                agent = self.team.get_agent(self.current_agent)
+                if not agent:
+                    raise ValueError(f"Agent '{self.current_agent}' not found")
+                
+                # Prepare context for agent
+                context = self._prepare_agent_context(task_prompt)
+                
+                # Get agent response
+                logger.info(f"🤖 Round {round_count}: {self.current_agent} thinking...")
+                
+                response = await agent.process(
+                    prompt=task_prompt,
+                    context=context,
+                    conversation_history=self.conversation_history
+                )
+                
+                # Add response to conversation
+                self.conversation_history.append({
+                    'role': 'assistant',
+                    'content': response.content,
+                    'agent': self.current_agent,
+                    'timestamp': datetime.now().isoformat(),
+                    'model': response.model,
+                    'usage': response.usage
+                })
+                
+                # Check for handoff request
+                handoff_request = self._detect_handoff_request(response.content)
+                if handoff_request:
+                    # Create a minimal task state for handoff processing
+                    temp_task_state = type('TaskState', (), {
+                        'current_agent': self.current_agent,
+                        'set_current_agent': lambda agent: setattr(self, 'current_agent', agent)
+                    })()
+                    
+                    if self._execute_handoff(handoff_request, temp_task_state):
+                        handoff_count += 1
+                        continue  # Continue with new agent
+                    else:
+                        # Handoff failed, continue with current agent
+                        logger.warning("Handoff failed, continuing with current agent")
+                
+                # Check for completion
+                if self._is_task_complete(response.content):
+                    logger.info(f"✅ Task completed by {self.current_agent}")
+                    break
+                    
+                # Check for errors or issues
+                if self._has_critical_error(response.content):
+                    logger.error(f"❌ Critical error detected in {self.current_agent} response")
+                    break
+            
+            # Prepare final result
+            result = {
+                'task_id': self.task_id,
+                'status': 'completed' if round_count < self.max_rounds else 'max_rounds_reached',
+                'final_agent': self.current_agent,
+                'rounds': round_count,
+                'handoffs': handoff_count,
+                'conversation_history': self.conversation_history,
+                'execution_time': time.time() - start_time,
+                'context_variables': self.context_variables,
+                'execution_plan': self.execution_plan
+            }
+            
+            logger.info(f"🏁 Task {self.task_id} finished: {round_count} rounds, {handoff_count} handoffs")
+            return result
+            
+        except Exception as e:
+            logger.error(f"❌ Task {self.task_id} failed: {str(e)}")
+            return {
+                'task_id': self.task_id,
+                'status': 'error',
+                'error': str(e),
+                'final_agent': self.current_agent,
+                'rounds': round_count,
+                'handoffs': handoff_count,
+                'conversation_history': self.conversation_history,
+                'execution_time': time.time() - start_time
+            }
+
+    def _find_agent_by_name(self, agent_name: str) -> Optional[str]:
+        """Find agent by name (case-insensitive, partial match)."""
+        agent_name_lower = agent_name.lower()
+        
+        # Direct match
+        if agent_name in self.team.agents:
+            return agent_name
+            
+        # Case-insensitive match
+        for name in self.team.agents.keys():
+            if name.lower() == agent_name_lower:
+                return name
+                
+        # Partial match
+        for name in self.team.agents.keys():
+            if agent_name_lower in name.lower() or name.lower() in agent_name_lower:
+                return name
+                
+        return None
+    
+    def _can_handoff(self, from_agent: str, to_agent: str) -> bool:
+        """Check if handoff is allowed based on team configuration."""
+        if from_agent not in self.team.agents or to_agent not in self.team.agents:
+            return False
+            
+        # Check handoff rules
+        handoff_rules = self.team.config.handoff_rules
+        if not handoff_rules:
+            return True  # Allow all handoffs if no rules specified
+            
+        # Check if there's a specific rule for this handoff
+        for rule in handoff_rules:
+            if rule.from_agent == from_agent and rule.to_agent == to_agent:
+                return True
+                
+        return False
+    
+    def _execute_handoff(self, handoff_request: Dict[str, Any], task_state: TaskState) -> bool:
+        """Execute a handoff between agents."""
+        destination_agent = handoff_request.get('destination_agent')
+        if not destination_agent:
+            return False
+            
+        # Find the actual agent name
+        target_agent = self._find_agent_by_name(destination_agent)
+        if not target_agent:
+            logger.warning(f"Handoff target agent '{destination_agent}' not found")
+            return False
+            
+        # Check if handoff is allowed
+        current_agent = task_state.current_agent
+        if not self._can_handoff(current_agent, target_agent):
+            logger.warning(f"Handoff from '{current_agent}' to '{target_agent}' not allowed")
+            return False
+            
+        # Execute the handoff
+        logger.info(f"🔄 Handoff: {current_agent} → {target_agent}")
+        
+        # Update task state
+        task_state.set_current_agent(target_agent)
+        
+        return True
+
+    def _is_task_complete(self, response_content: str) -> bool:
+        """Check if the task is complete based on response content."""
+        completion_indicators = [
+            'task completed',
+            'finished',
+            'done',
+            'complete',
+            'final answer',
+            'conclusion',
+            'END_OF_MEMO',
+            'FINISH'
+        ]
+        
+        response_lower = response_content.lower()
+        return any(indicator in response_lower for indicator in completion_indicators)
+    
+    def _has_critical_error(self, response_content: str) -> bool:
+        """Check if there's a critical error in the response."""
+        error_indicators = [
+            'critical error',
+            'fatal error',
+            'cannot proceed',
+            'unable to continue',
+            'system failure'
+        ]
+        
+        response_lower = response_content.lower()
+        return any(indicator in response_lower for indicator in error_indicators)
+    
+    def _prepare_agent_context(self, task_prompt: str) -> Dict[str, Any]:
+        """Prepare context for agent processing."""
+        return {
+            'task_prompt': task_prompt,
+            'current_agent': self.current_agent,
+            'conversation_history': self.conversation_history,
+            'context_variables': self.context_variables,
+            'execution_plan': self.execution_plan,
+            'available_agents': list(self.team.agents.keys()),
+            'handoff_targets': [name for name in self.team.agents.keys() if name != self.current_agent]
+        }
+
+    def _generate_task_id(self) -> str:
+        """Generate a unique task ID."""
+        from ..utils.id import generate_short_id
+        return generate_short_id()

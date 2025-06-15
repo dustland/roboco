@@ -133,17 +133,25 @@ class TeamConfig(BaseModel):
     name: str
     description: str
     version: str = "1.0.0"
+    initial_agent: str = "consultant"  # Default initial agent
     agents: List[AgentConfig]
     tools: List[ToolConfig] = Field(default_factory=list)
     handoff_rules: List[HandoffRule] = Field(default_factory=list)
     collaboration_patterns: List[CollaborationPattern] = Field(default_factory=list)
     guardrail_policies: List[GuardrailPolicy] = Field(default_factory=list)
-    memory: MemoryConfig = Field(default_factory=MemoryConfig)  # Changed from memory_config to memory
-    execution: ExecutionConfig = Field(default_factory=ExecutionConfig)  # Changed from execution_config to execution
+    memory: MemoryConfig = Field(default_factory=MemoryConfig)
+    execution: ExecutionConfig = Field(default_factory=ExecutionConfig)
     deployment_config: Dict[str, Any] = Field(default_factory=dict)
     
     # Dynamic context variables for agent coordination
     context_variables: Dict[str, Any] = Field(default_factory=dict)
     
     # Execution plan configuration
-    execution_plan: Dict[str, Any] = Field(default_factory=dict) 
+    execution_plan: Dict[str, Any] = Field(default_factory=dict)
+    
+    # LLM configuration (optional override)
+    llm: Optional[LLMConfig] = None
+    
+    # Execution limits
+    max_rounds: int = 50
+    timeout: int = 3600 
