@@ -1,511 +1,102 @@
-"""
-Unified Team class - replaces AG2's problematic GroupChat + GroupChatManager split.
-
-This single class manages multi-agent conversations elegantly.
-"""
-
-import asyncio
-from ..utils.logger import get_logger
+from __future__ import annotations
 import json
-from typing import Dict, List, Optional, Any, Callable, Union
-from dataclasses import dataclass
-from enum import Enum
+import importlib
 from pathlib import Path
+from typing import List, Dict, Any
+from pydantic import BaseModel, Field
 
-from .agent import Agent
-from .brain import Message, ChatHistory
-from .event import Event
+from roboco.core.task_step import TaskStep
+from roboco.core.agent import Agent
+from roboco.core.config import TeamConfig
+from roboco.core.tool import get_tool_registry
 
-logger = get_logger(__name__)
+# For now, we'll keep a reference to Agent, but the config will change
+# to be AgentConfig as per the design.
 
-
-class SpeakerSelectionMethod(Enum):
-    """Methods for selecting the next speaker."""
-    ROUND_ROBIN = "round_robin"
-    RANDOM = "random"
-    LLM_BASED = "llm_based"
-    MANUAL = "manual"
-    CUSTOM = "custom"
-
-
-@dataclass
-class TeamConfig:
-    """Team configuration."""
+class Team(BaseModel):
+    """
+    A passive data structure that holds the complete state and configuration for a task.
+    This includes the agents, their relationships, available tools, and the full
+    history of TaskSteps. It is the "what" and the "who" of the collaboration.
+    """
     name: str
+    agents: Dict[str, Agent] = Field(default_factory=dict)
     max_rounds: int = 10
-    speaker_selection: SpeakerSelectionMethod = SpeakerSelectionMethod.ROUND_ROBIN
-    allow_repeat_speaker: bool = True
-    enable_memory: bool = True
-    auto_save_history: bool = True
-    termination_keywords: List[str] = None
-    
-    def __post_init__(self):
-        if self.termination_keywords is None:
-            self.termination_keywords = ["TERMINATE", "EXIT", "STOP"]
+    # The 'tools' field will be added later once ToolConfig is defined.
+    history: List[TaskStep] = Field(default_factory=list)
+    # Other config like collaboration graph can be added here.
 
-
-class Team:
-    """
-    Unified Team class for multi-agent conversations.
-    
-    This replaces AG2's confusing GroupChat + GroupChatManager split
-    with a single, elegant class that manages everything.
-    """
-    
-    def __init__(self, config: Union[TeamConfig, Dict[str, Any]], agents: List[Agent]):
-        # Convert dict to config if needed
-        if isinstance(config, dict):
-            config = TeamConfig(**config)
-        
-        self.config = config
-        self.name = config.name
-        self.agents = {agent.name: agent for agent in agents}
-        self.agent_list = agents
-        
-        # Conversation state - using task-level ChatHistory
-        self.chat_history = ChatHistory(task_id="")
-        self.current_round = 0
-        self.current_speaker: Optional[Agent] = None
-        self.is_active = False
-        
-        # Speaker selection
-        self._speaker_index = 0
-        self._custom_selector: Optional[Callable] = None
-        
-        # Tool management
-        self._tool_executor: Optional[Agent] = None
-        self._team_tools: Dict[str, "Tool"] = {}
-        
-        # Set agent teams and find tool executor
-        for agent in self.agent_list:
-            agent._team = self  # Set team reference
-            
-            # Auto-detect tool executor (agent with tools or code execution)
-            if (self._tool_executor is None and 
-                (agent.config.enable_code_execution or 
-                 "executor" in agent.name.lower() or 
-                 "tool" in agent.name.lower())):
-                self._tool_executor = agent
-                logger.info(f"Auto-detected tool executor: {agent.name}")
-        
-        # Validation
-        self._validate_agents()
-        
-        logger.info(f"Created team '{self.name}' with {len(self.agents)} agents")
-        if self._tool_executor:
-            logger.info(f"Tool executor: {self._tool_executor.name}")
-    
     @classmethod
-    def from_config(cls, config_dir: str) -> "Team":
+    def from_config_file(cls, config_path: str) -> "Team":
         """
-        Create a Team from a configuration directory.
-        
-        Args:
-            config_dir: Directory containing team.yaml and prompts/
-            
-        Returns:
-            Configured Team ready to run
+        Loads team configuration from a JSON file and returns a Team instance.
         """
-        from ..config import load_team_config
-        from ..config.team_loader import TeamLoader
-        
-        config_path = Path(config_dir)
-        team_yaml = config_path / "team.yaml"
-        
-        if not team_yaml.exists():
-            raise FileNotFoundError(f"team.yaml not found in {config_dir}")
-        
-        # Load team configuration
-        team_config = load_team_config(str(team_yaml))
-        
-        # Create agents from config
-        loader = TeamLoader(str(config_path))
-        agent_configs = loader.create_agents(team_config)
-        
-        # Convert to Agent objects
-        agents = []
-        for agent_config, tools in agent_configs:
-            # Create agent from config
-            agent = Agent(config=agent_config)
-            
-            # Add tools to agent (placeholder - tools would be loaded separately)
-            if tools:
-                logger.info(f"Agent {agent.name} has tools: {tools}")
-            
-            agents.append(agent)
-        
-        # Map speaker selection method
-        selection_method_map = {
-            "auto": SpeakerSelectionMethod.ROUND_ROBIN,  # Default to round robin
-            "round_robin": SpeakerSelectionMethod.ROUND_ROBIN,
-            "random": SpeakerSelectionMethod.RANDOM,
-            "llm_based": SpeakerSelectionMethod.LLM_BASED,
-            "manual": SpeakerSelectionMethod.MANUAL,
-            "custom": SpeakerSelectionMethod.CUSTOM
-        }
-        
-        speaker_selection = selection_method_map.get(
-            team_config.speaker_selection_method, 
-            SpeakerSelectionMethod.ROUND_ROBIN
-        )
-        
-        # Create team config for the Team class
-        team_config_dict = {
-            "name": team_config.name,
-            "max_rounds": team_config.max_rounds,
-            "speaker_selection": speaker_selection,
-            "allow_repeat_speaker": True,  # Default
-            "enable_memory": True,  # Default
-            "termination_keywords": team_config.auto_terminate_keywords or ["TERMINATE"]
-        }
-        
-        return cls(config=team_config_dict, agents=agents)
-    
-    def _validate_agents(self):
-        """Validate team configuration."""
-        if not self.agents:
-            raise ValueError("Team must have at least one agent")
-        
-        # Check for duplicate names
-        names = [agent.name for agent in self.agent_list]
-        if len(names) != len(set(names)):
-            raise ValueError("Agent names must be unique")
-        
-        # Ensure at least one assistant agent for conversations
-        assistant_count = sum(1 for agent in self.agent_list if agent.is_assistant_agent)
-        if assistant_count == 0:
-            logger.warning("Team has no assistant agents - conversations may be limited")
-    
-    def add_agent(self, agent: Agent):
-        """Add an agent to the team."""
-        if agent.name in self.agents:
-            raise ValueError(f"Agent '{agent.name}' already exists in team")
-        
-        self.agents[agent.name] = agent
-        self.agent_list.append(agent)
-        
-        logger.info(f"Added agent '{agent.name}' to team '{self.name}'")
-    
-    def remove_agent(self, agent_name: str):
-        """Remove an agent from the team."""
-        if agent_name not in self.agents:
-            raise ValueError(f"Agent '{agent_name}' not found in team")
-        
-        agent = self.agents.pop(agent_name)
-        self.agent_list.remove(agent)
-        
-        logger.info(f"Removed agent '{agent_name}' from team '{self.name}'")
-    
-    def get_agent(self, name: str) -> Optional[Agent]:
-        """Get an agent by name."""
-        return self.agents.get(name)
-    
-    async def run(
-        self, 
-        initial_message: str,
-        initial_speaker: Optional[str] = None
-    ) -> ChatHistory:
-        """Run a team conversation (AG2 GroupChat style)."""
-        if self.is_active:
-            raise RuntimeError("Team conversation is already active")
-        
-        self.is_active = True
-        self.current_round = 0
-        
-        try:
-            # Add user message to history first
-            user_msg = Message(
-                content=initial_message,
-                sender="User",
-                recipient="Team",
-                role="user"
-            )
-            self.chat_history.add_message(user_msg)
-            logger.info(f"👤 User: {initial_message}")
-            
-            # Select initial speaker (first agent to respond)
-            if initial_speaker:
-                self.current_speaker = self.get_agent(initial_speaker)
-                if not self.current_speaker:
-                    raise ValueError(f"Initial speaker '{initial_speaker}' not found")
-            else:
-                self.current_speaker = self._select_next_speaker(None)
-            
-            # Start team conversation loop
-            await self._team_conversation_loop(user_msg)
-            
-            return self.chat_history
-            
-        finally:
-            self.is_active = False
-    
-    async def _team_conversation_loop(self, user_message: Message):
-        """Team conversation loop - AG2 GroupChat style."""
-        
-        while self.current_round < self.config.max_rounds:
-            # Current speaker generates response to the conversation
-            logger.debug(f"🎯 Round {self.current_round + 1}: {self.current_speaker.name} responding")
-            
-            # Get response from current speaker (pass full conversation context)
-            response = await self.current_speaker.generate_reply(user_message)
-            
-            if not response:
-                logger.info("No response generated, ending conversation")
-                break
-            
-            # Add response to history
-            self.chat_history.add_message(response)
-            logger.info(f"🤖 {self.current_speaker.name}: {response.content}")
-            
-            # Check for termination
-            if self._should_terminate(response):
-                logger.info("Termination condition met")
-                break
-            
-            # For single agent teams, we're done after one response
-            if len(self.agent_list) == 1:
-                logger.debug("Single agent team - conversation complete")
-                break
-            
-            # Select next speaker for multi-agent teams
-            next_speaker = self._select_next_speaker(self.current_speaker)
-            if not next_speaker or next_speaker == self.current_speaker:
-                logger.info("No next speaker available, ending conversation")
-                break
-            
-            # Update state for next round
-            self.current_speaker = next_speaker
-            self.current_round += 1
-            
-            # For multi-agent, the response becomes the new message to respond to
-            user_message = response
-    
-    def _select_next_speaker(self, current_speaker: Optional[Agent]) -> Optional[Agent]:
-        """Select the next speaker based on configuration."""
-        if not self.agent_list:
-            return None
-        
-        if self.config.speaker_selection == SpeakerSelectionMethod.ROUND_ROBIN:
-            return self._select_round_robin(current_speaker)
-        elif self.config.speaker_selection == SpeakerSelectionMethod.RANDOM:
-            return self._select_random(current_speaker)
-        elif self.config.speaker_selection == SpeakerSelectionMethod.LLM_BASED:
-            return self._select_llm_based(current_speaker)
-        elif self.config.speaker_selection == SpeakerSelectionMethod.MANUAL:
-            return self._select_manual(current_speaker)
-        elif self.config.speaker_selection == SpeakerSelectionMethod.CUSTOM:
-            return self._select_custom(current_speaker)
-        else:
-            return self._select_round_robin(current_speaker)
-    
-    def _select_round_robin(self, current_speaker: Optional[Agent]) -> Agent:
-        """Select next speaker using round-robin."""
-        if not self.config.allow_repeat_speaker and current_speaker:
-            # Find next different speaker
-            current_index = self.agent_list.index(current_speaker)
-            for i in range(1, len(self.agent_list)):
-                next_index = (current_index + i) % len(self.agent_list)
-                if self.agent_list[next_index] != current_speaker:
-                    return self.agent_list[next_index]
-        
-        # Standard round-robin
-        self._speaker_index = (self._speaker_index + 1) % len(self.agent_list)
-        return self.agent_list[self._speaker_index]
-    
-    def _select_random(self, current_speaker: Optional[Agent]) -> Agent:
-        """Select next speaker randomly."""
-        import random
-        
-        if not self.config.allow_repeat_speaker and current_speaker and len(self.agent_list) > 1:
-            candidates = [agent for agent in self.agent_list if agent != current_speaker]
-            return random.choice(candidates)
-        
-        return random.choice(self.agent_list)
-    
-    def _select_llm_based(self, current_speaker: Optional[Agent]) -> Agent:
-        """Select next speaker using LLM reasoning."""
-        # TODO: Implement LLM-based speaker selection
-        # For now, fall back to round-robin
-        return self._select_round_robin(current_speaker)
-    
-    def _select_manual(self, current_speaker: Optional[Agent]) -> Optional[Agent]:
-        """Select next speaker manually."""
-        try:
-            print("\nAvailable speakers:")
-            for i, agent in enumerate(self.agent_list):
-                print(f"{i + 1}. {agent.name} ({agent.role.value})")
-            
-            choice = input("Select next speaker (number or name): ").strip()
-            
-            # Try to parse as number
+        config_file = Path(config_path)
+        if not config_file.is_file():
+            raise FileNotFoundError(f"Configuration file not found: {config_path}")
+
+        config_dir = config_file.parent
+        config_data = json.loads(config_file.read_text())
+        config = TeamConfig.model_validate(config_data)
+
+        # Load and register tools
+        tool_registry = get_tool_registry()
+        for tool_name, tool_def in config.tool_definitions.items():
             try:
-                index = int(choice) - 1
-                if 0 <= index < len(self.agent_list):
-                    return self.agent_list[index]
-            except ValueError:
-                pass
-            
-            # Try to find by name
-            for agent in self.agent_list:
-                if agent.name.lower() == choice.lower():
-                    return agent
-            
-            print("Invalid selection, using round-robin")
-            return self._select_round_robin(current_speaker)
-            
-        except (EOFError, KeyboardInterrupt):
-            return None
-    
-    def _select_custom(self, current_speaker: Optional[Agent]) -> Optional[Agent]:
-        """Select next speaker using custom selector."""
-        if self._custom_selector:
-            return self._custom_selector(current_speaker, self)
-        return self._select_round_robin(current_speaker)
-    
-    def set_custom_selector(self, selector: Callable[[Optional[Agent], "Team"], Optional[Agent]]):
-        """Set a custom speaker selector function."""
-        self._custom_selector = selector
-    
-    def _should_terminate(self, message: Message) -> bool:
-        """Check if conversation should terminate."""
-        return any(keyword in message.content.upper() for keyword in self.config.termination_keywords)
-    
-    def get_chat_history(self) -> ChatHistory:
-        """Get the chat history."""
-        return self.chat_history
-    
-    def clear_history(self):
-        """Clear conversation history."""
-        self.chat_history.clear_history()
-        self.current_round = 0
-    
-    def get_agent_names(self) -> List[str]:
-        """Get list of agent names."""
-        return list(self.agents.keys())
-    
-    def get_conversation_summary(self) -> Dict[str, Any]:
-        """Get conversation summary."""
-        return {
-            "team_name": self.name,
-            "agents": self.get_agent_names(),
-            "rounds": self.current_round,
-            "messages": len(self.chat_history),
-            "is_active": self.is_active,
-            "current_speaker": self.current_speaker.name if self.current_speaker else None
-        }
-    
-    def reset(self):
-        """Reset team state."""
-        self.clear_history()
-        self.current_speaker = None
-        self.is_active = False
-        self._speaker_index = 0
-        
-        # Reset all agents
-        for agent in self.agent_list:
-            agent.reset()
-    
-    def __str__(self) -> str:
-        return f"Team({self.name}, {len(self.agents)} agents)"
-    
-    def __repr__(self) -> str:
-        return f"Team(name='{self.name}', agents={len(self.agents)}, active={self.is_active})"
-    
-    def set_tool_executor(self, agent_name: str):
-        """Manually set the tool executor agent."""
-        agent = self.get_agent(agent_name)
-        if not agent:
-            raise ValueError(f"Agent '{agent_name}' not found in team")
-        
-        self._tool_executor = agent
-        logger.info(f"Set tool executor: {agent_name}")
-    
-    def get_tool_executor(self) -> Optional[Agent]:
-        """Get the team's tool executor agent."""
-        return self._tool_executor
-    
-    def register_tool(self, tool: "Tool"):
-        """Register a tool with the team."""
-        self._team_tools[tool.name] = tool
-        logger.info(f"Registered tool '{tool.name}' with team '{self.name}'")
-    
-    async def execute_tool(self, tool_name: str, **kwargs):
-        """Execute a tool using the team's tool registry."""
-        from .tool import ToolResult  # Import here to avoid circular imports
-        
-        tool = self._team_tools.get(tool_name)
-        if not tool:
-            return ToolResult(
-                success=False,
-                result=None,
-                error=f"Tool '{tool_name}' not found in team registry"
-            )
-        
-        return await tool.execute(**kwargs)
-    
-    def list_team_tools(self) -> List[str]:
-        """List all tools registered with the team."""
-        return list(self._team_tools.keys())
-    
-    async def execute_tool_calls(self, message: "Message") -> List["Message"]:
-        """Execute tool calls using the team's tool executor."""
-        from .brain import Message  # Import here to avoid circular imports
-        
-        if not message.tool_calls:
-            return []
-        
-        if not self._tool_executor:
-            logger.error(f"No tool executor in team {self.name}")
-            return []
-        
-        results = []
-        
-        for call in message.tool_calls:
-            try:
-                tool_name = call["function"]["name"]
-                tool_args = json.loads(call["function"]["arguments"])
-                
-                # Execute the tool
-                result = await self.execute_tool(tool_name, **tool_args)
-                
-                # Create result message
-                results.append(Message(
-                    content=str(result.result) if result.success else f"Error: {result.error}",
-                    sender=self._tool_executor.name,
-                    role="tool",
-                    name=tool_name,
-                    metadata={
-                        "tool_call_id": call["id"],
-                        "success": result.success,
-                        "execution_time": result.execution_time
-                    }
-                ))
-                
+                module_path, class_name = tool_def.source.rsplit(':', 1)
+                module = importlib.import_module(module_path)
+                tool_class = getattr(module, class_name)
+                # We assume tool classes can be instantiated without arguments for now.
+                # This could be extended to pass config to tools.
+                tool_instance = tool_class()
+                tool_registry.register_tool(tool_instance)
+                print(f"Successfully loaded and registered tool: {tool_name}")
             except Exception as e:
-                logger.error(f"Tool execution failed: {e}")
-                results.append(Message(
-                    content=f"Error: {str(e)}",
-                    sender=self._tool_executor.name,
-                    role="tool",
-                    name=call.get("function", {}).get("name", "unknown"),
-                    metadata={"error": True, "tool_call_id": call.get("id", "unknown")}
-                ))
-        
-        return results
+                print(f"Failed to load tool {tool_name} from {tool_def.source}: {e}")
+                # Decide if we should raise an error or just warn
+                raise ImportError(f"Could not load tool {tool_name}") from e
 
+        # Create agents
+        agents = {}
+        all_available_tools = tool_registry.list_tools()
+        for agent_config in config.agents:
+            # Load system message from file
+            prompt_path = config_dir / agent_config.system_message_prompt
+            if not prompt_path.is_file():
+                raise FileNotFoundError(f"System message file not found for agent {agent_config.name}: {prompt_path}")
+            system_message = prompt_path.read_text()
 
-def create_team(
-    name: str,
-    agents: List[Agent],
-    max_rounds: int = 10,
-    speaker_selection: SpeakerSelectionMethod = SpeakerSelectionMethod.ROUND_ROBIN,
-    **kwargs
-) -> Team:
-    """Create a team with the given configuration."""
-    config = TeamConfig(
-        name=name,
-        max_rounds=max_rounds,
-        speaker_selection=speaker_selection,
-        **kwargs
-    )
-    return Team(config, agents) 
+            # Get tool schemas for the agent
+            agent_tool_names = agent_config.tools
+            # Validate that the agent's tools are available
+            for tool_name in agent_tool_names:
+                if tool_name not in all_available_tools:
+                    raise ValueError(f"Agent '{agent_config.name}' requires tool '{tool_name}' which is not defined or loaded.")
+            
+            agent_tools_schema = tool_registry.get_tool_schemas(agent_tool_names)
+
+            agent = Agent(
+                name=agent_config.name,
+                system_message=system_message,
+                model=agent_config.model,
+                tools=agent_tools_schema
+            )
+            agents[agent.name] = agent
+
+        # Assemble and return the team
+        return cls(
+            name=config.name,
+            agents=agents,
+            max_rounds=config.max_rounds
+        )
+
+    def add_step(self, step: TaskStep) -> None:
+        """Adds a new TaskStep to the team's history."""
+        self.history.append(step)
+
+    def get_agent(self, name: str) -> Agent | None:
+        """Retrieves an agent by name."""
+        return self.agents.get(name)
+
+    class Config:
+        arbitrary_types_allowed = True 

@@ -260,28 +260,44 @@ class ToolRegistry:
     schema generation for any subset of tool names.
     """
     
-    def __init__(self):
-        self._tools: Dict[str, tuple[Tool, Callable, Optional[BaseModel]]] = {}
+    _instance = None
     
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super(ToolRegistry, cls).__new__(cls)
+            # Initialize state here to ensure it's done only once.
+            cls._instance._tools: Dict[str, tuple[Tool, Callable, Optional[BaseModel]]] = {}
+        return cls._instance
+
+    def clear(self):
+        """Clears all registered tools. Primarily for testing."""
+        self._tools = {}
+
     def register_tool(self, tool: Tool):
         """Register a tool and all its callable methods."""
         methods = tool.get_callable_methods()
+        schemas = tool.get_tool_schemas()
+        
         for tool_name, method in methods.items():
+            if tool_name in self._tools:
+                logger.warning(f"Tool '{tool_name}' is already registered. Overwriting.")
+            
+            # Create a Pydantic model for the method's arguments for validation
             pydantic_model = _create_pydantic_model_from_signature(method)
             self._tools[tool_name] = (tool, method, pydantic_model)
-            logger.info(f"Registered tool call '{tool_name}' from {tool.__class__.__name__}")
-    
+            logger.debug(f"Registered tool method: {tool_name}")
+
     def get_tool_schemas(self, tool_names: List[str]) -> List[Dict[str, Any]]:
         """Get detailed OpenAI function schemas for specified tools."""
         schemas = []
         for name in tool_names:
             if name in self._tools:
-                tool_instance, method, pydantic_model = self._tools[name]
+                tool_instance, method, _ = self._tools[name]
+                # We need to get the schema for the specific method.
+                # The Tool class get_tool_schemas returns a dict for all its methods.
                 all_schemas = tool_instance.get_tool_schemas()
                 if name in all_schemas:
                     schemas.append(all_schemas[name])
-            else:
-                logger.warning(f"Tool '{name}' not found in registry")
         return schemas
     
     def get_tool(self, name: str) -> Optional[tuple[Tool, Callable, Optional[BaseModel]]]:
@@ -292,8 +308,22 @@ class ToolRegistry:
         """List all registered tool names."""
         return list(self._tools.keys())
     
+    def execute_tool_sync(self, name: str, **kwargs) -> ToolResult:
+        """Synchronous wrapper for executing a tool. For use in non-async contexts."""
+        try:
+            # For environments where the top-level is sync, run async func
+            return asyncio.run(self.execute_tool(name, **kwargs))
+        except RuntimeError as e:
+            # If an event loop is already running, try to use it
+            if "cannot run loop while another loop is running" in str(e):
+                loop = asyncio.get_running_loop()
+                future = self.execute_tool(name, **kwargs)
+                return loop.run_until_complete(future)
+            raise e
+
     async def execute_tool(self, name: str, **kwargs) -> ToolResult:
         """Execute a tool by name with automatic parameter validation."""
+        start_time = time.time()
         tool_info = self._tools.get(name)
         if not tool_info:
             return ToolResult(
@@ -320,34 +350,8 @@ class ToolRegistry:
         return await method(**kwargs)
 
 
-# Global singleton instance
+# Global tool registry using the singleton pattern
 _tool_registry = ToolRegistry()
-
-
-# Convenience functions that delegate to the global registry
-def register_tool(tool: Tool):
-    """Register a tool in the global registry."""
-    _tool_registry.register_tool(tool)
-
-
-def get_tool_schemas(tool_names: List[str]) -> List[Dict[str, Any]]:
-    """Get detailed OpenAI function schemas for specified tools."""
-    return _tool_registry.get_tool_schemas(tool_names)
-
-
-def get_tool(name: str) -> Optional[tuple[Tool, Callable, Optional[BaseModel]]]:
-    """Get a tool, method, and pydantic model by name."""
-    return _tool_registry.get_tool(name)
-
-
-def list_tools() -> List[str]:
-    """List all registered tool names."""
-    return _tool_registry.list_tools()
-
-
-async def execute_tool(name: str, **kwargs) -> ToolResult:
-    """Execute a tool by name with automatic parameter validation."""
-    return await _tool_registry.execute_tool(name, **kwargs)
 
 
 def get_tool_registry() -> ToolRegistry:
@@ -355,73 +359,72 @@ def get_tool_registry() -> ToolRegistry:
     return _tool_registry
 
 
+def register_tool(tool: Tool):
+    """Register a tool with the global registry."""
+    get_tool_registry().register_tool(tool)
+
+
+def get_tool_schemas(tool_names: List[str]) -> List[Dict[str, Any]]:
+    """Get tool schemas from the global registry."""
+    return get_tool_registry().get_tool_schemas(tool_names)
+
+
+def get_tool(name: str) -> Optional[tuple[Tool, Callable, Optional[BaseModel]]]:
+    """Get a tool from the global registry."""
+    return get_tool_registry().get_tool(name)
+
+
+def list_tools() -> List[str]:
+    """List all registered tool names."""
+    return get_tool_registry().list_tools()
+
+
+async def execute_tool(name: str, **kwargs) -> ToolResult:
+    """Execute a tool from the global registry."""
+    return await get_tool_registry().execute_tool(name, **kwargs)
+
+
 def print_available_tools():
-    """Print all available tools with descriptions for developers."""
-    tools = _tool_registry.list_tools()
-    if not tools:
-        print("No tools registered yet. Register tools first with register_tool()")
+    """Prints a formatted table of all available tools."""
+    registry = get_tool_registry()
+    tool_list = registry.list_tools()
+    
+    if not tool_list:
+        print("No tools are registered.")
         return
+        
+    print(f"{'Tool Name':<30} {'Description':<70}")
+    print("-" * 100)
     
-    print("Available Tools:")
-    print("=" * 50)
-    
-    for tool_name in sorted(tools):
-        tool_info = _tool_registry.get_tool(tool_name)
-        if tool_info:
-            tool_instance, method, _ = tool_info
-            description = getattr(method, '_tool_description', 'No description')
-            print(f"  {tool_name:<20} - {description}")
-    
-    print(f"\nTotal: {len(tools)} tools available")
-    print("\nUsage in YAML config:")
-    print("  tools:")
-    for tool_name in sorted(tools)[:3]:  # Show first 3 as examples
-        print(f"    - {tool_name}")
+    for tool_name in sorted(tool_list):
+        _, method, _ = registry.get_tool(tool_name)
+        description = getattr(method, '_tool_description', 'No description available.').splitlines()[0]
+        print(f"{tool_name:<30} {description:<70}")
 
 
 def validate_agent_tools(tool_names: List[str]) -> tuple[List[str], List[str]]:
     """
-    Validate a list of tool names against available tools.
+    Validate a list of tool names against the registry.
     
     Returns:
-        tuple: (valid_tools, invalid_tools)
+        A tuple of (valid_tools, invalid_tools)
     """
-    available = set(_tool_registry.list_tools())
-    requested = set(tool_names)
+    registry = get_tool_registry()
+    available_tools = registry.list_tools()
     
-    valid_tools = list(requested & available)
-    invalid_tools = list(requested - available)
+    valid = [name for name in tool_names if name in available_tools]
+    invalid = [name for name in tool_names if name not in available_tools]
     
-    return valid_tools, invalid_tools
+    return valid, invalid
 
 
 def suggest_tools_for_agent(agent_name: str, agent_description: str = "") -> List[str]:
     """
-    Suggest relevant tools based on agent name and description.
-    
-    This is a simple heuristic that can be improved with better matching.
+    Suggest a list of relevant tools for a new agent.
+    (This is a placeholder for a more intelligent suggestion mechanism)
     """
-    available_tools = _tool_registry.list_tools()
-    suggestions = []
-    
-    # Simple keyword matching
-    text = f"{agent_name} {agent_description}".lower()
-    
-    for tool_name in available_tools:
-        tool_info = _tool_registry.get_tool(tool_name)
-        if tool_info:
-            _, method, _ = tool_info
-            description = getattr(method, '_tool_description', '').lower()
-            
-            # Check for keyword matches
-            if any(keyword in text for keyword in ['web', 'search', 'browser']) and 'web' in tool_name:
-                suggestions.append(tool_name)
-            elif any(keyword in text for keyword in ['search', 'find']) and 'search' in tool_name:
-                suggestions.append(tool_name)
-            elif any(keyword in text for keyword in ['code', 'execute', 'run']) and 'code' in tool_name:
-                suggestions.append(tool_name)
-    
-    return suggestions
+    # For now, just return a few basic tools
+    return ['read_file', 'write_file', 'list_directory']
 
 
 

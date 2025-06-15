@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Dict, Any
 from unittest.mock import AsyncMock, MagicMock
 
-from roboco.core.brain import BrainConfig, Message, ChatHistory
+# from roboco.core.brain import BrainConfig, Message, ChatHistory
 
 
 @pytest.fixture(scope="session")
@@ -29,48 +29,48 @@ def temp_dir():
     shutil.rmtree(temp_dir)
 
 
-@pytest.fixture
-def mock_brain_config():
-    """Mock brain configuration for testing."""
-    return BrainConfig(
-        model="gpt-3.5-turbo",
-        api_key="test-key",
-        base_url=None,
-        temperature=0.7,
-        max_tokens=1000,
-        timeout=30
-    )
+# @pytest.fixture
+# def mock_brain_config():
+#     """Mock brain configuration for testing."""
+#     return BrainConfig(
+#         model="gpt-3.5-turbo",
+#         api_key="test-key",
+#         base_url=None,
+#         temperature=0.7,
+#         max_tokens=1000,
+#         timeout=30
+#     )
 
 
-@pytest.fixture
-def sample_messages():
-    """Create sample messages for testing."""
-    return [
-        Message(
-            content="Hello, how are you?",
-            sender="User",
-            recipient="TestAgent",
-            role="user"
-        ),
-        Message(
-            content="I'm doing well, thank you!",
-            sender="TestAgent",
-            recipient="User",
-            role="assistant"
-        )
-    ]
+# @pytest.fixture
+# def sample_messages():
+#     """Create sample messages for testing."""
+#     return [
+#         Message(
+#             content="Hello, how are you?",
+#             sender="User",
+#             recipient="TestAgent",
+#             role="user"
+#         ),
+#         Message(
+#             content="I'm doing well, thank you!",
+#             sender="TestAgent",
+#             recipient="User",
+#             role="assistant"
+#         )
+#     ]
 
 
-@pytest.fixture
-def chat_history():
-    """Create a test chat history."""
-    history = ChatHistory(task_id="test-task-123")
-    history.add_message(Message(
-        content="Test message 1",
-        sender="User",
-        role="user"
-    ))
-    return history
+# @pytest.fixture
+# def chat_history():
+#     """Create a test chat history."""
+#     history = ChatHistory(task_id="test-task-123")
+#     history.add_message(Message(
+#         content="Test message 1",
+#         sender="User",
+#         role="user"
+#     ))
+#     return history
 
 
 @pytest.fixture

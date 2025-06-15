@@ -18,11 +18,10 @@ from dataclasses import dataclass, asdict
 from enum import Enum
 from ..utils.logger import get_logger
 
-from .team import Team, TeamConfig, create_team
+from .team import Team
 from .agent import Agent, create_assistant_agent
 from .memory import Memory
 from .event import EventBus, Event
-from .brain import ChatHistory
 from ..utils.id import generate_short_id
 
 logger = get_logger(__name__)
@@ -97,7 +96,7 @@ class TaskResult:
     """Result of a completed task."""
     success: bool
     summary: str
-    conversation_history: ChatHistory
+    conversation_history: list
 
 
 class Task:
@@ -172,9 +171,13 @@ class Task:
                     system_message=f"You are helping with: {self.description}"
                 )
                 
-                self._team = create_team(
+                # This part is problematic as create_team is removed.
+                # For now, we will create a Team directly.
+                # This is a temporary fix for backwards compatibility.
+                # The proper fix is to use Team.from_config_file
+                self._team = Team(
                     name=self.config.name,
-                    agents=[agent],
+                    agents={"Assistant": agent},
                     max_rounds=self.config.max_iterations
                 )
             
@@ -190,20 +193,24 @@ class Task:
             })
             
             # Run the collaboration
-            chat_history = await self._team.start_conversation(
+            await self._team.start_conversation(
                 initial_message=self.description
             )
             
             summary = f"Task completed: {self.description}"
-            if chat_history.messages:
-                # A simple summary from the last message
-                summary = chat_history.messages[-1].content
+            if self._team and self._team.history:
+                # A simple summary from the last text part of the last step
+                last_step = self._team.history[-1]
+                for part in reversed(last_step.parts):
+                    if hasattr(part, 'text'):
+                        summary = part.text
+                        break
 
             # Create and return a TaskResult
             result = TaskResult(
                 success=True,
                 summary=summary,
-                conversation_history=chat_history
+                conversation_history=self._team.history if self._team else []
             )
 
             self._update_status('completed')
@@ -219,7 +226,7 @@ class Task:
             return TaskResult(
                 success=False,
                 summary=f"Task failed: {e}",
-                conversation_history=self._team.chat_history if self._team else ChatHistory()
+                conversation_history=self._team.history if self._team else []
             )
     
     def stop(self) -> bool:

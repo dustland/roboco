@@ -24,6 +24,7 @@ dependencies = [
     "rich>=13.6.0",
     "loguru",
     # Opinionated Integrations (Best-in-Class)
+    "litellm",                      # LLM provider routing
     "openai>=1.0.0",                # LLM inference with function calling
     "google-search-results>=2.4.2", # SERP API for web search (built-in)
     "mem0ai>=0.1.106",              # Intelligent memory management

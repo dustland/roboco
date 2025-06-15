@@ -1,275 +1,84 @@
-# Configuration-Based Design
+# Roboco: Core Data & Streaming Model
 
-Simple configuration system for Roboco teams. Each task gets one YAML team config file that references prompt files.
+This document specifies the core data structures and streaming workflow for the Roboco framework. It is a language-agnostic design focused on a streaming-first, production-ready architecture.
 
-## Core Concept
+## 1. Core Principles
 
-```
-task_name/
-├── team.yaml          # Single team configuration
-└── prompts/           # Prompt files referenced by team.yaml
-    ├── researcher.md
-    ├── writer.md
-    └── coordinator.md
-```
+1.  **Streaming-First**: All interactions, including text generation and tool usage, should be consumable as a stream. This enables real-time, token-by-token UI updates, which is essential for a production-grade user experience.
+2.  **Rich Data Payloads**: A `TaskStep` is not just text. It is a structured object that can carry complex data, including multiple content types (text, tool calls, tool results) within a single message. This avoids assumptions about display logic and supports advanced use cases.
+3.  **Explicit Tool Steps**: Tool usage is a first-class citizen in the execution history. Tool calls and their corresponding results are represented as explicit, structured `parts` within a `TaskStep`, making the reasoning process transparent and easy to handle for developers.
 
-## Team Configuration
+## 2. Core Data Structures
 
-### Basic Structure
+### 2.1. TaskStep
 
-```yaml
-# research_task/team.yaml
-name: "research_team"
+The `TaskStep` is the fundamental unit of the execution history. It is a structured object, not just a string of text.
 
-# Global LLM provider settings (or use .env)
-llm_provider:
-  base_url: "https://api.deepseek.com"
-  api_key: "${DEEPSEEK_API_KEY}"
-  model: "deepseek-chat"
+| Field        | Type              | Required | Description                                                     |
+| :----------- | :---------------- | :------- | :-------------------------------------------------------------- |
+| `id`         | `string`          | Yes      | A unique identifier for the step.                               |
+| `parent_id`  | `string`          | No       | The ID of the parent step, for hierarchical execution.          |
+| `agent_name` | `string`          | Yes      | The name of the agent that generated the step.                  |
+| `parts`      | `array[StepPart]` | Yes      | The payload of the step, as a collection of rich content parts. |
+| `created_at` | `datetime`        | Yes      | The time the step was created. Defaults to now.                 |
+| `metadata`   | `object`          | No       | A key-value object for arbitrary metadata.                      |
 
-agents:
-  - name: "researcher"
-    role: "assistant"
-    prompt_file: "prompts/researcher.md"
-    llm_config:
-      temperature: 0.3 # Lower for factual research
-      max_tokens: 4000
-    tools: ["search", "web_extraction", "memory"]
+### 2.2. Step Parts
 
-  - name: "writer"
-    role: "assistant"
-    prompt_file: "prompts/writer.md"
-    llm_config:
-      temperature: 0.8 # Higher for creative writing
-      max_tokens: 6000
-    tools: ["memory"]
+A `TaskStep`'s `parts` field is an array of `StepPart` objects. This allows a single step to carry multiple types of information.
 
-  - name: "coordinator"
-    role: "system"
-    prompt_file: "prompts/coordinator.md"
-    llm_config: null # System agents may not need LLM
-    tools: []
+**Types of Step Parts:**
 
-# Team collaboration controls (essential to avoid infinite loops)
-collaboration:
-  speaker_selection_method: "auto" # auto, round_robin, manual
-  max_rounds: 10 # Hard limit to prevent infinite loops
-  termination_condition: "TERMINATE" # What message ends the conversation
+1.  **`text`**: A part containing a standard text string.
 
-# Tool configurations
-tools:
-  search:
-    provider: "serpapi"
-    max_results: 10
+    - `type`: "text"
+    - `text`: The string content.
 
-  memory:
-    provider: "mem0"
-    max_memories: 1000
+2.  **`tool_call`**: A part representing a request from the AI to execute one or more tools.
 
-  web_extraction:
-    provider: "firecrawl"
-    format: "markdown"
-```
+    - `type`: "tool_call"
+    - `tool_call`: A `ToolCall` object.
 
-### Essential Configuration Items
+3.  **`tool_result`**: A part representing the results from one or more tool executions.
+    - `type`: "tool_result"
+    - `tool_result`: A `ToolResult` object.
 
-**Global Level:**
+### 2.3. Tool Call & Result
 
-- `llm_provider`: Base URL, API key, default model (can be in .env instead)
-- `collaboration`: Speaker selection, max rounds, termination controls
-- `tools`: Tool provider configurations
+These structures define the request and response shapes for tool interactions, and are contained within the `tool_call` and `tool_result` parts.
 
-**Agent Level:**
+**`ToolCall` Schema:**
 
-- `name`: Agent identifier
-- `role`: "assistant", "user", or "system"
-- `prompt_file`: Path to prompt file (relative to team config)
-- `llm_config`: Model settings (temperature, max_tokens, etc.)
-- `tools`: List of tool names this agent can use
+| Field       | Type     | Required | Description                                           |
+| :---------- | :------- | :------- | :---------------------------------------------------- |
+| `id`        | `string` | Yes      | A unique ID for this specific invocation request.     |
+| `tool_name` | `string` | Yes      | The name of the tool to execute (e.g., `web_search`). |
+| `args`      | `object` | Yes      | A key-value object of arguments for the tool.         |
 
-**Team Level:**
+**`ToolResult` Schema:**
 
-- `name`: Team identifier
-- `agents`: List of agent configurations
+| Field          | Type     | Required | Description                                                                            |
+| :------------- | :------- | :------- | :------------------------------------------------------------------------------------- |
+| `tool_call_id` | `string` | Yes      | The ID of the `ToolCall` this is a result for.                                         |
+| `result`       | `any`    | Yes      | The output from the tool. This can be a string, object, array, or any other data type. |
+| `is_error`     | `bool`   | No       | Indicates if the result is an error. Defaults to `false`.                              |
 
-### LLM Configuration Options
+## 3. Core Workflow: Streaming Interaction
 
-```yaml
-# Option 1: Global provider + per-agent settings
-llm_provider:
-  base_url: "https://api.deepseek.com"
-  api_key: "${DEEPSEEK_API_KEY}"
-  model: "deepseek-chat"
+The workflow defined in `collaboration-with-tools.md` provides the canonical sequence diagram and steps for the framework's streaming interaction model. This section serves as a high-level conceptual reference.
 
-agents:
-  - name: "researcher"
-    llm_config:
-      temperature: 0.2
-      max_tokens: 4000
-      top_p: 0.9
-  - name: "writer"
-    llm_config:
-      temperature: 0.8
-      max_tokens: 6000
-      model: "deepseek-coder"  # Override global model
+When a client runs a task via the `Orchestrator`, they can iterate over a generator that yields structured "chunks" of data as they become available. The client's responsibility is to interpret these chunks to build the UI and conversation state in real-time.
 
-# Option 2: All in .env (cleaner)
-# .env file:
-# DEEPSEEK_BASE_URL=https://api.deepseek.com
-# DEEPSEEK_API_KEY=sk-...
-# DEEPSEEK_MODEL=deepseek-chat
+**Conceptual Stream Chunk Types:**
 
-agents:
-  - name: "researcher"
-    llm_config:
-      temperature: 0.2
-      max_tokens: 4000
-```
+| Chunk Type         | Data Payload     | Description                                                                                     |
+| :----------------- | :--------------- | :---------------------------------------------------------------------------------------------- |
+| `text_part_delta`  | `string`         | A token-by-token piece of a `TextPart` response.                                                |
+| `tool_call_part`   | `ToolCallPart`   | A complete `ToolCallPart` object, sent atomically.                                              |
+| `tool_result_part` | `ToolResultPart` | A complete `ToolResultPart` object, sent atomically.                                            |
+| `step_final`       | `TaskStep`       | The fully-formed `TaskStep` object at the end of a turn (e.g., after all text deltas are sent). |
 
-### Team Collaboration Controls
-
-```yaml
-team:
-  # Speaker selection methods
-  speaker_selection_method: "auto" # LLM decides next speaker
-  # speaker_selection_method: "round_robin"  # Fixed order
-  # speaker_selection_method: "manual"       # Human selects
-
-  # Loop prevention (CRITICAL)
-  max_rounds: 15 # Hard limit on conversation rounds
-  timeout_minutes: 30 # Time limit for entire task
-
-  # Termination conditions
-  termination_condition: "TERMINATE" # Message that ends conversation
-  auto_terminate_keywords: ["DONE", "COMPLETE", "FINISHED"]
-
-  # Speaker transitions (for round_robin)
-  speaker_order: ["researcher", "writer", "coordinator"]
-```
-
-### Tool and Subsystem Configurations
-
-```yaml
-tools:
-  search:
-    provider: "serpapi"
-    api_key: "${SERP_API_KEY}"
-    max_results: 10
-    timeout: 30
-
-  memory:
-    provider: "mem0"
-    api_key: "${MEM0_API_KEY}"
-    max_memories: 1000
-    cleanup_threshold: 0.8
-
-  web_extraction:
-    provider: "firecrawl"
-    api_key: "${FIRECRAWL_API_KEY}"
-    format: "markdown"
-    include_links: true
-
-  code_execution:
-    provider: "local" # or "daytona"
-    timeout: 60
-    memory_limit: "1GB"
-    allowed_languages: ["python", "bash"]
-```
-
-### Prompt Files
-
-```markdown
-<!-- prompts/researcher.md -->
-
-You are a research specialist focused on AI and technology trends.
-
-Your responsibilities:
-
-- Search for current information using web search
-- Extract detailed content from relevant sources
-- Analyze findings and identify key insights
-- Store important information in memory for team access
-
-Always cite your sources and provide comprehensive analysis.
-
-When your research is complete, end your message with "RESEARCH_COMPLETE".
-```
-
-## Loading and Usage
-
-```python
-from roboco.config import load_team_config
-from roboco.core import Team
-
-# Load team from config
-config = load_team_config("research_task/team.yaml")
-team = Team.from_config(config)
-
-# Run task with collaboration controls
-result = await team.run("Research latest AI agent frameworks")
-```
-
-## Directory Structure
-
-```
-projects/
-├── market_research/
-│   ├── team.yaml
-│   └── prompts/
-│       ├── researcher.md
-│       ├── analyst.md
-│       └── writer.md
-├── content_creation/
-│   ├── team.yaml
-│   └── prompts/
-│       ├── researcher.md
-│       ├── writer.md
-│       └── editor.md
-└── code_review/
-    ├── team.yaml
-    └── prompts/
-        ├── reviewer.md
-        └── tester.md
-```
-
-## Configuration Validation
-
-Essential validation:
-
-- Agent names are unique within team
-- Prompt files exist and are readable
-- Tool names are valid (from global tool registry)
-- Roles are valid ("assistant", "user", "system")
-- LLM config values are within valid ranges
-- Max rounds > 0 (prevent infinite loops)
-- Required API keys are available
-
-```python
-from roboco.config import validate_team_config
-
-errors = validate_team_config("research_task/team.yaml")
-if errors:
-    print(f"Config errors: {errors}")
-```
-
-## Environment Variables (.env approach)
-
-```bash
-# LLM Provider
-DEEPSEEK_BASE_URL=https://api.deepseek.com
-DEEPSEEK_API_KEY=sk-...
-DEEPSEEK_MODEL=deepseek-chat
-
-# Tool APIs
-SERPAPI_KEY=...
-FIRECRAWL_API_KEY=...
-
-# Global limits
-ROBOCO_MAX_ROUNDS=20
-ROBOCO_TIMEOUT_MINUTES=60
-```
-
-Clean, essential, focused - with the critical configurations restored.
+This design provides a clear, conceptual foundation for the data models and streaming patterns used in the Roboco framework.
 
 ```
 

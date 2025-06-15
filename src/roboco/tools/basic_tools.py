@@ -6,7 +6,7 @@ import os
 import asyncio
 from pathlib import Path
 from typing import Annotated
-from ..tool.base import Tool, tool
+from ..core.tool import Tool, tool
 
 class BasicTool(Tool):
     """Basic file system and utility tools using the new decorator-based system."""
@@ -35,7 +35,7 @@ class BasicTool(Tool):
         
         return target_path
     
-    @tool(name="echo_message", description="Echo back a message, potentially with a prefix")
+    @tool(description="Echo back a message, potentially with a prefix")
     async def echo_message(
         self,
         task_id: str,
@@ -48,7 +48,7 @@ class BasicTool(Tool):
             return f"{prefix}: {message}"
         return message
     
-    @tool(name="read_file", description="Read the contents of a file within the workspace")
+    @tool(description="Read the contents of a file within the workspace")
     async def read_file(
         self,
         task_id: str,
@@ -79,7 +79,7 @@ class BasicTool(Tool):
         except Exception as e:
             return f"❌ Error reading file: {str(e)}"
     
-    @tool(name="write_file", description="Write content to a file within the workspace")
+    @tool(description="Write content to a file within the workspace")
     async def write_file(
         self,
         task_id: str,
@@ -105,7 +105,7 @@ class BasicTool(Tool):
         except Exception as e:
             return f"❌ Error writing file: {str(e)}"
     
-    @tool(name="list_directory", description="List the contents of a directory within the workspace")
+    @tool(description="List the contents of a directory within the workspace")
     async def list_directory(
         self,
         task_id: str,
@@ -142,7 +142,7 @@ class BasicTool(Tool):
         except Exception as e:
             return f"❌ Error listing directory: {str(e)}"
     
-    @tool(name="file_exists", description="Check if a file or directory exists within the workspace")
+    @tool(description="Check if a file or directory exists within the workspace")
     async def file_exists(
         self,
         task_id: str,
@@ -170,7 +170,7 @@ class BasicTool(Tool):
         except Exception as e:
             return f"❌ Error checking path: {str(e)}"
     
-    @tool(name="create_directory", description="Create a directory within the workspace")
+    @tool(description="Create a directory within the workspace")
     async def create_directory(
         self,
         task_id: str,
@@ -197,7 +197,7 @@ class BasicTool(Tool):
         except Exception as e:
             return f"❌ Error creating directory: {str(e)}"
     
-    @tool(name="delete_file", description="Delete a file within the workspace")
+    @tool(description="Delete a file within the workspace")
     async def delete_file(
         self,
         task_id: str,
