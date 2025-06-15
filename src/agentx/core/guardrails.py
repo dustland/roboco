@@ -17,7 +17,8 @@ from ..utils.logger import get_logger
 from ..utils.id import generate_short_id
 from .config import GuardrailPolicy, GuardrailType
 from .task_step import GuardrailCheck, GuardrailPart
-from .event import GuardrailViolationEvent, publish_event
+from .event import GuardrailViolationEvent
+from ..event import publish_event
 
 logger = get_logger(__name__)
 

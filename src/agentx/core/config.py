@@ -140,4 +140,10 @@ class TeamConfig(BaseModel):
     guardrail_policies: List[GuardrailPolicy] = Field(default_factory=list)
     memory: MemoryConfig = Field(default_factory=MemoryConfig)  # Changed from memory_config to memory
     execution: ExecutionConfig = Field(default_factory=ExecutionConfig)  # Changed from execution_config to execution
-    deployment_config: Dict[str, Any] = Field(default_factory=dict) 
+    deployment_config: Dict[str, Any] = Field(default_factory=dict)
+    
+    # Dynamic context variables for agent coordination
+    context_variables: Dict[str, Any] = Field(default_factory=dict)
+    
+    # Execution plan configuration
+    execution_plan: Dict[str, Any] = Field(default_factory=dict) 

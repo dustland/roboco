@@ -12,6 +12,8 @@ from ..core.tool import Tool, tool, register_tool
 from ..utils.logger import get_logger
 
 from .basic_tools import BasicTool
+from .context_tools import ContextTool
+from .planning_tools import PlanningTool
 
 logger = get_logger(__name__)
 
@@ -23,6 +25,13 @@ def register_builtin_tools():
     # Always register basic tools
     register_tool(BasicTool())
     logger.info("Registered BasicTool")
+    
+    # Always register context and planning tools - these are core framework capabilities
+    register_tool(ContextTool())
+    logger.info("Registered ContextTool (built-in framework capability)")
+    
+    register_tool(PlanningTool())
+    logger.info("Registered PlanningTool (built-in framework capability)")
     
     # Register search tools if dependencies are available
     try:
@@ -50,6 +59,8 @@ def register_builtin_tools():
 # Export tool classes for direct use if needed
 __all__ = [
     "BasicTool",
+    "ContextTool", 
+    "PlanningTool",
     # "WebSearchTool",
     "register_builtin_tools"
 ] 

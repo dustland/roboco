@@ -1,0 +1,305 @@
+# SuperWriter Team Configuration
+# Optimized for long-form research report generation (50k+ words)
+
+name: "SuperWriter Research Team"
+description: "Advanced multi-agent system for comprehensive research report generation"
+
+agents:
+  - name: consultant
+    description: "Requirements gathering and project planning specialist"
+    class: agentx.core.agents.Agent
+    prompt_template: "prompts/consultant.md"
+    tools: []
+    llm_config:
+      model: deepseek/deepseek-chat
+      temperature: 0.3
+      max_tokens: 8192
+    guardrail_policies:
+      - content_safety
+      - research_quality
+
+  - name: researcher
+    description: "Research specialist for comprehensive information gathering"
+    class: agentx.core.agents.Agent
+    prompt_template: "prompts/researcher.md"
+    tools:
+      - web_search
+      - academic_search
+      - data_analysis
+    llm_config:
+      model: deepseek/deepseek-chat
+      temperature: 0.2
+      max_tokens: 8192
+    guardrail_policies:
+      - content_safety
+      - source_verification
+
+  - name: writer
+    description: "Professional content writer for long-form research reports"
+    class: agentx.core.agents.Agent
+    prompt_template: "prompts/writer.md"
+    tools:
+      - document_formatter
+      - citation_manager
+    llm_config:
+      model: deepseek/deepseek-chat
+      temperature: 0.4
+      max_tokens: 8192
+    guardrail_policies:
+      - content_safety
+      - writing_quality
+
+  - name: reviewer
+    description: "Quality assurance and editorial review specialist"
+    class: agentx.core.agents.Agent
+    prompt_template: "prompts/reviewer.md"
+    tools:
+      - fact_checker
+      - quality_analyzer
+    llm_config:
+      model: deepseek/deepseek-chat
+      temperature: 0.1
+      max_tokens: 8192
+    guardrail_policies:
+      - content_safety
+      - editorial_standards
+
+# Tool configurations
+tools:
+  - name: web_search
+    type: builtin
+    config:
+      max_results: 20
+      search_depth: comprehensive
+
+  - name: academic_search
+    type: builtin
+    config:
+      databases: ["arxiv", "pubmed", "ieee", "acm"]
+      max_papers: 50
+
+  - name: data_analysis
+    type: builtin
+    config:
+      analysis_types: ["statistical", "trend", "comparative"]
+
+  - name: document_formatter
+    type: builtin
+    config:
+      formats: ["markdown"]
+      table_support: true
+      style_guide: "academic"
+
+  - name: citation_manager
+    type: builtin
+    config:
+      citation_style: "apa"
+      auto_format: true
+
+  - name: fact_checker
+    type: builtin
+    config:
+      verification_sources: ["primary", "peer_reviewed"]
+      confidence_threshold: 0.8
+
+  - name: quality_analyzer
+    type: builtin
+    config:
+      metrics: ["readability", "coherence", "completeness"]
+      target_score: 0.85
+
+# Memory configuration for long-form content
+memory:
+  vector_store:
+    provider: chroma
+    config:
+      collection_name: superwriter_research
+      path: ./workspace/memory_db
+      chunk_size: 2000
+      chunk_overlap: 200
+  llm:
+    config:
+      model: deepseek/deepseek-chat
+      temperature: 0.1
+      max_tokens: 4096
+  embedder:
+    provider: openai
+    config:
+      model: text-embedding-3-small
+  version: v1.2
+
+# Execution configuration
+execution:
+  mode: "autonomous"
+  max_rounds: 150
+  timeout_seconds: 10800 # 3 hours
+  initial_agent: "consultant"
+
+  # Execution Plan Configuration
+  execution_plan:
+    enabled: true
+    track_progress: true
+    update_frequency: "after_each_agent"
+    success_metrics:
+      - "requirements_gathered"
+      - "research_completed"
+      - "content_drafted"
+      - "quality_reviewed"
+      - "final_report_delivered"
+
+# Context and planning are now handled by built-in tools
+# No need to define context_variables or execution_plan here
+
+# Handoff rules with requirement gathering
+handoff_rules:
+  # Initial requirement gathering
+  - from_agent: user
+    to_agent: consultant
+    condition: task_start
+
+  # Consultation to research (after requirements confirmed)
+  - from_agent: consultant
+    to_agent: researcher
+    condition: requirements_finalized
+
+  # Research iterations
+  - from_agent: researcher
+    to_agent: reviewer
+    condition: research_batch_complete
+
+  - from_agent: reviewer
+    to_agent: researcher
+    condition: more_research_needed
+
+  # Research to writing
+  - from_agent: reviewer
+    to_agent: writer
+    condition: research_sufficient
+
+  # Writing iterations
+  - from_agent: writer
+    to_agent: reviewer
+    condition: section_draft_complete
+
+  - from_agent: reviewer
+    to_agent: writer
+    condition: revision_needed
+
+  # Continue writing more sections
+  - from_agent: reviewer
+    to_agent: writer
+    condition: section_approved_continue
+
+  # Final compilation and review
+  - from_agent: writer
+    to_agent: reviewer
+    condition: full_report_compiled
+
+  - from_agent: reviewer
+    to_agent: writer
+    condition: final_revisions_needed
+
+  # Completion
+  - from_agent: reviewer
+    to_agent: user
+    condition: report_approved
+
+# Guardrail policies
+guardrail_policies:
+  - name: content_safety
+    type: content_filter
+    rules:
+      - type: harmful_content
+        action: block
+      - type: misinformation
+        action: warn
+    severity: high
+
+  - name: research_quality
+    type: quality_check
+    rules:
+      - type: source_credibility
+        threshold: 0.7
+        action: warn
+      - type: citation_completeness
+        threshold: 0.9
+        action: warn
+    severity: medium
+
+  - name: source_verification
+    type: fact_check
+    rules:
+      - type: primary_source_required
+        action: warn
+      - type: recency_check
+        max_age_years: 5
+        action: warn
+    severity: medium
+
+  - name: writing_quality
+    type: quality_check
+    rules:
+      - type: readability_score
+        min_score: 60
+        action: warn
+      - type: coherence_check
+        min_score: 0.7
+        action: warn
+    severity: low
+
+  - name: editorial_standards
+    type: quality_check
+    rules:
+      - type: completeness_check
+        min_sections: 10
+        action: warn
+      - type: length_requirement
+        min_words: 45000
+        action: warn
+    severity: medium
+
+# Event configuration for progress tracking
+events:
+  bus_type: memory
+  persistence: true
+  auto_emit_patterns:
+    - metadata_filter:
+        artifact_type: research_plan
+        status: approved
+      event_name: research_plan_ready
+
+    - metadata_filter:
+        artifact_type: research_batch
+        status: complete
+      event_name: research_batch_complete
+
+    - metadata_filter:
+        artifact_type: section_draft
+        status: complete
+      event_name: section_draft_complete
+
+    - metadata_filter:
+        artifact_type: section
+        status: approved
+      event_name: section_approved
+
+    - metadata_filter:
+        artifact_type: full_report
+        status: compiled
+      event_name: full_report_compiled
+
+    - metadata_filter:
+        artifact_type: final_report
+        status: approved
+      event_name: report_approved
+
+# Artifact management for long-form content
+artifacts:
+  auto_save: true
+  versioning: true
+  compression: true
+  formats:
+    - markdown
+    - pdf
+    - docx
+  backup_interval: 30 # minutes

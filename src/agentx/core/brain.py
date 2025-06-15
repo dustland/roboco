@@ -62,9 +62,14 @@ class Brain:
             # Use litellm for provider abstraction
             import litellm
             
+            # Determine provider from config or model name
+            provider = getattr(self.config, 'provider', None)
+            if not provider and '/' in self.config.model:
+                provider = self.config.model.split('/')[0]
+            
             # Set API key from config or environment
             api_key = self.config.api_key
-            if not api_key:
+            if not api_key and provider:
                 # Try to get from environment based on provider
                 env_key_map = {
                     "openai": "OPENAI_API_KEY",
@@ -72,26 +77,27 @@ class Brain:
                     "deepseek": "DEEPSEEK_API_KEY",
                     "ollama": "OLLAMA_API_KEY"
                 }
-                env_key = env_key_map.get(self.config.provider.lower())
+                env_key = env_key_map.get(provider.lower())
                 if env_key:
                     api_key = os.getenv(env_key)
             
-            if not api_key and self.config.provider.lower() != "ollama":
-                logger.warning(f"No API key found for provider {self.config.provider}")
+            if not api_key and provider and provider.lower() != "ollama":
+                logger.warning(f"No API key found for provider {provider}")
             
             # Configure litellm
-            if api_key:
-                os.environ[f"{self.config.provider.upper()}_API_KEY"] = api_key
+            if api_key and provider:
+                os.environ[f"{provider.upper()}_API_KEY"] = api_key
                 
-            if self.config.base_url:
+            if self.config.base_url and provider:
                 # Set base URL for custom endpoints
-                if self.config.provider.lower() == "deepseek":
+                if provider.lower() == "deepseek":
                     os.environ["DEEPSEEK_API_BASE"] = self.config.base_url
-                elif self.config.provider.lower() == "openai":
+                elif provider.lower() == "openai":
                     os.environ["OPENAI_API_BASE"] = self.config.base_url
                     
             self._initialized = True
-            logger.info(f"Brain initialized with {self.config.provider}/{self.config.model}")
+            model_display = self.config.model if '/' in self.config.model else f"{provider}/{self.config.model}" if provider else self.config.model
+            logger.info(f"Brain initialized with {model_display}")
             
         except ImportError:
             logger.error("litellm package not available. Install with: pip install litellm")
@@ -148,8 +154,13 @@ class Brain:
                 })
             
             # Prepare call parameters
+            # Handle model name - if it already includes provider prefix, use as-is
+            model_name = self.config.model
+            if hasattr(self.config, 'provider') and self.config.provider and '/' not in model_name:
+                model_name = f"{self.config.provider}/{self.config.model}"
+            
             call_params = {
-                "model": f"{self.config.provider}/{self.config.model}",
+                "model": model_name,
                 "messages": formatted_messages,
                 "temperature": temperature or self.config.temperature,
                 "max_tokens": max_tokens or self.config.max_tokens,
@@ -248,8 +259,13 @@ class Brain:
         except Exception as e:
             logger.error(f"LLM call failed: {e}")
             # Return a fallback response for demo purposes
+            # Extract provider for error message
+            provider = getattr(self.config, 'provider', None)
+            if not provider and '/' in self.config.model:
+                provider = self.config.model.split('/')[0]
+            
             return LLMResponse(
-                content=f"I apologize, but I'm having trouble connecting to the {self.config.provider} API. "
+                content=f"I apologize, but I'm having trouble connecting to the {provider or 'LLM'} API. "
                        f"This could be due to missing API keys or network issues. "
                        f"Error: {str(e)}",
                 model=self.config.model,
@@ -311,8 +327,13 @@ class Brain:
                 })
             
             # Prepare call parameters
+            # Handle model name - if it already includes provider prefix, use as-is
+            model_name = self.config.model
+            if hasattr(self.config, 'provider') and self.config.provider and '/' not in model_name:
+                model_name = f"{self.config.provider}/{self.config.model}"
+            
             call_params = {
-                "model": f"{self.config.provider}/{self.config.model}",
+                "model": model_name,
                 "messages": formatted_messages,
                 "temperature": temperature or self.config.temperature,
                 "max_tokens": max_tokens or self.config.max_tokens,

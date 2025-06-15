@@ -1,162 +1,233 @@
-# SuperWriter Multi-Agent Collaboration System
+# SuperWriter - Advanced Research Report Generation System
 
-A comprehensive writing system powered by multiple AI agents working together with task session management and continuation capabilities.
+SuperWriter is a comprehensive multi-agent system designed to generate professional, long-form research reports (50+ pages, 50k+ words) through autonomous collaboration between specialized AI agents.
 
-## Features
+## 🎯 Key Features
 
-- 🤖 **Multi-Agent Collaboration**: Planner, Researcher, Writer, Reviewer, and Tool Executor agents
-- 📝 **Memory-Driven Workflow**: Agents share context and build upon previous work
-- 🔄 **Task Continuation**: Resume tasks from where they left off
-- 🆔 **Short Task IDs**: URL-friendly 8-character task identifiers
-- 📊 **Progress Tracking**: Monitor rounds, duration, and completion status
-- 🔍 **Task Management**: List, search, and manage multiple writing projects
+- **Long-form Content Generation**: Produces comprehensive reports of 50+ pages or 50k+ words
+- **Autonomous Multi-Agent Workflow**: Planner → Researcher → Writer → Reviewer collaboration
+- **Real-time Monitoring**: Track progress via observability platform at http://localhost:8506
+- **Human Intervention**: Jump in with guidance messages during generation
+- **Professional Quality**: Academic-grade research with proper citations and structure
+- **Artifact Management**: Automatic saving of research notes, drafts, and final reports
 
-## Quick Start
+## 🚀 Quick Start
 
 ### Prerequisites
 
-Set up your environment variables:
+Set up your API key:
 
 ```bash
-export OPENAI_API_KEY="your_openai_api_key"
-export SERPAPI_KEY="your_serpapi_key"
+export DEEPSEEK_API_KEY="your-deepseek-api-key"
+# OR
+export OPENAI_API_KEY="your-openai-api-key"
 ```
 
-### Basic Usage
+### Generate a Research Report
 
 ```bash
-# Start a new writing task
-python main.py "Write a comprehensive guide on sustainable energy"
+cd examples/superwriter
 
-# List all tasks
-python main.py --list
+# Generate a comprehensive research report
+python main.py "Tesla auto driving technology"
 
-# Resume a specific task
-python main.py --resume B5cD8fGh
+# Specify target length
+python main.py "AI in healthcare" --length "100 pages"
 
-# Show task details
-python main.py --details B5cD8fGh
+# Run without real-time streaming
+python main.py "Climate change solutions" --no-streaming
 
-# Find similar tasks
-python main.py --find "energy guide"
+# Disable human intervention
+python main.py "Quantum computing" --no-intervention
 ```
 
-## Command Reference
+## 📊 Real-time Monitoring
 
-### Starting New Tasks
+While the report is being generated, you can:
+
+1. **Monitor Progress**: Visit http://localhost:8506 to see real-time progress
+2. **View Artifacts**: Check the `workspace/` directory for generated files
+3. **Track Metrics**: See word count, agent activity, and completion status
+4. **Intervene**: Provide guidance messages during handoffs (if enabled)
+
+## 🤖 Agent Workflow
+
+### 1. Planner Agent
+
+- Creates comprehensive research methodology
+- Defines report structure and section outlines
+- Sets quality standards and success criteria
+
+### 2. Researcher Agent
+
+- Conducts extensive research using multiple sources
+- Gathers data, statistics, and expert opinions
+- Compiles research notes and source materials
+
+### 3. Writer Agent
+
+- Drafts sections based on research findings
+- Maintains professional tone and academic rigor
+- Creates structured, well-formatted content
+
+### 4. Reviewer Agent
+
+- Performs quality assurance and fact-checking
+- Ensures completeness and coherence
+- Validates citations and sources
+
+## 📋 Report Structure
+
+Generated reports include:
+
+1. **Executive Summary** (2-3 pages)
+2. **Introduction and Background** (5-7 pages)
+3. **Current State Analysis** (8-10 pages)
+4. **Technical Deep Dive** (10-15 pages)
+5. **Market Analysis** (8-10 pages)
+6. **Competitive Landscape** (6-8 pages)
+7. **Challenges and Limitations** (5-7 pages)
+8. **Future Outlook and Trends** (8-10 pages)
+9. **Recommendations** (3-5 pages)
+10. **Conclusion** (2-3 pages)
+11. **References and Bibliography**
+12. **Appendices** (technical details, data tables)
+
+## 🛠️ Configuration
+
+### Team Configuration
+
+The system uses `config/team.yaml` which defines:
+
+- **Agent Roles**: Specialized prompts and capabilities
+- **Tool Access**: Research, writing, and analysis tools
+- **Handoff Rules**: Collaboration workflow patterns
+- **Quality Standards**: Guardrails and validation rules
+- **Memory Management**: Long-term context retention
+
+### Customization Options
 
 ```bash
-# Basic task
-python main.py "Your task description here"
+# Use custom team configuration
+python main.py "Your topic" --config path/to/custom/team.yaml
 
-# With custom round limit
-python main.py "Your task description" --max-rounds 30
+# Adjust target length
+python main.py "Your topic" --length "75 pages"
+
+# Control execution mode
+python main.py "Your topic" --no-streaming --no-intervention
 ```
 
-### Task Management
+## 📁 Output Files
+
+Generated artifacts are saved to `workspace/`:
+
+```
+workspace/
+├── research_plan.md          # Initial research methodology
+├── research_notes/           # Compiled research materials
+│   ├── sources.md
+│   ├── data_analysis.md
+│   └── expert_opinions.md
+├── drafts/                   # Section drafts
+│   ├── executive_summary.md
+│   ├── introduction.md
+│   ├── technical_analysis.md
+│   └── ...
+├── final_report.md           # Complete compiled report
+├── bibliography.md           # References and citations
+└── appendices/               # Supporting materials
+```
+
+## 🔍 Quality Assurance
+
+SuperWriter implements multiple quality checks:
+
+- **Source Verification**: Validates credibility and recency
+- **Fact Checking**: Cross-references claims with reliable sources
+- **Citation Management**: Ensures proper academic formatting
+- **Completeness Checks**: Verifies all required sections
+- **Readability Analysis**: Maintains professional writing standards
+
+## 🎛️ Advanced Features
+
+### Human Intervention
+
+During generation, you can provide guidance:
+
+```
+💡 Intervention opportunity - type 'INTERVENE: <message>' or press Enter to continue
+
+INTERVENE: Focus more on the safety aspects of autonomous driving
+INTERVENE: Include more recent 2024 developments
+INTERVENE: Add comparison with European regulations
+```
+
+### Progress Tracking
+
+Real-time metrics include:
+
+- **Word Count**: Progress toward 50k+ word target
+- **Agent Activity**: Current agent and task status
+- **Handoffs**: Collaboration flow between agents
+- **Artifacts**: Generated files and documents
+- **Quality Scores**: Research and writing quality metrics
+
+### Observability Platform
+
+Access detailed monitoring at http://localhost:8506:
+
+- Task execution timeline
+- Agent conversation history
+- Artifact generation tracking
+- Performance metrics
+- Error logs and debugging info
+
+## 🏆 Success Criteria
+
+A successful report generation includes:
+
+- ✅ **Length**: Meets or exceeds 50k word target
+- ✅ **Quality**: Professional, well-researched content
+- ✅ **Structure**: Complete with all required sections
+- ✅ **Sources**: Credible, recent, and properly cited
+- ✅ **Coherence**: Logical flow and clear organization
+- ✅ **Completeness**: Comprehensive coverage of topic
+
+## 🔧 Troubleshooting
+
+### Common Issues
+
+**Generation stops early**: Check API key limits and increase timeout
+**Low quality output**: Adjust temperature settings in team.yaml
+**Missing sections**: Verify handoff rules and completion criteria
+**Slow performance**: Consider using faster models or reducing scope
+
+### Debug Mode
+
+Enable detailed logging:
 
 ```bash
-# Detailed task listing
-python main.py --list
-
-# Compact table view
-python main.py --list-compact
-
-# Show specific task details
-python main.py --details <TASK_ID>
-
-# Find similar tasks
-python main.py --find "keyword or description"
+export AGENTX_LOG_LEVEL=DEBUG
+python main.py "Your topic"
 ```
 
-### Resuming Tasks
+## 🚀 Competing with Manus
 
-```bash
-# Resume with default rounds (25)
-python main.py --resume <TASK_ID>
+SuperWriter is designed to validate AgentX's capability to compete with advanced systems like Manus by demonstrating:
 
-# Resume with custom round limit
-python main.py --resume <TASK_ID> --max-rounds 10
-```
+1. **Scale**: Generating substantial 50k+ word reports
+2. **Quality**: Professional, publication-ready content
+3. **Autonomy**: Minimal human intervention required
+4. **Monitoring**: Real-time progress tracking and intervention
+5. **Reliability**: Consistent, repeatable results
 
-## Task Status Types
+This example serves as a comprehensive test of AgentX's multi-agent orchestration, long-form content generation, and production-readiness capabilities.
 
-- 🟢 **Active**: Currently running or can be resumed
-- ⏸️ **Paused**: Manually paused, can be resumed
-- ✅ **Completed**: Successfully finished
-- ❌ **Failed**: Encountered errors during execution
+## 📚 Next Steps
 
-## Example Workflow
-
-1. **Start a new project**:
-
-   ```bash
-   python main.py "Create a business plan for a sustainable tech startup"
-   ```
-
-2. **Check progress**:
-
-   ```bash
-   python main.py --list-compact
-   ```
-
-3. **Resume if needed**:
-
-   ```bash
-   python main.py --resume f3THoi5x --max-rounds 20
-   ```
-
-4. **View final results**:
-   ```bash
-   python main.py --details f3THoi5x
-   ```
-
-## Agent Roles
-
-- **Planner**: Breaks down tasks and coordinates workflow
-- **Researcher**: Gathers information and conducts research
-- **Writer**: Creates content based on research and requirements
-- **Reviewer**: Reviews and improves written content
-- **Tool Executor**: Handles tool calls and external integrations
-
-## Memory System
-
-The system uses a sophisticated memory system where:
-
-- Each task has isolated memory using the task ID as `task_id`
-- Agents can store and retrieve context across rounds
-- Memory persists between task resumptions
-- Shared knowledge builds up throughout the collaboration
-
-## Configuration
-
-The system uses `config/default.yaml` for agent configuration. You can customize:
-
-- Agent prompts and roles
-- Tool configurations
-- Workflow parameters
-- Memory settings
-
-## Output
-
-Results are saved in the `workspace/` directory:
-
-- Task sessions: `workspace/task_sessions.json`
-- Memory database: `workspace/memory.db`
-- Generated content and artifacts
-
-## Tips
-
-- Use descriptive task descriptions for better results
-- Monitor progress with `--list` to see round usage
-- Resume tasks that hit round limits to continue work
-- Use `--find` to locate related previous work
-- Short task IDs (like `B5cD8fGh`) are easy to copy and use
-
-## Troubleshooting
-
-**Task not found**: Check available tasks with `--list`
-**Memory errors**: Ensure proper environment variables are set
-**Tool executor loops**: This is a known issue being addressed
-
-For more help: `python main.py --help`
+- Experiment with different research topics
+- Customize agent prompts for specific domains
+- Integrate additional research tools and databases
+- Scale up to even longer reports (100k+ words)
+- Add support for multiple output formats (PDF, LaTeX, etc.)
