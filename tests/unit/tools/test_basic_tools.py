@@ -8,7 +8,7 @@ import shutil
 from pathlib import Path
 from unittest.mock import Mock, patch
 
-from roboco.tools.basic_tools import BasicTool
+from agentx.tools.basic_tools import BasicTool
 
 
 class TestBasicTool:

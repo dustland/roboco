@@ -1,6 +1,6 @@
 # Simple Chat Example
 
-This example demonstrates Roboco's clean and minimal configuration structure with:
+This example demonstrates AgentX's clean and minimal configuration structure with:
 
 - **User agent** for human input
 - **Assistant agent** with search capabilities and memory
@@ -16,7 +16,7 @@ simple_chat/
 ├── team.yaml              # Team configuration (simplified structure)
 ├── prompts/
 │   └── assistant.md       # Assistant prompt file
-├── run_chat.py           # Example script
+├── main.py           # Example script
 └── README.md             # This file
 ```
 
@@ -45,7 +45,7 @@ agents:
 ### 2. Clean AG2-Consistent API
 
 ```python
-from roboco.core.team import Team
+from agentx.core.team import Team
 
 # One-line team creation (like AG2)
 team = Team.from_config("examples/simple_chat")
@@ -79,7 +79,7 @@ team = Team.from_config("config_dir")
 
    ```bash
    cd examples/simple_chat
-   python run_chat.py
+   python main.py
    ```
 
 3. **Test the configuration:**

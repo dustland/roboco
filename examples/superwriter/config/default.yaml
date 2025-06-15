@@ -1,6 +1,6 @@
 agents:
   - name: planner
-    class: roboco.core.agents.Agent
+    class: agentx.core.agents.Agent
     prompt_file: planner.md
     tools: []
     llm_config:
@@ -8,7 +8,7 @@ agents:
         - model: gpt-4o-mini
           api_key: null
   - name: researcher
-    class: roboco.core.agents.Agent
+    class: agentx.core.agents.Agent
     prompt_file: researcher.md
     tools:
       - search_tools
@@ -17,7 +17,7 @@ agents:
         - model: gpt-4o-mini
           api_key: null
   - name: writer
-    class: roboco.core.agents.Agent
+    class: agentx.core.agents.Agent
     prompt_file: writer.md
     tools: []
     llm_config:
@@ -25,7 +25,7 @@ agents:
         - model: gpt-4o-mini
           api_key: null
   - name: reviewer
-    class: roboco.core.agents.Agent
+    class: agentx.core.agents.Agent
     prompt_file: reviewer.md
     tools: []
     llm_config:

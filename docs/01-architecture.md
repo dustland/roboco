@@ -1,6 +1,6 @@
 # 01: System Architecture
 
-This document specifies the high-level, static architecture of the Roboco framework. It is guided by the principles defined in `requirements.md`.
+This document specifies the high-level, static architecture of the AgentX framework. It is guided by the principles defined in `requirements.md`.
 
 ## 1. Architectural Vision
 
@@ -22,7 +22,7 @@ This separation ensures that the core framework remains a pure, stateful engine,
 
 ## 2. Core Component Diagram
 
-The following diagram illustrates the primary components of the Roboco framework and the flow of data and control between them.
+The following diagram illustrates the primary components of the AgentX framework and the flow of data and control between them.
 
 ```mermaid
 graph TD
@@ -30,7 +30,7 @@ graph TD
         A[CLI / UI]
     end
 
-    subgraph "Roboco Framework"
+    subgraph "AgentX Framework"
         B(Orchestrator)
         C{Agent Pool}
         D[(Tool Executor<br/>in Daytona Sandbox)]
@@ -185,20 +185,20 @@ graph TD
 
 ### 4.1. LangChain Adapter
 
-- Translates LangChain chains and agents to Roboco agent configurations
+- Translates LangChain chains and agents to AgentX agent configurations
 - Supports LangChain tool integrations
 - Provides migration utilities for existing LangChain applications
 
 ### 4.2. AutoGen/AG2 Adapter
 
-- Maps AutoGen conversation patterns to Roboco handoff mechanisms
-- Converts AutoGen agent definitions to Roboco agent configurations
+- Maps AutoGen conversation patterns to AgentX handoff mechanisms
+- Converts AutoGen agent definitions to AgentX agent configurations
 - Supports AutoGen's group chat and sequential chat patterns
 
 ### 4.3. CrewAI Adapter
 
-- Translates CrewAI crew and task definitions to Roboco team configurations
-- Maps CrewAI role-based agents to Roboco agent pool
+- Translates CrewAI crew and task definitions to AgentX team configurations
+- Maps CrewAI role-based agents to AgentX agent pool
 - Supports CrewAI's hierarchical and sequential execution patterns
 
 ## 5. Deployment Architecture

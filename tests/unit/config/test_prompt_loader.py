@@ -7,8 +7,8 @@ import pytest
 from pathlib import Path
 from unittest.mock import patch
 
-from roboco.config.prompt_loader import PromptLoader, create_prompt_loader
-from roboco.core.exceptions import ConfigurationError
+from agentx.config.prompt_loader import PromptLoader, create_prompt_loader
+from agentx.core.exceptions import ConfigurationError
 
 
 class TestPromptLoader:

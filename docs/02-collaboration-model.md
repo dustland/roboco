@@ -1,6 +1,6 @@
 # 02: Collaboration & Planning Model
 
-This document specifies the dynamic aspects of the Roboco framework: how agents collaborate to achieve a goal and how that work is planned and tracked. It builds on the components defined in `01-architecture.md`.
+This document specifies the dynamic aspects of the AgentX framework: how agents collaborate to achieve a goal and how that work is planned and tracked. It builds on the components defined in `01-architecture.md`.
 
 ## 1. The Execution Plan: `plan.json`
 

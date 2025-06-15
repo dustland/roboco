@@ -9,9 +9,9 @@ import yaml
 from pathlib import Path
 from unittest.mock import Mock, patch
 
-from roboco.config.team_loader import TeamLoader, load_team_config, validate_team_config
-from roboco.config.models import TeamConfig, LLMProviderConfig
-from roboco.core.exceptions import ConfigurationError
+from agentx.config.team_loader import TeamLoader, load_team_config, validate_team_config
+from agentx.config.models import TeamConfig, LLMProviderConfig
+from agentx.core.exceptions import ConfigurationError
 
 
 class TestTeamConfigLoading:

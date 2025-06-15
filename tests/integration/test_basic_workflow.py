@@ -2,8 +2,8 @@ import pytest
 import asyncio
 from pathlib import Path
 
-from roboco.core.team import Team
-from roboco.core.orchestrator import Orchestrator
+from agentx.core.team import Team
+from agentx.core.orchestrator import Orchestrator
 
 
 @pytest.mark.asyncio

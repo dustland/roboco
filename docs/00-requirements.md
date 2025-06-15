@@ -1,8 +1,8 @@
-# Roboco Framework: Core Requirements
+# AgentX Framework: Core Requirements
 
 ## Implementation Status: 8/26 Core Requirements Complete ✅
 
-The Roboco framework has successfully implemented the foundational architecture with comprehensive data structures, configuration management, orchestration, and event systems. The framework is now ready for the next phase of development.
+The AgentX framework has successfully implemented the foundational architecture with comprehensive data structures, configuration management, orchestration, and event systems. The framework is now ready for the next phase of development.
 
 ---
 
@@ -93,4 +93,4 @@ The framework foundation is solid and ready for:
 - ✅ Agent prompt rendering with tools and handoff targets
 - ✅ Comprehensive test coverage (14/14 tests passing)
 
-The Roboco framework has achieved its goal of creating a superior foundation that stands on the shoulders of existing frameworks while providing a cleaner, more maintainable, and more powerful architecture for multi-agent collaboration.
+The AgentX framework has achieved its goal of creating a superior foundation that stands on the shoulders of existing frameworks while providing a cleaner, more maintainable, and more powerful architecture for multi-agent collaboration.

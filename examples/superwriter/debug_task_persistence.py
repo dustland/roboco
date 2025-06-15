@@ -12,9 +12,9 @@ from pathlib import Path
 src_path = Path(__file__).parent.parent.parent / "src"
 sys.path.insert(0, str(src_path))
 
-from roboco.core.task_manager import TaskManager
-from roboco.core.team_manager import TeamManager
-from roboco.event.bus import InMemoryEventBus
+from agentx.core.task_manager import TaskManager
+from agentx.core.team_manager import TeamManager
+from agentx.event.bus import InMemoryEventBus
 
 async def test_task_persistence():
     """Test task persistence to identify the issue."""

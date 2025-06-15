@@ -1,5 +1,5 @@
 name: "sample_team"
-description: "A sample team configuration for testing Roboco framework"
+description: "A sample team configuration for testing AgentX framework"
 version: "1.0.0"
 
 llm:
@@ -44,7 +44,7 @@ tools:
   - name: "web_search"
     type: "python_function"
     description: "Search the web for information"
-    source: "roboco.tools.web_search.search"
+    source: "agentx.tools.web_search.search"
     parameters:
       type: "object"
       properties:
@@ -60,7 +60,7 @@ tools:
   - name: "data_analysis"
     type: "python_function"
     description: "Analyze data and generate insights"
-    source: "roboco.tools.data_analysis.analyze"
+    source: "agentx.tools.data_analysis.analyze"
     parameters:
       type: "object"
       properties:

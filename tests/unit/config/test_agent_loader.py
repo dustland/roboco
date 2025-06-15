@@ -8,7 +8,7 @@ import yaml
 from pathlib import Path
 from unittest.mock import Mock, patch
 
-from roboco.config.agent_loader import (
+from agentx.config.agent_loader import (
     AgentConfigFile, 
     load_agents_config, 
     load_single_agent_config,
@@ -16,7 +16,7 @@ from roboco.config.agent_loader import (
     create_single_agent_template,
     validate_config_file
 )
-from roboco.core.exceptions import ConfigurationError
+from agentx.core.exceptions import ConfigurationError
 
 
 class TestAgentConfigFile:
@@ -68,7 +68,7 @@ class TestAgentConfigFile:
 class TestLoadAgentsConfig:
     """Test loading agent configurations from YAML files."""
     
-    @patch('roboco.config.agent_loader.validate_agent_tools')
+    @patch('agentx.config.agent_loader.validate_agent_tools')
     def test_load_single_agent_config_format(self, mock_validate, temp_dir):
         """Test loading single agent configuration format."""
         mock_validate.return_value = (["search"], [])
@@ -93,7 +93,7 @@ class TestLoadAgentsConfig:
         assert agent_config.system_message == "You are a researcher."
         assert tools == ["search"]
     
-    @patch('roboco.config.agent_loader.validate_agent_tools')
+    @patch('agentx.config.agent_loader.validate_agent_tools')
     def test_load_multiple_agents_config_format(self, mock_validate, temp_dir):
         """Test loading multiple agents configuration format."""
         mock_validate.return_value = (["search"], [])
@@ -167,7 +167,7 @@ class TestLoadAgentsConfig:
         
         assert "invalid agent role" in str(exc_info.value).lower()
     
-    @patch('roboco.config.agent_loader.validate_agent_tools')
+    @patch('agentx.config.agent_loader.validate_agent_tools')
     def test_load_agents_invalid_tools(self, mock_validate, temp_dir):
         """Test error handling for invalid tools."""
         mock_validate.return_value = ([], ["invalid_tool"])
@@ -251,8 +251,8 @@ class TestLoadSingleAgentConfig:
 class TestTemplateGeneration:
     """Test configuration template generation."""
     
-    @patch('roboco.config.agent_loader.list_tools')
-    @patch('roboco.config.agent_loader.suggest_tools_for_agent')
+    @patch('agentx.config.agent_loader.list_tools')
+    @patch('agentx.config.agent_loader.suggest_tools_for_agent')
     def test_create_team_config_template(self, mock_suggest, mock_list, temp_dir):
         """Test creating team configuration template."""
         mock_list.return_value = ["search", "memory", "web"]
@@ -277,8 +277,8 @@ class TestTemplateGeneration:
         assert "writer" in content
         assert "prompt_file" in content
     
-    @patch('roboco.config.agent_loader.list_tools')
-    @patch('roboco.config.agent_loader.suggest_tools_for_agent')
+    @patch('agentx.config.agent_loader.list_tools')
+    @patch('agentx.config.agent_loader.suggest_tools_for_agent')
     def test_create_single_agent_template(self, mock_suggest, mock_list, temp_dir):
         """Test creating single agent configuration template."""
         mock_list.return_value = ["search", "memory"]
@@ -305,7 +305,7 @@ class TestTemplateGeneration:
         """Test template generation without tool suggestions."""
         output_path = temp_dir / "no_suggestions.yaml"
         
-        with patch('roboco.config.agent_loader.list_tools') as mock_list:
+        with patch('agentx.config.agent_loader.list_tools') as mock_list:
             mock_list.return_value = ["search", "memory"]
             
             create_single_agent_template(
@@ -323,7 +323,7 @@ class TestTemplateGeneration:
 class TestValidateConfigFile:
     """Test configuration file validation."""
     
-    @patch('roboco.config.agent_loader.validate_agent_tools')
+    @patch('agentx.config.agent_loader.validate_agent_tools')
     def test_validate_valid_config(self, mock_validate, temp_dir):
         """Test validation of valid configuration file."""
         mock_validate.return_value = (["search"], [])

@@ -3,10 +3,10 @@ import tempfile
 import yaml
 from pathlib import Path
 from pydantic import ValidationError
-from roboco.core.team import Team
-from roboco.core.agent import Agent
-from roboco.core.tool import get_tool_registry
-from roboco.core.config import TeamConfig, AgentConfig, LLMConfig, ToolConfig, ExecutionConfig
+from agentx.core.team import Team
+from agentx.core.agent import Agent
+from agentx.core.tool import get_tool_registry
+from agentx.core.config import TeamConfig, AgentConfig, LLMConfig, ToolConfig, ExecutionConfig
 
 # It's better to use absolute paths in tests to avoid issues with the test runner's CWD
 # This finds the project root based on the test file's location.

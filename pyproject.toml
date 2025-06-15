@@ -3,9 +3,9 @@ requires = ["setuptools>=42", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "roboco"
+name = "agentx"
 version = "0.8.0"
-description = "Roboco - An Opinionated Multi-Agent Framework with Best-in-Class Integrations"
+description = "AgentX - An Opinionated Multi-Agent Framework with Best-in-Class Integrations"
 authors = [{ name = "Dustland Team", email = "hi@dustland.ai" }]
 readme = "README.md"
 requires-python = ">=3.11"
@@ -73,24 +73,24 @@ all = [
 ]
 
 [project.urls]
-"Homepage" = "https://github.com/dustland/roboco"
-"Bug Tracker" = "https://github.com/dustland/roboco/issues"
+"Homepage" = "https://github.com/dustland/agentx"
+"Bug Tracker" = "https://github.com/dustland/agentx/issues"
 
 [project.scripts]
 # Universal CLI (primary interface)
-roboco = "roboco.cli.main:main"
+agentx = "agentx.cli.main:main"
 
 # Individual commands (backward compatibility)
-start = "roboco.run:start"
-monitor = "roboco.run:monitor"
+start = "agentx.run:start"
+monitor = "agentx.run:monitor"
 
 # Development scripts
-dev = "roboco.run:dev"
-test = "roboco.run:test"
+dev = "agentx.run:dev"
+test = "agentx.run:test"
 
 [tool.setuptools]
 package-dir = { "" = "src" }
-package-data = { "roboco" = ["py.typed"] }
+package-data = { "agentx" = ["py.typed"] }
 
 [tool.setuptools.packages.find]
 where = ["src"]
@@ -142,10 +142,10 @@ module = [
 ignore_missing_imports = true
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/roboco"]
+packages = ["src/agentx"]
 
 [tool.hatch.build.targets.sdist]
-include = ["src/roboco", "config", "examples", "tests", "README.md", "LICENSE"]
+include = ["src/agentx", "config", "examples", "tests", "README.md", "LICENSE"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

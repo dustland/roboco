@@ -1,5 +1,5 @@
 """
-Pytest configuration and shared fixtures for Roboco tests.
+Pytest configuration and shared fixtures for AgentX tests.
 """
 
 import pytest
@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Dict, Any
 from unittest.mock import AsyncMock, MagicMock
 
-# from roboco.core.brain import BrainConfig, Message, ChatHistory
+# from agentx.core.brain import BrainConfig, Message, ChatHistory
 
 
 @pytest.fixture(scope="session")
@@ -109,5 +109,5 @@ def mock_agents():
 @pytest.fixture
 def mock_agent_config():
     """Mock agent config for testing."""
-    from roboco.core.agent import AgentConfig, AgentRole
+    from agentx.core.agent import AgentConfig, AgentRole
     return AgentConfig(name="test_agent", role=AgentRole.ASSISTANT) 

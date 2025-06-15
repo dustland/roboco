@@ -1,6 +1,6 @@
 # 03: Data Structures & Event Model
 
-This document specifies the core data objects that flow through the Roboco framework and the event model used for real-time observability. It builds on the architecture and collaboration models defined in the previous documents.
+This document specifies the core data objects that flow through the AgentX framework and the event model used for real-time observability. It builds on the architecture and collaboration models defined in the previous documents.
 
 ## 1. The `TaskStep` Object
 
@@ -559,7 +559,7 @@ task_workspace/
 │   │   ├── semantic.db   # Vector database
 │   │   └── episodic.json # Event-based memory
 │   └── consolidated/     # Summarized memory
-├── .roboco/              # Framework metadata
+├── .agentx/              # Framework metadata
 │   ├── state.json        # Current execution state
 │   ├── breakpoints.json  # Step-through configuration
 │   ├── guardrails.json   # Policy violations and actions
@@ -674,7 +674,7 @@ class LangChainImport(BaseModel):
     memory_config: Optional[Dict[str, Any]] = None
 
 class LangChainExport(BaseModel):
-    roboco_team: TeamConfig
+    agentx_team: TeamConfig
     langchain_equivalent: Dict[str, Any]
     migration_notes: List[str]
 ```
@@ -688,7 +688,7 @@ class AutoGenImport(BaseModel):
     conversation_patterns: List[Dict[str, Any]]
 
 class AutoGenExport(BaseModel):
-    roboco_team: TeamConfig
+    agentx_team: TeamConfig
     autogen_equivalent: Dict[str, Any]
     pattern_mappings: Dict[str, str]
 ```
@@ -703,17 +703,17 @@ class CrewAIImport(BaseModel):
     tools: List[Dict[str, Any]]
 
 class CrewAIExport(BaseModel):
-    roboco_team: TeamConfig
+    agentx_team: TeamConfig
     crewai_equivalent: Dict[str, Any]
     role_mappings: Dict[str, str]
 ```
 
 ## 7. Design Complete
 
-With this document, the full design specification for the Roboco framework is complete. We have defined:
+With this document, the full design specification for the AgentX framework is complete. We have defined:
 
 1.  The high-level **Architecture** with all component responsibilities including new advanced features.
 2.  The core **Collaboration & Planning Model** with universal tool support, HITL capabilities, and advanced collaboration patterns.
 3.  The detailed **Data Structures & Event Model** with multimodal support, comprehensive event types, production-grade features, and cross-framework compatibility.
 
-This provides a comprehensive blueprint that addresses all 26 requirements for implementation, positioning Roboco to supersede existing frameworks like AG2, Suna, Manus, OpenAI Agents SDK, and Vercel AI SDK v5.
+This provides a comprehensive blueprint that addresses all 26 requirements for implementation, positioning AgentX to supersede existing frameworks like AG2, Suna, Manus, OpenAI Agents SDK, and Vercel AI SDK v5.

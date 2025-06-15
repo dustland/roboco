@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Test runner for Roboco framework.
+Test runner for AgentX framework.
 
 Simple script to run all tests with proper configuration.
 """
@@ -29,7 +29,7 @@ def run_tests():
         "-x",  # Stop on first failure
     ]
     
-    print("🧪 Running Roboco Framework Tests...")
+    print("🧪 Running AgentX Framework Tests...")
     print(f"Command: {' '.join(cmd)}")
     print("-" * 60)
     

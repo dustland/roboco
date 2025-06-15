@@ -6,7 +6,7 @@ import pytest
 from datetime import datetime, timedelta
 from unittest.mock import Mock
 
-from roboco.memory.types import (
+from agentx.memory.types import (
     MemoryType, MemoryItem, MemoryQuery, MemorySearchResult, MemoryStats
 )
 

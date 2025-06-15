@@ -1,0 +1,13 @@
+{
+  "task_id": "f2e435ab-d046-48a0-86e6-c135b5405eb3",
+  "team_name": "sample_team",
+  "initial_prompt": "Analyze the current state of AI development and write a brief summary",
+  "current_agent": "coordinator",
+  "round_count": 0,
+  "is_complete": false,
+  "is_paused": false,
+  "created_at": "2025-06-15T19:46:25.264313",
+  "history": [
+    {
+      "step_id": "a917f740-dd29-4484-a635-e62f6d537bd6",
+      "timestamp": 

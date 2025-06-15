@@ -1,0 +1,12 @@
+{
+  "task_id": "ccc05349-6303-40be-b635-98790ef42ca0",
+  "team_name": "sample_team",
+  "initial_prompt": "Test task for pause/resume",
+  "current_agent": "coordinator",
+  "round_count": 0,
+  "is_complete": false,
+  "is_paused": false,
+  "created_at": "2025-06-15T19:46:52.710148",
+  "history": [],
+  "artifacts": {}
+}

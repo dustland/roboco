@@ -1,9 +1,13 @@
-# Roboco - Multi-Agent Collaboration Framework
+<div align="center">
+  <img src="docs/assets/logo.png" alt="AgentX Logo" width="100" height="100">
+</div>
+
+# AgentX - Multi-Agent Collaboration Framework
 
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
-Roboco is a modern, configuration-driven framework for building collaborative AI agent teams. It features a clean Task-centric API, intelligent Brain-powered reasoning, secure code execution with Daytona sandboxes, and intelligent memory management for sophisticated multi-agent workflows.
+AgentX is a modern, configuration-driven framework for building collaborative AI agent teams. It features a clean Task-centric API, intelligent Brain-powered reasoning, secure code execution with Daytona sandboxes, and intelligent memory management for sophisticated multi-agent workflows.
 
 ## 🚀 Key Features
 
@@ -22,8 +26,8 @@ Roboco is a modern, configuration-driven framework for building collaborative AI
 ## 📦 Installation
 
 ```bash
-git clone https://github.com/dustland/roboco.git
-cd roboco
+git clone https://github.com/dustland/agentx.git
+cd agentx
 uv sync  # or pip install -e .
 ```
 
@@ -40,30 +44,30 @@ uv sync  # or pip install -e .
 
 ```bash
 # Start API server with observability
-roboco start
+agentx start
 
 # Start observability monitor (CLI interface)
-roboco monitor
+agentx monitor
 
 # Start web dashboard
-roboco monitor --web
+agentx monitor --web
 
 # Run examples
-roboco example superwriter
+agentx example superwriter
 
 # Check system status
-roboco status
+agentx status
 ```
 
 ### Python API
 
 ```python
 import asyncio
-import roboco
+import agentx
 
 async def main():
     # Create a task with your team configuration
-    task = roboco.create_task("config/team.yaml")
+    task = agentx.create_task("config/team.yaml")
 
     # Start the collaboration - agents will use their Brains to think and collaborate
     result = await task.start("Write a brief report on renewable energy trends")
@@ -78,15 +82,15 @@ asyncio.run(main())
 ### Task Management
 
 ```python
-import roboco
+import agentx
 
 # Create and manage tasks
-task = roboco.create_task("config/team.yaml", "Research AI trends")
+task = agentx.create_task("config/team.yaml", "Research AI trends")
 task_id = task.task_id
 
 # Retrieve existing tasks
-task = roboco.get_task(task_id)
-all_tasks = roboco.list_tasks()
+task = agentx.get_task(task_id)
+all_tasks = agentx.list_tasks()
 
 # Task lifecycle
 await task.start("Task description")  # Start or resume
@@ -132,7 +136,7 @@ await chat.send_message("Additional instruction")
 
 ## 📊 Observability & Monitoring
 
-Roboco includes a comprehensive observability system for monitoring and debugging multi-agent workflows:
+AgentX includes a comprehensive observability system for monitoring and debugging multi-agent workflows:
 
 ### Web Dashboard
 
@@ -147,10 +151,10 @@ Modern FastAPI + Preline UI dashboard with:
 
 ```bash
 # Start web dashboard
-roboco monitor --web
+agentx monitor --web
 
 # Custom port
-roboco monitor --web --port 8502
+agentx monitor --web --port 8502
 ```
 
 ### CLI Monitor
@@ -159,14 +163,14 @@ Interactive command-line interface:
 
 ```bash
 # Start CLI monitor
-roboco monitor
+agentx monitor
 
 # Start from any project subdirectory (auto-finds data)
 cd examples/simple_team/config
-roboco monitor --web
+agentx monitor --web
 
 # Specify custom data directory
-roboco monitor --data-dir /path/to/roboco_data
+agentx monitor --data-dir /path/to/agentx_data
 
 # Available commands:
 monitor> status    # Show system status
@@ -180,7 +184,7 @@ monitor> web       # Launch web interface
 ### Programmatic Access
 
 ```python
-from roboco.observability.monitor import get_monitor
+from agentx.observability.monitor import get_monitor
 
 # Get monitor instance
 monitor = get_monitor()
@@ -202,7 +206,7 @@ Basic multi-agent collaboration demonstrating Brain-powered reasoning:
 
 ```bash
 # Using CLI
-roboco example simple_team
+agentx example simple_team
 
 # Or directly
 cd examples/simple_team
@@ -215,7 +219,7 @@ A comprehensive writing system with research, planning, writing, and review agen
 
 ```bash
 # Using CLI
-roboco example superwriter
+agentx example superwriter
 
 # Or directly
 cd examples/superwriter
@@ -303,7 +307,7 @@ We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guid
 
 ## 🙏 Acknowledgments
 
-This project was initially inspired by and built upon concepts from [AG2 (AutoGen)](https://github.com/ag2ai/ag2), an excellent multi-agent conversation framework. While Roboco has evolved into its own distinct architecture and approach, we're grateful for the foundational ideas and patterns that AG2 provided to the multi-agent AI community.
+This project was initially inspired by and built upon concepts from [AG2 (AutoGen)](https://github.com/ag2ai/ag2), an excellent multi-agent conversation framework. While AgentX has evolved into its own distinct architecture and approach, we're grateful for the foundational ideas and patterns that AG2 provided to the multi-agent AI community.
 
 ## 📄 License
 
@@ -311,8 +315,8 @@ Licensed under the Apache License 2.0 - see [LICENSE](LICENSE) for details.
 
 ## 🙋‍♀️ Support
 
-- **Issues**: [GitHub Issues](https://github.com/dustland/roboco/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/dustland/roboco/discussions)
+- **Issues**: [GitHub Issues](https://github.com/dustland/agentx/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/dustland/agentx/discussions)
 
 ---
 

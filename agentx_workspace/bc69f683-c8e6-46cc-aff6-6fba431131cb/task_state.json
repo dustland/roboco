@@ -1,0 +1,12 @@
+{
+  "task_id": "bc69f683-c8e6-46cc-aff6-6fba431131cb",
+  "team_name": "sample_team",
+  "initial_prompt": "Research the latest developments in AI safety",
+  "current_agent": "coordinator",
+  "round_count": 0,
+  "is_complete": false,
+  "is_paused": false,
+  "created_at": "2025-06-15T19:47:56.593421",
+  "history": [],
+  "artifacts": {}
+}

@@ -1,6 +1,6 @@
 # Simple Team Example - Enhanced with Memory & Task Resumption
 
-This example demonstrates Roboco's multi-agent collaboration capabilities with intelligent memory integration and task resumption features.
+This example demonstrates AgentX's multi-agent collaboration capabilities with intelligent memory integration and task resumption features.
 
 ## Features
 
@@ -92,21 +92,21 @@ list_memories(task_id="specific_task_id", limit=10)
 # List all tasks
 python -c "
 import asyncio
-from roboco.core.cli import list_tasks
+from agentx.core.cli import list_tasks
 asyncio.run(list_tasks())
 "
 
 # Show task details
 python -c "
 import asyncio
-from roboco.core.cli import show_task_details
+from agentx.core.cli import show_task_details
 asyncio.run(show_task_details('TASK_ID_HERE'))
 "
 
 # Resume a task
 python -c "
 import asyncio
-from roboco.core.cli import resume_task
+from agentx.core.cli import resume_task
 asyncio.run(resume_task('TASK_ID_HERE', max_rounds=10))
 "
 ```
@@ -260,7 +260,7 @@ logging.basicConfig(level=logging.DEBUG)
 ### Custom Memory Queries
 
 ```python
-from roboco.core.memory import TaskMemory
+from agentx.core.memory import TaskMemory
 
 # Create task-scoped memory
 task_memory = TaskMemory(task_id="my_task")
@@ -304,6 +304,6 @@ Modify `config/team.yaml` to:
 
 For issues or questions:
 
-1. Check the main Roboco documentation
+1. Check the main AgentX documentation
 2. Review the test scripts for usage examples
 3. Examine the configuration files for customization options

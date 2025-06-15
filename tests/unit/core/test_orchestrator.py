@@ -3,11 +3,11 @@ from unittest.mock import Mock, patch, MagicMock
 from pathlib import Path
 import json
 
-from roboco.core.orchestrator import Orchestrator
-from roboco.core.team import Team
-from roboco.core.agent import Agent
-from roboco.core.tool import ToolResult
-from roboco.core.task_step import TaskStep, TextPart, ToolCallPart, ToolResultPart
+from agentx.core.orchestrator import Orchestrator
+from agentx.core.team import Team
+from agentx.core.agent import Agent
+from agentx.core.tool import ToolResult
+from agentx.core.task_step import TaskStep, TextPart, ToolCallPart, ToolResultPart
 
 @pytest.fixture
 def mock_team():
@@ -24,7 +24,7 @@ def mock_team():
 @pytest.fixture
 def mock_tool_registry():
     """Fixture to mock the tool registry."""
-    with patch('roboco.core.orchestrator.get_tool_registry') as mock_get_registry:
+    with patch('agentx.core.orchestrator.get_tool_registry') as mock_get_registry:
         mock_registry = Mock()
         mock_registry.execute_tool_sync.return_value = ToolResult(success=True, result="Tool executed successfully")
         mock_get_registry.return_value = mock_registry

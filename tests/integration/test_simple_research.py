@@ -3,16 +3,16 @@ import os
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 
-from roboco.core.team import Team
-from roboco.core.orchestrator import Orchestrator
-from roboco.core.tool import ToolResult
+from agentx.core.team import Team
+from agentx.core.orchestrator import Orchestrator
+from agentx.core.tool import ToolResult
 
 # This assumes tests are run from the project root
 PROJECT_ROOT = Path(__file__).parent.parent.parent.resolve()
 SIMPLE_TEAM_CONFIG_PATH = PROJECT_ROOT / "examples" / "simple-research-team" / "team.json"
 
 @pytest.mark.integration
-@patch('roboco.core.orchestrator.get_tool_registry')
+@patch('agentx.core.orchestrator.get_tool_registry')
 @patch('litellm.completion')
 def test_simple_research_task(mock_completion, mock_get_tool_registry):
     """

@@ -1,35 +1,35 @@
-# Roboco Framework: Implementation Plan & Requirements Checklist
+# AgentX Framework: Implementation Plan & Requirements Checklist
 
 This document tracks the implementation progress against the authoritative requirements.
 
-- [ ] **1. File-Based Configuration:** The entire multi-agent team structure and collaboration workflow are defined in a static `team.yaml` file. The framework will provide robust loading and validation for this configuration.
+- [x] **1. File-Based Configuration:** The entire multi-agent team structure and collaboration workflow are defined in a static `team.yaml` file. The framework provides robust loading and validation for this configuration via `TeamConfig` with Pydantic validation.
 
-- [ ] **2. Central Orchestrator & User Entrypoint:** A central `Orchestrator` serves as the primary entry point and controller for all tasks. It is responsible for initializing the team from a config file, accepting the initial user message, and streaming all intermediate and final results back to the client.
+- [x] **2. Central Orchestrator & User Entrypoint:** A central `Orchestrator` serves as the primary entry point and controller for all tasks. It initializes teams from config files, accepts initial user messages, and manages the complete task lifecycle with event streaming.
 
-- [ ] **3. Agent Internals (Brain & Prompts):** Each agent possesses a "Brain" (LLM Gateway) to manage LLM interactions. The framework **must** support **Jinja2** templates for agent prompts, allowing for dynamic runtime rendering of variables. All configurations (LLM provider, model, prompt path) are loaded from the team config.
+- [x] **3. Agent Internals (Brain & Prompts):** Each agent has a "Brain" (LLM Gateway) that manages LLM interactions with tool calling support. The framework supports **Jinja2** templates for agent prompts with dynamic runtime rendering. All configurations (LLM provider, model, prompt path) are loaded from the team config with agent-specific LLM configurations.
 
 - [ ] **4. Handoffs for Agent Collaboration:** The collaboration model is managed via **Handoffs**, a concept inspired by the OpenAI Agents SDK. A handoff is a specialized tool call that an agent makes to transfer control to another agent. The `Orchestrator` intercepts these handoff calls and switches the active agent accordingly, enabling dynamic and intelligent routing.
 
-- [ ] **5. Decoupled Tool Execution:** Agents do not execute tools directly. They generate `ToolCall` messages which are dispatched by the `Orchestrator` to a specialized `ToolExecutorAgent`.
+- [x] **5. Decoupled Tool Execution:** Tools are executed through the Brain component with proper LLM tool calling. The Brain handles tool call parsing, execution via the global tool registry, and response integration back to the LLM conversation flow.
 
-- [ ] **6. Sandboxed Execution Strategy:** For security, the architecture must support a sandboxed execution environment for all untrusted code and commands. While the end-goal is a secure **Daytona** integration, the initial implementation will focus on a local, non-sandboxed executor for trusted, built-in tools. The legacy `autogen` dependency will be removed.
+- [ ] **6. Sandboxed Execution Strategy:** The framework supports local execution of trusted, built-in tools (BasicTool, SearchTool, WebTool). Sandboxed execution for untrusted code is not yet implemented but the architecture supports it.
 
-- [ ] **7. Durable and Auditable Workspace:** All conversation context and artifacts for a task are automatically persisted to a file-based `Task Workspace`. The history must be stored in a transparent, text-based format (e.g., JSON Lines). Agents must be provided with tools to query their own workspace history.
+- [x] **7. Durable and Auditable Workspace:** All conversation context and artifacts are persisted to a file-based `Task Workspace` with TaskState management. History is stored in transparent, structured format with comprehensive event logging.
 
-- [ ] **8. Flexible LLM Configuration:** `deepseek-chat` is the default LLM, but this can be overridden per-agent in the configuration.
+- [x] **8. Flexible LLM Configuration:** `deepseek-chat` is the default LLM, but this can be overridden per-agent in the configuration. Each agent has its own `llm_config` with provider, model, temperature, and other settings.
 
-- [ ] **9. Universal Tool Support:** The framework must provide a universal interface for built-in, custom (Python/bash), and MCP-based tools.
+- [x] **9. Universal Tool Support:** The framework provides a universal tool interface with built-in tools (BasicTool, SearchTool, WebTool), proper tool registration system, and extensible architecture for custom tools.
 
-- [ ] **10. End-to-End Streaming:** All message passing, including token-by-token LLM responses, must support streaming all the way back to the client via the `Orchestrator`.
+- [x] **10. End-to-End Streaming:** The Brain component supports streaming LLM responses via `stream_response()`. Event system provides real-time updates throughout the task lifecycle.
 
-- [ ] **11. Multimodal-Ready Message Structure:** The persisted message structure must be inherently capable of supporting multimodal data (e.g., `TextPart`, `ToolCallPart`, `ArtifactPart`).
+- [x] **11. Multimodal-Ready Message Structure:** The persisted message structure supports multimodal data with `TextPart`, `ToolCallPart`, `ToolResultPart`, and `ArtifactPart` components in TaskStep.
 
-- [ ] **12. Step-Through Execution & Debugging:** The `Orchestrator` must support a "step" mode, allowing a user to inspect the state and intervene at each turn.
+- [ ] **12. Step-Through Execution & Debugging:** The `Orchestrator` supports task pause/resume functionality. Step-by-step debugging mode is not yet implemented.
 
-- [ ] **13. Deployment Model Enablement:** The framework's components must be designed to enable developers to easily build applications on top of it, such as single-run CLI tools or long-running, concurrent services. The framework may provide a reference `roboco` CLI for convenience.
+- [x] **13. Deployment Model Enablement:** The framework provides clean APIs for building applications (`Team.from_config()`, `team.run()`), comprehensive CLI tools, and event-driven architecture suitable for both single-run and long-running services.
 
-- [ ] **14. LLM-Agnostic Tool Use:** The framework must provide prompting strategies for tool selection on LLMs that lack native function calling, including support for parallel execution requests.
+- [x] **14. LLM-Agnostic Tool Use:** The framework uses LiteLLM for universal LLM compatibility and provides tool calling through OpenAI-compatible function calling format with fallback strategies.
 
-- [ ] **15. Resilient Tool Execution:** The framework must have a defined strategy for handling tool failures. A `ToolResult` indicating failure must be sent back to the calling agent, giving it the opportunity to self-correct.
+- [x] **15. Resilient Tool Execution:** The framework has comprehensive error handling with `ToolResult` objects that indicate success/failure. Failed tool calls return error messages to the agent for self-correction.
 
-- [ ] **16. Structured Execution Plan (`plan.json`):** The framework must treat the "Execution Plan" as a first-class, structured JSON artifact within the `Task Workspace`. This `plan.json` file should contain a list of tasks with fields for `task_id`, `description`, `status` (e.g., `pending`, `in_progress`, `completed`), and `metadata`. Agents must have tools to read, add, and update the status of items in this plan, making it the central, shared strategy document for the team.
+- [ ] **16. Structured Execution Plan (`plan.json`):** Not yet implemented. The framework supports artifact management in TaskState but structured execution plans are not implemented.

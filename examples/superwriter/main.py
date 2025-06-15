@@ -17,7 +17,7 @@ project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root / "src"))
 
 # Import the new Task-centric API
-import roboco
+import agentx
 
 
 def check_environment():
@@ -43,7 +43,7 @@ def check_environment():
 
 async def list_tasks_detailed():
     """List all tasks with detailed information."""
-    tasks = roboco.list_tasks()
+    tasks = agentx.list_tasks()
     
     if not tasks:
         print("📋 No tasks found.")
@@ -78,7 +78,7 @@ async def list_tasks_detailed():
 
 async def list_tasks_compact():
     """List tasks in a compact table format."""
-    tasks = roboco.list_tasks()
+    tasks = agentx.list_tasks()
     
     if not tasks:
         print("📋 No tasks found.")
@@ -99,7 +99,7 @@ async def list_tasks_compact():
 async def show_task_details(task_id):
     """Show detailed information about a specific task."""
     try:
-        task = roboco.get_task(task_id)
+        task = agentx.get_task(task_id)
         if not task:
             print(f"❌ Task '{task_id}' not found.")
             return
@@ -147,7 +147,7 @@ async def show_task_details(task_id):
 async def resume_task_by_id(task_id, max_rounds=25):
     """Resume an existing task by ID."""
     try:
-        task = roboco.get_task(task_id)
+        task = agentx.get_task(task_id)
         if not task:
             print(f"❌ Task '{task_id}' not found.")
             return
@@ -191,7 +191,7 @@ async def start_new_task(description, config_path, max_rounds=50):
         print(f"🔄 Max rounds: {max_rounds}\n")
         
         # Create and start the task
-        task = roboco.create_task(
+        task = agentx.create_task(
             config_path=config_path,
             description=description
         )
@@ -227,7 +227,7 @@ async def start_new_task(description, config_path, max_rounds=50):
 
 async def find_similar_tasks(description):
     """Find tasks with similar descriptions."""
-    tasks = roboco.list_tasks()
+    tasks = agentx.list_tasks()
     
     if not tasks:
         print("📋 No tasks found to search.")
@@ -267,7 +267,7 @@ async def find_similar_tasks(description):
 
 async def show_default_help():
     """Show default help with existing tasks or usage instructions."""
-    tasks = roboco.list_tasks()
+    tasks = agentx.list_tasks()
     
     if tasks:
         print("📋 Recent tasks:")

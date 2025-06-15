@@ -6,9 +6,9 @@ import pytest
 from unittest.mock import Mock, AsyncMock, patch
 from datetime import datetime
 
-from roboco.memory.backend import MemoryBackend
-from roboco.memory.types import MemoryType, MemoryItem, MemoryQuery, MemorySearchResult, MemoryStats
-from roboco.memory.factory import create_memory_backend
+from agentx.memory.backend import MemoryBackend
+from agentx.memory.types import MemoryType, MemoryItem, MemoryQuery, MemorySearchResult, MemoryStats
+from agentx.memory.factory import create_memory_backend
 
 
 class MockMemoryBackend(MemoryBackend):
@@ -374,7 +374,7 @@ class TestMemoryFactory:
     
     def test_create_memory_backend_none_config(self):
         """Test creating backend with None config."""
-        with patch('roboco.memory.factory.logger') as mock_logger:
+        with patch('agentx.memory.factory.logger') as mock_logger:
             backend = create_memory_backend(None)
             assert backend is None
             mock_logger.warning.assert_called_once()
@@ -384,12 +384,12 @@ class TestMemoryFactory:
         invalid_config = Mock()
         invalid_config.backend_type = "invalid_backend"
         
-        with patch('roboco.memory.factory.logger') as mock_logger:
+        with patch('agentx.memory.factory.logger') as mock_logger:
             backend = create_memory_backend(invalid_config)
             assert backend is None
             mock_logger.error.assert_called_once()
     
-    @patch('roboco.memory.factory.Mem0Backend')
+    @patch('agentx.memory.factory.Mem0Backend')
     def test_create_memory_backend_mem0(self, mock_mem0_class):
         """Test creating Mem0 backend."""
         mock_config = Mock()
@@ -404,7 +404,7 @@ class TestMemoryFactory:
         assert backend == mock_backend
         mock_mem0_class.assert_called_once_with(mock_config.mem0_config)
     
-    @patch('roboco.memory.factory.Mem0Backend')
+    @patch('agentx.memory.factory.Mem0Backend')
     def test_create_memory_backend_mem0_error(self, mock_mem0_class):
         """Test creating Mem0 backend with error."""
         mock_config = Mock()
@@ -413,7 +413,7 @@ class TestMemoryFactory:
         
         mock_mem0_class.side_effect = Exception("Connection failed")
         
-        with patch('roboco.memory.factory.logger') as mock_logger:
+        with patch('agentx.memory.factory.logger') as mock_logger:
             backend = create_memory_backend(mock_config)
             assert backend is None
             mock_logger.error.assert_called_once() 
