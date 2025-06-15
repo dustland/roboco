@@ -1,51 +1,132 @@
-from typing import Literal, Any, List, Optional, Union
+from __future__ import annotations
+from datetime import datetime
 from pydantic import BaseModel, Field
-import uuid
-import time
+from typing import List, Dict, Any, Optional, Union, Literal
+from ..utils.id import generate_short_id
 
-# --- Tool-related parts ---
+# This file defines the core data structures for the Roboco framework,
+# as specified in design document 03-data-and-events.md.
+
+# --- Core Data Structures ---
 
 class ToolCall(BaseModel):
-    """Represents a request to call a tool."""
-    id: str = Field(default_factory=lambda: f"tool_{uuid.uuid4().hex}")
+    """Tool call specification with retry policy."""
+    id: str = Field(default_factory=lambda: f"tc_{generate_short_id()}")
     tool_name: str
-    args: dict[str, Any]
+    args: Dict[str, Any]
+    expected_output_type: Optional[str] = None
+    timeout: Optional[int] = None
+    retry_policy: Optional[Dict[str, Any]] = None
 
 class ToolResult(BaseModel):
-    """Represents the result of a tool call."""
+    """Tool execution result with comprehensive metadata."""
     tool_call_id: str
-    result: Any
-    is_error: bool = False
+    result: str  # The stdout or serialized result from the tool
+    error: Optional[str] = None  # Stderr if the tool failed
+    artifacts: List[str] = Field(default_factory=list)  # Paths to any files created by the tool
+    execution_time_ms: Optional[int] = None
+    resource_usage: Optional[Dict[str, Any]] = None  # CPU, memory, etc.
+    exit_code: Optional[int] = None
 
-# --- Content parts that make up a TaskStep ---
+class Artifact(BaseModel):
+    """Artifact reference with versioning and metadata."""
+    uri: str  # e.g., "file://artifacts/main.py"
+    mime_type: str
+    size_bytes: Optional[int] = None
+    description: Optional[str] = None
+    version: Optional[str] = None  # For artifact versioning
+    checksum: Optional[str] = None  # For integrity verification
+    metadata: Dict[str, Any] = Field(default_factory=dict)  # Extensible metadata
+    created_by: Optional[str] = None  # Agent or tool that created it
+    tags: List[str] = Field(default_factory=list)  # For categorization and search
+
+# --- TaskStep and its Parts ---
 
 class TextPart(BaseModel):
-    """A part of a task step containing plain text."""
+    """Text content part with language and confidence support."""
     type: Literal["text"] = "text"
     text: str
+    language: Optional[str] = None  # For multilingual support
+    confidence: Optional[float] = None  # LLM confidence score
 
 class ToolCallPart(BaseModel):
-    """A part of a task step representing a tool call."""
+    """Tool call request part."""
     type: Literal["tool_call"] = "tool_call"
     tool_call: ToolCall
 
 class ToolResultPart(BaseModel):
-    """A part of a task step representing a tool result."""
+    """Tool execution result part."""
     type: Literal["tool_result"] = "tool_result"
     tool_result: ToolResult
 
-StepPart = Union[TextPart, ToolCallPart, ToolResultPart]
+class ArtifactPart(BaseModel):
+    """Artifact reference part."""
+    type: Literal["artifact"] = "artifact"
+    artifact: Artifact
 
-# --- The main TaskStep model ---
+class ImagePart(BaseModel):
+    """Image content part with metadata."""
+    type: Literal["image"] = "image"
+    image_url: str  # Can be data URL or artifact reference
+    alt_text: Optional[str] = None
+    dimensions: Optional[Dict[str, int]] = None  # width, height
+    format: Optional[str] = None  # png, jpg, etc.
+
+class AudioPart(BaseModel):
+    """Audio content part with metadata."""
+    type: Literal["audio"] = "audio"
+    audio_url: str  # Can be data URL or artifact reference
+    transcript: Optional[str] = None
+    duration_seconds: Optional[float] = None
+    format: Optional[str] = None  # mp3, wav, etc.
+    sample_rate: Optional[int] = None
+
+class MemoryReference(BaseModel):
+    """Memory reference with relevance scoring."""
+    memory_id: str
+    memory_type: str  # "short_term", "long_term", "semantic", "episodic"
+    relevance_score: Optional[float] = None
+    retrieval_query: Optional[str] = None
+
+class MemoryPart(BaseModel):
+    """Memory operation part."""
+    type: Literal["memory"] = "memory"
+    operation: str  # "store", "retrieve", "search", "consolidate"
+    references: List[MemoryReference]
+    content: Optional[Dict[str, Any]] = None
+
+class GuardrailCheck(BaseModel):
+    """Individual guardrail check result."""
+    check_id: str
+    check_type: str  # "input_validation", "content_filter", "rate_limit", "policy"
+    status: str  # "passed", "failed", "warning"
+    message: Optional[str] = None
+    policy_violated: Optional[str] = None
+    severity: Optional[str] = None  # "low", "medium", "high", "critical"
+
+class GuardrailPart(BaseModel):
+    """Guardrail check results part."""
+    type: Literal["guardrail"] = "guardrail"
+    checks: List[GuardrailCheck]
+    overall_status: str  # "passed", "failed", "warning"
 
 class TaskStep(BaseModel):
-    """
-    The fundamental unit of the execution history. A TaskStep represents a
-    single, discrete event or state change in the execution of a task.
-    """
-    id: str = Field(default_factory=lambda: f"step_{uuid.uuid4().hex}")
-    parent_id: Optional[str] = None
-    agent_name: str
-    created_at: float = Field(default_factory=time.time)
-    parts: List[StepPart]
-    metadata: dict[str, Any] = Field(default_factory=dict) 
+    """The fundamental unit of history representing a complete turn."""
+    step_id: str = Field(default_factory=lambda: f"step_{generate_short_id()}")
+    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    agent_name: str  # The agent or system component that generated this step
+    task_id: Optional[str] = None  # Reference to plan.json task
+    parent_step_id: Optional[str] = None  # For hierarchical execution
+    execution_mode: str = "autonomous"  # autonomous, step, hitl, etc.
+    memory_context: Dict[str, Any] = Field(default_factory=dict)  # Memory references and context
+    parts: List[Union[
+        TextPart, 
+        ToolCallPart, 
+        ToolResultPart, 
+        ArtifactPart, 
+        ImagePart, 
+        AudioPart, 
+        MemoryPart, 
+        GuardrailPart
+    ]]
+    metadata: Dict[str, Any] = Field(default_factory=dict)  # Extensible metadata 

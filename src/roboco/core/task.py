@@ -8,7 +8,6 @@ This is a backwards compatibility layer that wraps our new elegant architecture.
 """
 
 import json
-import uuid
 import secrets
 import string
 from datetime import datetime

@@ -7,8 +7,8 @@ Data models and types for the memory backend system.
 from typing import Dict, List, Optional, Any, Union, Literal
 from dataclasses import dataclass, field
 from datetime import datetime
-from uuid import uuid4
 from enum import Enum
+from ..utils.id import generate_short_id
 
 
 class MemoryType(str, Enum):
@@ -26,7 +26,7 @@ class MemoryItem:
     memory_type: MemoryType
     agent_name: str
     timestamp: datetime = field(default_factory=datetime.now)
-    memory_id: str = field(default_factory=lambda: str(uuid4()))
+    memory_id: str = field(default_factory=generate_short_id)
     metadata: Dict[str, Any] = field(default_factory=dict)
     importance: float = 1.0  # 0.0 to 1.0
     version: Optional[int] = None

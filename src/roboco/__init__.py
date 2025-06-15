@@ -40,30 +40,17 @@ agent.save_memory("content")
 agent.search_memory("query")
 """
 
-# Task Management API
-from .core.task import create_task, get_task, list_tasks, Task, TaskInfo, ChatSession
+# Task Management API - TODO: Implement these modules
+# from .core.task import create_task, get_task, list_tasks, Task, TaskInfo, ChatSession
 
 # Core types for advanced usage
-from .core.exceptions import ConfigurationError
+# from .core.exceptions import ConfigurationError
 
 # Version info
 __version__ = "0.8.0"
 
 # Clean Task-Centric API
 __all__ = [
-    # Task Management
-    "create_task",     # Create new task
-    "get_task",        # Get existing task
-    "list_tasks",      # List all tasks
-    
-    # Core Classes
-    "Task",            # Main task class
-    "TaskInfo",        # Task information
-    "ChatSession",     # Chat interface
-    
-    # Result types
-    "ConfigurationError",
-    
     # Package info
     "__version__",
 ]

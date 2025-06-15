@@ -1,44 +1,39 @@
 name: "simple_chat"
 description: "A simple chat example with user, assistant, search, and memory"
 
-# LLM provider configuration
-llm_provider:
-  base_url: "https://api.deepseek.com"
-  model: "deepseek-chat"
-  # api_key will be read from DEEPSEEK_API_KEY environment variable
-
 # Team agents
 agents:
   - name: "assistant"
-    role: "assistant"
-    prompt_file: "prompts/assistant.md"
     description: "Helpful AI assistant with search capabilities"
+    prompt_template: "prompts/assistant.md"
     tools: ["web_search"]
-    enable_memory: true
-    enable_code_execution: false
-
-# Team collaboration settings (directly in team config)
-speaker_selection_method: "auto"
-max_rounds: 10
-termination_condition: "TERMINATE"
-timeout_minutes: 5
-
-# Memory configuration
-memory:
-  vector_store:
-    provider: "qdrant"
-    config:
-      collection_name: "simple_chat_memories"
-      host: "localhost"
-      port: 6333
-  llm:
-    provider: "openai"
-    config:
-      model: "gpt-4o-mini"
-      temperature: 0.1
+    llm_config:
+      provider: "deepseek"
+      model: "deepseek-chat"
+      base_url: "https://api.deepseek.com"
+      temperature: 0.7
+      max_tokens: 4000
+      # api_key will be read from DEEPSEEK_API_KEY environment variable
 
 # Tools configuration
 tools:
-  web_search:
+  - name: "web_search"
+    type: "builtin"
     description: "Search the web for current information"
-    enabled: true
+
+# Execution configuration
+execution:
+  mode: "autonomous"
+  max_rounds: 10 # Orchestrator will auto-complete single-agent chats
+  timeout_seconds: 300
+
+# Memory configuration
+memory:
+  enabled: true
+  max_context_tokens: 8000
+  semantic_search_enabled: true
+  vector_db_config:
+    provider: "qdrant"
+    collection_name: "simple_chat_memories"
+    host: "localhost"
+    port: 6333

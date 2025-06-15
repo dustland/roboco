@@ -1,0 +1,109 @@
+name: "sample_team"
+description: "A sample team configuration for testing Roboco framework"
+version: "1.0.0"
+
+llm:
+  provider: "deepseek"
+  model: "deepseek-chat"
+  temperature: 0.7
+  max_tokens: 4000
+  api_key: "${DEEPSEEK_API_KEY}"
+
+agents:
+  - name: "coordinator"
+    description: "Main coordinator agent that manages task flow"
+    prompt_template: "coordinator.jinja2"
+    tools:
+      - "file_operations"
+      - "web_search"
+    guardrail_policies: []
+
+  - name: "analyst"
+    description: "Data analysis and research specialist"
+    prompt_template: "analyst.jinja2"
+    tools:
+      - "file_operations"
+      - "data_analysis"
+    guardrail_policies: []
+
+  - name: "writer"
+    description: "Content creation and documentation specialist"
+    prompt_template: "writer.jinja2"
+    tools:
+      - "file_operations"
+    guardrail_policies: []
+
+tools:
+  - name: "file_operations"
+    type: "builtin"
+    description: "Basic file read/write operations"
+    config:
+      allowed_extensions: [".txt", ".md", ".json", ".yaml"]
+      max_file_size: 1048576 # 1MB
+
+  - name: "web_search"
+    type: "python_function"
+    description: "Search the web for information"
+    source: "roboco.tools.web_search.search"
+    parameters:
+      type: "object"
+      properties:
+        query:
+          type: "string"
+          description: "Search query"
+        max_results:
+          type: "integer"
+          description: "Maximum number of results"
+          default: 5
+      required: ["query"]
+
+  - name: "data_analysis"
+    type: "python_function"
+    description: "Analyze data and generate insights"
+    source: "roboco.tools.data_analysis.analyze"
+    parameters:
+      type: "object"
+      properties:
+        data_path:
+          type: "string"
+          description: "Path to data file"
+        analysis_type:
+          type: "string"
+          description: "Type of analysis to perform"
+          enum: ["summary", "trends", "correlations"]
+      required: ["data_path", "analysis_type"]
+
+handoff_rules:
+  - from_agent: "coordinator"
+    to_agent: "analyst"
+    condition: "research_needed"
+
+  - from_agent: "coordinator"
+    to_agent: "writer"
+    condition: "documentation_needed"
+
+  - from_agent: "analyst"
+    to_agent: "writer"
+    condition: "analysis_complete"
+
+  - from_agent: "writer"
+    to_agent: "coordinator"
+    condition: "content_ready"
+
+collaboration_patterns: []
+
+guardrail_policies: []
+
+memory:
+  enabled: true
+  max_context_tokens: 8000
+  semantic_search_enabled: false
+  short_term_limit: 10000
+  long_term_enabled: true
+  consolidation_interval: 3600
+
+execution:
+  mode: "autonomous"
+  max_rounds: 20
+  timeout_seconds: 600
+  step_through_enabled: false

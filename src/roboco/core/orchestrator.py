@@ -1,224 +1,446 @@
 from __future__ import annotations
-from typing import List, Dict, Any, Generator
-import os
-import uuid
-from pathlib import Path
 import json
+from pathlib import Path
+from typing import List, Dict, Any, Optional, Union, AsyncGenerator
+from datetime import datetime
+import asyncio
 
-from roboco.core.team import Team
-from roboco.core.task_step import TaskStep, TextPart, StepPart, ToolCallPart, ToolResultPart, ToolCall, ToolResult
-from roboco.core.agent import Agent
-from roboco.core.tool import get_tool_registry
+from .team import Team
+from .task_step import TaskStep, TextPart, ToolCallPart, ToolResultPart, ArtifactPart
+from .brain import Brain, LLMMessage
+from .event import (
+    TaskStartEvent, TaskCompleteEvent, TaskPausedEvent, TaskResumedEvent,
+    AgentStartEvent, AgentCompleteEvent, AgentHandoffEvent, ToolCallEvent, ToolResultEvent,
+    BreakpointHitEvent, UserInterventionEvent, ErrorEvent
+)
+from .streaming import StreamChunk, StreamError, StreamComplete
+from .config import ExecutionMode
+from ..utils.id import generate_short_id
+from ..event import publish_event
 
-# Add litellm for LLM calls
-import litellm
+
+class TaskState:
+    """Maintains the current state of a task execution."""
+    
+    def __init__(self, task_id: str, team: Team, initial_prompt: str, workspace_dir: Path):
+        self.task_id = task_id
+        self.team = team
+        self.initial_prompt = initial_prompt
+        self.workspace_dir = workspace_dir
+        self.history: List[TaskStep] = []
+        self.current_agent: Optional[str] = None
+        self.round_count = 0
+        self.is_complete = False
+        self.is_paused = False
+        self.created_at = datetime.now()
+        self.artifacts: Dict[str, Any] = {}
+        
+        # Create workspace directory
+        self.workspace_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Save initial state
+        self._save_state()
+    
+    def add_step(self, step: TaskStep) -> None:
+        """Add a new step to the history."""
+        self.history.append(step)
+        self._save_state()
+    
+    def set_current_agent(self, agent_name: str) -> None:
+        """Set the current active agent."""
+        self.current_agent = agent_name
+        self._save_state()
+    
+    def increment_round(self) -> None:
+        """Increment the round counter."""
+        self.round_count += 1
+        self._save_state()
+    
+    def complete_task(self) -> None:
+        """Mark the task as complete."""
+        self.is_complete = True
+        self._save_state()
+    
+    def pause_task(self) -> None:
+        """Pause the task execution."""
+        self.is_paused = True
+        self._save_state()
+    
+    def resume_task(self) -> None:
+        """Resume the task execution."""
+        self.is_paused = False
+        self._save_state()
+    
+    def add_artifact(self, name: str, content: Any, metadata: Dict[str, Any] = None) -> None:
+        """Add an artifact to the task state."""
+        self.artifacts[name] = {
+            'content': content,
+            'metadata': metadata or {},
+            'created_at': datetime.now().isoformat()
+        }
+        self._save_state()
+    
+    def _save_state(self) -> None:
+        """Save the current state to disk."""
+        state_file = self.workspace_dir / "task_state.json"
+        
+        # Convert history to serializable format
+        history_data = []
+        for step in self.history:
+            step_dict = step.model_dump()
+            # Convert datetime to ISO string
+            if 'timestamp' in step_dict and step_dict['timestamp']:
+                step_dict['timestamp'] = step_dict['timestamp'].isoformat() if hasattr(step_dict['timestamp'], 'isoformat') else step_dict['timestamp']
+            history_data.append(step_dict)
+        
+        state_data = {
+            'task_id': self.task_id,
+            'team_name': self.team.name,
+            'initial_prompt': self.initial_prompt,
+            'current_agent': self.current_agent,
+            'round_count': self.round_count,
+            'is_complete': self.is_complete,
+            'is_paused': self.is_paused,
+            'created_at': self.created_at.isoformat(),
+            'history': history_data,
+            'artifacts': self.artifacts
+        }
+        
+        with open(state_file, 'w', encoding='utf-8') as f:
+            json.dump(state_data, f, indent=2, ensure_ascii=False)
+    
+    @classmethod
+    def load_state(cls, workspace_dir: Path, team: Team) -> "TaskState":
+        """Load task state from disk."""
+        state_file = workspace_dir / "task_state.json"
+        
+        if not state_file.exists():
+            raise FileNotFoundError(f"Task state file not found: {state_file}")
+        
+        with open(state_file, 'r', encoding='utf-8') as f:
+            state_data = json.load(f)
+        
+        # Create instance
+        instance = cls.__new__(cls)
+        instance.task_id = state_data['task_id']
+        instance.team = team
+        instance.initial_prompt = state_data['initial_prompt']
+        instance.workspace_dir = workspace_dir
+        instance.current_agent = state_data['current_agent']
+        instance.round_count = state_data['round_count']
+        instance.is_complete = state_data['is_complete']
+        instance.is_paused = state_data['is_paused']
+        instance.created_at = datetime.fromisoformat(state_data['created_at'])
+        instance.artifacts = state_data.get('artifacts', {})
+        
+        # Reconstruct history
+        instance.history = []
+        for step_data in state_data.get('history', []):
+            step = TaskStep(**step_data)
+            instance.history.append(step)
+        
+        return instance
+
 
 class Orchestrator:
     """
-    The active execution engine that drives the task forward on a step-by-step basis.
-    It takes a Team object as input and exposes methods to start and step through
-    the execution, yielding events for UI and logging.
+    The central controller for task execution. Manages the flow of collaboration
+    between agents, handles tool execution, and maintains task state.
     """
-    def __init__(self, team: Team, workspace_dir: str = "./workspaces"):
-        self.team = team
-        self.workspace_dir = Path(workspace_dir)
-        self.history_file: Path | None = None
-        self.is_running = False
-
-    @property
-    def is_complete(self) -> bool:
-        """Checks if the task has completed or should be stopped."""
-        if not self.is_running:
-            return True
-        if len(self.team.history) >= self.team.max_rounds:
-            print(f"Task finished after reaching max rounds: {self.team.max_rounds}")
-            return True
-        return False
-
-    def start(self, initial_prompt: str) -> Generator[Dict[str, Any], None, None]:
-        """
-        Sets up the task workspace and yields the initial user prompt as the first step.
-        """
-        task_id = f"task_{uuid.uuid4().hex}"
-        task_workspace = self.workspace_dir / task_id
-        task_workspace.mkdir(parents=True, exist_ok=True)
-        (task_workspace / "artifacts").mkdir(exist_ok=True)
-        
-        self.history_file = task_workspace / "history.jsonl"
-        self.is_running = True
-
-        initial_step = TaskStep(agent_name="user", parts=[TextPart(text=initial_prompt)])
-        yield from self._add_and_yield_step(initial_step)
     
-    def add_user_message(self, message: str) -> Generator[Dict[str, Any], None, None]:
-        """Allows a user to interrupt the flow with a new message."""
-        if not self.is_running:
-            raise RuntimeError("Cannot add a message to a task that has not been started.")
-        
-        user_step = TaskStep(agent_name="user", parts=[TextPart(text=message)])
-        yield from self._add_and_yield_step(user_step)
-
-    def step(self) -> Generator[Dict[str, Any], None, None]:
+    def __init__(self, team: Team, workspace_dir: Path = None):
+        self.team = team
+        self.workspace_dir = workspace_dir or Path.cwd() / "roboco_workspace"
+        self.active_tasks: Dict[str, TaskState] = {}
+    
+    async def start_task(
+        self,
+        prompt: str,
+        initial_agent: str = None,
+        execution_mode: ExecutionMode = ExecutionMode.AUTONOMOUS,
+        task_id: str = None
+    ) -> str:
         """
-        Executes a single step of the task, which includes:
-        1. Selecting an agent.
-        2. Running the agent (LLM call).
-        3. Processing the response (including executing any tool calls).
+        Start a new task execution.
+        
+        Args:
+            prompt: The initial task prompt
+            initial_agent: Name of the agent to start with (defaults to first agent)
+            execution_mode: Execution mode (autonomous or step-through)
+            task_id: Optional task ID (generated if not provided)
+            
+        Returns:
+            Task ID for tracking the execution
         """
-        if self.is_complete:
-            return
-
-        # 1. Select the next agent to act
-        last_step = self.team.history[-1]
-        next_agent_name = self._select_next_agent(last_step.agent_name)
-        if not next_agent_name:
-            print("No more agents to run. Ending task.")
-            self.is_running = False
-            return
+        # Generate task ID if not provided
+        if task_id is None:
+            task_id = generate_short_id()
         
-        agent = self.team.agents[next_agent_name]
-
-        # 2. Compile context and format for LLM
-        prompt_history = self._compile_prompt_history(self.team.history)
-        messages = self._format_history_for_llm(prompt_history, agent.system_message)
+        # Determine initial agent
+        if initial_agent is None:
+            initial_agent = list(self.team.agents.keys())[0]
         
-        # 3. Get the next action from the agent's "brain" (LLM call)
-        response = litellm.completion(
-            model=agent.model, messages=messages, tools=agent.tools,
+        if initial_agent not in self.team.agents:
+            raise ValueError(f"Initial agent '{initial_agent}' not found in team")
+        
+        # Create task workspace
+        task_workspace = self.workspace_dir / task_id
+        
+        # Create task state
+        task_state = TaskState(task_id, self.team, prompt, task_workspace)
+        task_state.set_current_agent(initial_agent)
+        
+        # Store active task
+        self.active_tasks[task_id] = task_state
+        
+        return task_id
+    
+    async def execute_task(
+        self,
+        task_id: str
+    ) -> TaskState:
+        """
+        Execute a task to completion or until paused.
+        
+        Args:
+            task_id: ID of the task to execute
+            
+        Returns:
+            Final task state
+        """
+        if task_id not in self.active_tasks:
+            raise ValueError(f"Task not found: {task_id}")
+        
+        task_state = self.active_tasks[task_id]
+        
+        # Emit task started event
+        await publish_event(
+            TaskStartEvent(
+                task_id=task_id,
+                timestamp=datetime.now(),
+                initial_prompt=task_state.initial_prompt,
+                execution_mode="autonomous",
+                team_config=self.team.to_dict()
+            ),
+            source="orchestrator",
+            correlation_id=task_id
         )
         
-        response_choice = response.choices[0].message
-        response_text = response_choice.content
-        tool_calls = response_choice.tool_calls
-
-        # 4. Create the new TaskStep for the agent's response
-        new_step_parts: list[StepPart] = []
-        if response_text:
-            new_step_parts.append(TextPart(text=response_text))
-        if tool_calls:
-            for tc in tool_calls:
-                new_step_parts.append(
-                    ToolCallPart(tool_call=ToolCall(
-                        id=tc.id,
-                        tool_name=tc.function.name,
-                        args=json.loads(tc.function.arguments)
-                    ))
-                )
-
-        if not new_step_parts:
-            print("Agent returned an empty response. Ending task.")
-            self.is_running = False
-            return
-
-        agent_step = TaskStep(agent_name=next_agent_name, parts=new_step_parts)
-        yield from self._add_and_yield_step(agent_step)
-
-        # 5. If there are tool calls, execute them and create a result step
-        if tool_calls:
-            # We will create a single step that holds all the tool results
-            # from this turn.
-            result_parts = []
-            tool_registry = get_tool_registry()
-            
-            for tc in tool_calls:
-                tool_name = tc.function.name
-                tool_args = json.loads(tc.function.arguments)
-                execution_result = tool_registry.execute_tool_sync(tool_name, **tool_args)
-                result_parts.append(ToolResultPart(tool_result=ToolResult(
-                    tool_call_id=tc.id, result=str(execution_result.result)
-                )))
-
-            tool_step = TaskStep(
-                agent_name="tool_executor", parts=result_parts
-            )
-            yield from self._add_and_yield_step(tool_step)
-
-    def _add_and_yield_step(self, step: TaskStep) -> Generator[Dict[str, Any], None, None]:
-        """Helper to add a step to history, save it, and yield its events."""
-        self.team.history.append(step)
-        if self.history_file:
-            with open(self.history_file, "a") as f:
-                f.write(step.model_dump_json() + "\n")
-
-        yield { "type": "step_start", "data": {"id": step.id, "agent_name": step.agent_name}}
-        for part in step.parts:
-            yield {"type": f"{part.type}_part", "data": part.model_dump()}
-        yield {"type": "step_end", "data": {"id": step.id}}
-
-    def _compile_prompt_history(self, full_history: list[TaskStep]) -> list[TaskStep]:
-        """(Placeholder) Implements the Context Compilation Strategy."""
-        return full_history
-
-    def _format_history_for_llm(self, history: list[TaskStep], system_message: str) -> list[dict]:
-        """Converts our internal TaskStep history into the format required by LLMs."""
-        llm_messages = [{"role": "system", "content": system_message}]
-        for step in history:
-            role = "user" if step.agent_name == "user" else "assistant"
-            
-            content_parts = []
-            tool_call_parts = []
-            
-            for part in step.parts:
-                if isinstance(part, TextPart):
-                    content_parts.append({"type": "text", "text": part.text})
-                elif isinstance(part, ToolCallPart):
-                    # Append the single tool_call to the list for the message
-                    tool_call_parts.append({
-                        "id": part.tool_call.id,
-                        "type": "function",
-                        "function": {"name": part.tool_call.tool_name, "arguments": json.dumps(part.tool_call.args)}
-                    })
-                elif isinstance(part, ToolResultPart):
-                    # This role is 'tool', not 'assistant' or 'user'
-                    res = part.tool_result
-                    llm_messages.append({
-                        "role": "tool",
-                        "tool_call_id": res.tool_call_id,
-                        "content": res.result
-                    })
-
-            message: Dict[str, Any] = {"role": role}
-            has_content = False
-            if content_parts:
-                message["content"] = content_parts[0]['text'] # Simplified for now
-                has_content = True
-            if tool_call_parts:
-                message["tool_calls"] = tool_call_parts
-                has_content = True
-            
-            if has_content:
-                llm_messages.append(message)
-
-        return llm_messages
-
-    def _select_next_agent(self, last_agent_name: str) -> str | None:
-        """Selects the next agent to run in a simple round-robin fashion."""
-        agent_names = list(self.team.agents.keys())
-        if not agent_names:
-            return None
-        
-        # If the last step was a tool result, the original caller should speak next.
-        # This is a simplification; a more robust way would be to track the tool requester.
-        if last_agent_name == "tool_executor":
-            for step in reversed(self.team.history):
-                if step.agent_name != "tool_executor":
-                    return step.agent_name
-
         try:
-            last_index = agent_names.index(last_agent_name)
-            next_index = (last_index + 1) % len(agent_names)
-        except ValueError:
-            next_index = 0
+            # Main execution loop
+            while not task_state.is_complete and not task_state.is_paused:
+                # Check round limit
+                if task_state.round_count >= self.team.max_rounds:
+                    break
+                
+                # Execute current agent turn
+                await self._execute_agent_turn(task_state)
+                
+                # Increment round counter
+                task_state.increment_round()
             
-        return agent_names[next_index]
-
-    def _execute_step(self, step: TaskStep) -> TaskStep | None:
-        """
-        (This method will be removed or refactored into the main loop)
-        """
-        print(f"Executing step: {step.id}")
-        return None
-
-    def _is_task_complete(self, step: TaskStep) -> bool:
-        # Placeholder for termination logic
-        return "finished" in step.parts[0].text.lower() 
+            # Mark as complete if not paused
+            if not task_state.is_paused:
+                task_state.complete_task()
+                
+                await publish_event(
+                    TaskCompleteEvent(
+                        task_id=task_id,
+                        timestamp=datetime.now(),
+                        final_status="success",
+                        total_steps=len(task_state.history),
+                        total_duration_ms=int((datetime.now() - task_state.created_at).total_seconds() * 1000),
+                        artifacts_created=list(task_state.artifacts.keys())
+                    ),
+                    source="orchestrator",
+                    correlation_id=task_id
+                )
+        
+        except Exception as e:
+            await publish_event(
+                ErrorEvent(
+                    error_id=generate_short_id(),
+                    error_type="execution_error",
+                    error_message=str(e),
+                    context={"task_id": task_id, "current_agent": task_state.current_agent},
+                    timestamp=datetime.now(),
+                    recoverable=False
+                ),
+                source="orchestrator",
+                correlation_id=task_id
+            )
+            raise
+        
+        return task_state
+    
+    async def _execute_agent_turn(
+        self,
+        task_state: TaskState
+    ) -> None:
+        """Execute a single agent turn."""
+        current_agent = task_state.current_agent
+        step_id = generate_short_id()
+        
+        await publish_event(
+            AgentStartEvent(
+                agent_name=current_agent,
+                step_id=step_id,
+                timestamp=datetime.now()
+            ),
+            source=f"agent:{current_agent}",
+            correlation_id=task_state.task_id
+        )
+        
+        # Get agent configuration
+        agent_config = self.team.get_agent(current_agent)
+        if not agent_config:
+            raise ValueError(f"Agent not found: {current_agent}")
+        
+        # Prepare context for prompt rendering
+        context = {
+            'task_prompt': task_state.initial_prompt,
+            'history': task_state.history,
+            'available_tools': self.team.get_agent_tools(current_agent),
+            'handoff_targets': self.team.get_handoff_targets(current_agent),
+            'artifacts': task_state.artifacts
+        }
+        
+        # Render agent prompt
+        system_prompt = self.team.render_agent_prompt(current_agent, context)
+        
+        # Get agent's LLM configuration or use default
+        agent_llm_config = agent_config.llm_config
+        if agent_llm_config is None:
+            # Use default LLM configuration
+            from .config import LLMConfig
+            agent_llm_config = LLMConfig()
+        
+        # Create Brain instance with agent's LLM configuration
+        brain = Brain(agent_llm_config)
+        
+        # Prepare conversation messages
+        messages = []
+        
+        # Smart conversation flow detection
+        is_single_agent_chat = len(self.team.agents) == 1
+        
+        if is_single_agent_chat:
+            # For single-agent chat, only include the initial user message
+            # Don't include agent's own responses in history to avoid self-conversation
+            messages.append(LLMMessage(
+                role="user",
+                content=task_state.initial_prompt,
+                timestamp=datetime.now()
+            ))
+            
+            # In single-agent mode, we should complete after one response
+            # The agent should not see its own previous responses
+            
+        else:
+            # Multi-agent conversation: include full history with proper role assignment
+            messages.append(LLMMessage(
+                role="user",
+                content=task_state.initial_prompt,
+                timestamp=datetime.now()
+            ))
+            
+            # Add conversation history
+            for step in task_state.history:
+                for part in step.parts:
+                    if isinstance(part, TextPart):
+                        # Determine role based on agent
+                        role = "assistant" if step.agent_name == current_agent else "user"
+                        messages.append(LLMMessage(
+                            role=role,
+                            content=part.text,
+                            timestamp=step.timestamp
+                        ))
+        
+        try:
+            # Generate response using Brain
+            response = await brain.generate_response(
+                messages=messages,
+                system_prompt=system_prompt
+            )
+            
+            response_text = response.content
+            
+        except Exception as e:
+            # Fallback response on error
+            response_text = f"I apologize, but I encountered an error while processing your request: {str(e)}"
+        
+        # Create task step
+        step = TaskStep(
+            step_id=step_id,
+            agent_name=current_agent,
+            parts=[TextPart(text=response_text)],
+            timestamp=datetime.now()
+        )
+        
+        # Add step to history
+        task_state.add_step(step)
+        
+        # Smart completion: For single-agent chats, complete after first response
+        is_single_agent_chat = len(self.team.agents) == 1
+        if is_single_agent_chat and len(task_state.history) >= 1:
+            task_state.complete_task()
+        
+        await publish_event(
+            AgentCompleteEvent(
+                agent_name=current_agent,
+                step_id=step_id,
+                timestamp=datetime.now()
+            ),
+            source=f"agent:{current_agent}",
+            correlation_id=task_state.task_id
+        )
+    
+    async def pause_task(self, task_id: str) -> None:
+        """Pause a running task."""
+        if task_id not in self.active_tasks:
+            raise ValueError(f"Task not found: {task_id}")
+        
+        task_state = self.active_tasks[task_id]
+        task_state.pause_task()
+        
+        await publish_event(
+            TaskPausedEvent(
+                task_id=task_id,
+                timestamp=datetime.now(),
+                reason="user_request"
+            ),
+            source="orchestrator",
+            correlation_id=task_id
+        )
+    
+    async def resume_task(self, task_id: str) -> None:
+        """Resume a paused task."""
+        if task_id not in self.active_tasks:
+            raise ValueError(f"Task not found: {task_id}")
+        
+        task_state = self.active_tasks[task_id]
+        task_state.resume_task()
+        
+        await publish_event(
+            TaskResumedEvent(
+                task_id=task_id,
+                timestamp=datetime.now(),
+                reason="user_request"
+            ),
+            source="orchestrator",
+            correlation_id=task_id
+        )
+    
+    def get_task_state(self, task_id: str) -> Optional[TaskState]:
+        """Get the current state of a task."""
+        return self.active_tasks.get(task_id)
+    
+    def list_active_tasks(self) -> List[str]:
+        """Get list of active task IDs."""
+        return list(self.active_tasks.keys())
+    
+    async def load_task(self, workspace_dir: Path) -> str:
+        """Load a task from a workspace directory."""
+        task_state = TaskState.load_state(workspace_dir, self.team)
+        self.active_tasks[task_state.task_id] = task_state
+        return task_state.task_id 

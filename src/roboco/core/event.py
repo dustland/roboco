@@ -1,265 +1,318 @@
-"""
-Event component for real-time event system.
-"""
-
-import asyncio
-from ..utils.logger import get_logger
-from typing import Dict, List, Optional, Any, Callable, Union
-from dataclasses import dataclass, field
+from __future__ import annotations
 from datetime import datetime
-from uuid import uuid4
-from enum import Enum
+from pydantic import BaseModel, Field
+from typing import Union, Literal, List, Dict, Any, Optional
 
-logger = get_logger(__name__)
+from .task_step import ToolCall, ToolResult, Artifact
 
+# This file defines the execution event models for the Roboco framework.
+# These are discrete notifications about significant lifecycle events.
+# For message streaming, see streaming.py
 
-class EventType(Enum):
-    """Standard event types."""
-    AGENT_CREATED = "agent.created"
-    AGENT_ACTIVATED = "agent.activated"
-    AGENT_DEACTIVATED = "agent.deactivated"
-    AGENT_RESET = "agent.reset"
-    
-    MESSAGE_SENT = "message.sent"
-    MESSAGE_RECEIVED = "message.received"
-    
-    TOOL_EXECUTED = "tool.executed"
-    TOOL_FAILED = "tool.failed"
-    
-    MEMORY_SAVED = "memory.saved"
-    MEMORY_SEARCHED = "memory.searched"
-    
-    TEAM_CREATED = "team.created"
-    TEAM_CONVERSATION_STARTED = "team.conversation.started"
-    TEAM_CONVERSATION_ENDED = "team.conversation.ended"
-    TEAM_SPEAKER_CHANGED = "team.speaker.changed"
-    
-    CUSTOM = "custom"
+# --- Dual-Channel Event Model ---
 
+class StreamChunk(BaseModel):
+    """
+    Channel 1: Low-latency token stream for UI updates.
+    """
+    type: Literal["content_chunk"] = "content_chunk"
+    text: str
 
-@dataclass
-class Event:
-    """A single event."""
-    event_type: str
-    data: Dict[str, Any]
-    source: str
-    timestamp: datetime = field(default_factory=datetime.now)
-    event_id: str = field(default_factory=lambda: str(uuid4()))
-    
-    def to_dict(self) -> Dict[str, Any]:
-        """Convert to dictionary."""
-        return {
-            "event_type": self.event_type,
-            "data": self.data,
-            "source": self.source,
-            "timestamp": self.timestamp.isoformat(),
-            "event_id": self.event_id
-        }
-    
-    @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "Event":
-        """Create from dictionary."""
-        data = data.copy()
-        if "timestamp" in data and isinstance(data["timestamp"], str):
-            data["timestamp"] = datetime.fromisoformat(data["timestamp"])
-        return cls(**data)
+# --- Structured Execution Events ---
 
+# Task Lifecycle Events
+class TaskStartEvent(BaseModel):
+    """Task execution started."""
+    type: Literal["event_task_start"] = "event_task_start"
+    task_id: str
+    timestamp: datetime
+    initial_prompt: str
+    execution_mode: str
+    team_config: Dict[str, Any]
 
-class EventBus:
-    """Event bus for individual agents."""
-    
-    def __init__(self, agent: "Agent"):
-        self.agent = agent
-        self.listeners: Dict[str, List[Callable]] = {}
-        self.event_history: List[Event] = []
-        self.max_history = 1000
-        
-        logger.debug(f"Initialized event bus for agent '{agent.name}'")
-    
-    def on(self, event_type: str, callback: Callable[[Event], None]):
-        """Register an event listener."""
-        if event_type not in self.listeners:
-            self.listeners[event_type] = []
-        
-        self.listeners[event_type].append(callback)
-        logger.debug(f"Registered listener for '{event_type}' on agent '{self.agent.name}'")
-    
-    def off(self, event_type: str, callback: Callable[[Event], None]):
-        """Unregister an event listener."""
-        if event_type in self.listeners:
-            try:
-                self.listeners[event_type].remove(callback)
-                logger.debug(f"Unregistered listener for '{event_type}' on agent '{self.agent.name}'")
-            except ValueError:
-                pass
-    
-    def emit(self, event_type: str, data: Dict[str, Any]):
-        """Emit an event."""
-        event = Event(
-            event_type=event_type,
-            data=data,
-            source=self.agent.name
-        )
-        
-        # Add to history
-        self.event_history.append(event)
-        self._cleanup_history()
-        
-        # Notify listeners
-        listeners = self.listeners.get(event_type, [])
-        for callback in listeners:
-            try:
-                callback(event)
-            except Exception as e:
-                logger.error(f"Event listener failed for '{event_type}': {e}")
-        
-        logger.debug(f"Emitted event '{event_type}' from agent '{self.agent.name}'")
-    
-    async def emit_async(self, event_type: str, data: Dict[str, Any]):
-        """Emit an event asynchronously."""
-        event = Event(
-            event_type=event_type,
-            data=data,
-            source=self.agent.name
-        )
-        
-        # Add to history
-        self.event_history.append(event)
-        self._cleanup_history()
-        
-        # Notify listeners asynchronously
-        listeners = self.listeners.get(event_type, [])
-        tasks = []
-        
-        for callback in listeners:
-            if asyncio.iscoroutinefunction(callback):
-                tasks.append(callback(event))
-            else:
-                try:
-                    callback(event)
-                except Exception as e:
-                    logger.error(f"Event listener failed for '{event_type}': {e}")
-        
-        if tasks:
-            await asyncio.gather(*tasks, return_exceptions=True)
-        
-        logger.debug(f"Emitted async event '{event_type}' from agent '{self.agent.name}'")
-    
-    def get_events(self, event_type: Optional[str] = None, limit: int = 100) -> List[Event]:
-        """Get event history."""
-        events = self.event_history
-        
-        if event_type:
-            events = [e for e in events if e.event_type == event_type]
-        
-        return events[-limit:] if limit > 0 else events
-    
-    def get_recent_events(self, minutes: int = 60) -> List[Event]:
-        """Get events from the last N minutes."""
-        cutoff = datetime.now().timestamp() - (minutes * 60)
-        return [
-            e for e in self.event_history 
-            if e.timestamp.timestamp() > cutoff
-        ]
-    
-    def clear_history(self):
-        """Clear event history."""
-        self.event_history.clear()
-        logger.debug(f"Cleared event history for agent '{self.agent.name}'")
-    
-    def _cleanup_history(self):
-        """Clean up old events."""
-        if len(self.event_history) > self.max_history:
-            excess = len(self.event_history) - self.max_history
-            self.event_history = self.event_history[excess:]
-    
-    def get_stats(self) -> Dict[str, Any]:
-        """Get event statistics."""
-        if not self.event_history:
-            return {
-                "total_events": 0,
-                "event_types": {},
-                "oldest_event": None,
-                "newest_event": None
-            }
-        
-        # Count events by type
-        event_types = {}
-        for event in self.event_history:
-            event_types[event.event_type] = event_types.get(event.event_type, 0) + 1
-        
-        return {
-            "total_events": len(self.event_history),
-            "event_types": event_types,
-            "oldest_event": min(self.event_history, key=lambda e: e.timestamp).timestamp.isoformat(),
-            "newest_event": max(self.event_history, key=lambda e: e.timestamp).timestamp.isoformat(),
-            "active_listeners": {et: len(listeners) for et, listeners in self.listeners.items()}
-        }
+class TaskCompleteEvent(BaseModel):
+    """Task execution completed."""
+    type: Literal["event_task_complete"] = "event_task_complete"
+    task_id: str
+    timestamp: datetime
+    final_status: Literal["success", "error", "cancelled"]
+    summary: Optional[str] = None
+    artifacts_created: List[str] = Field(default_factory=list)
+    total_steps: int
+    total_duration_ms: int
 
+class TaskPausedEvent(BaseModel):
+    """Task execution paused."""
+    type: Literal["event_task_paused"] = "event_task_paused"
+    task_id: str
+    timestamp: datetime
+    reason: str  # "step_mode", "breakpoint", "user_request", "hitl_intervention"
+    context: Dict[str, Any] = Field(default_factory=dict)
 
-class GlobalEventBus:
-    """Global event bus for system-wide events."""
-    
-    _instance = None
-    
-    def __new__(cls):
-        if cls._instance is None:
-            cls._instance = super().__new__(cls)
-            cls._instance.listeners = {}
-            cls._instance.event_history = []
-            cls._instance.max_history = 10000
-        return cls._instance
-    
-    def on(self, event_type: str, callback: Callable[[Event], None]):
-        """Register a global event listener."""
-        if event_type not in self.listeners:
-            self.listeners[event_type] = []
-        
-        self.listeners[event_type].append(callback)
-        logger.debug(f"Registered global listener for '{event_type}'")
-    
-    def off(self, event_type: str, callback: Callable[[Event], None]):
-        """Unregister a global event listener."""
-        if event_type in self.listeners:
-            try:
-                self.listeners[event_type].remove(callback)
-                logger.debug(f"Unregistered global listener for '{event_type}'")
-            except ValueError:
-                pass
-    
-    def emit(self, event_type: str, data: Dict[str, Any], source: str = "system"):
-        """Emit a global event."""
-        event = Event(
-            event_type=event_type,
-            data=data,
-            source=source
-        )
-        
-        # Add to history
-        self.event_history.append(event)
-        self._cleanup_history()
-        
-        # Notify specific listeners
-        listeners = self.listeners.get(event_type, [])
-        
-        # Also notify wildcard listeners
-        wildcard_listeners = self.listeners.get("*", [])
-        all_listeners = listeners + wildcard_listeners
-        
-        for callback in all_listeners:
-            try:
-                callback(event)
-            except Exception as e:
-                logger.error(f"Global event listener failed for '{event_type}': {e}")
-        
-        logger.debug(f"Emitted global event '{event_type}' from '{source}'")
-    
-    def _cleanup_history(self):
-        """Clean up old events."""
-        if len(self.event_history) > self.max_history:
-            excess = len(self.event_history) - self.max_history
-            self.event_history = self.event_history[excess:]
+class TaskResumedEvent(BaseModel):
+    """Task execution resumed."""
+    type: Literal["event_task_resumed"] = "event_task_resumed"
+    task_id: str
+    timestamp: datetime
+    reason: str
+    context: Dict[str, Any] = Field(default_factory=dict)
 
+# Agent Events
+class AgentStartEvent(BaseModel):
+    """Agent turn started."""
+    type: Literal["event_agent_start"] = "event_agent_start"
+    agent_name: str
+    step_id: str
+    timestamp: datetime
+    context_size: Optional[int] = None
+    memory_retrieved: Optional[int] = None
 
-# Global event bus instance
-global_events = GlobalEventBus() 
+class AgentCompleteEvent(BaseModel):
+    """Agent turn completed."""
+    type: Literal["event_agent_complete"] = "event_agent_complete"
+    agent_name: str
+    step_id: str
+    timestamp: datetime
+    token_count: Optional[int] = None
+    execution_time_ms: Optional[int] = None
+    memory_stored: Optional[int] = None
+
+class AgentHandoffEvent(BaseModel):
+    """Agent handoff occurred."""
+    type: Literal["event_agent_handoff"] = "event_agent_handoff"
+    from_agent: str
+    to_agent: str
+    reason: str
+    timestamp: datetime
+    context: Dict[str, Any] = Field(default_factory=dict)
+    handoff_type: str = "sequential"  # "sequential", "parallel"
+
+# Advanced Collaboration Events
+class ParallelExecutionStartEvent(BaseModel):
+    """Parallel execution started."""
+    type: Literal["event_parallel_start"] = "event_parallel_start"
+    agents: List[str]
+    coordination_agent: Optional[str] = None
+    timestamp: datetime
+    sync_points: List[str] = Field(default_factory=list)
+
+class ParallelExecutionSyncEvent(BaseModel):
+    """Parallel execution sync point reached."""
+    type: Literal["event_parallel_sync"] = "event_parallel_sync"
+    sync_point: str
+    completed_agents: List[str]
+    waiting_agents: List[str]
+    timestamp: datetime
+
+class ConsensusProposalEvent(BaseModel):
+    """Consensus proposal made."""
+    type: Literal["event_consensus_proposal"] = "event_consensus_proposal"
+    proposal_id: str
+    proposer_agent: str
+    decision: str
+    stakeholders: List[str]
+    timestamp: datetime
+
+class ConsensusVoteEvent(BaseModel):
+    """Consensus vote cast."""
+    type: Literal["event_consensus_vote"] = "event_consensus_vote"
+    proposal_id: str
+    voter_agent: str
+    vote: str
+    reasoning: str
+    timestamp: datetime
+
+class ConsensusReachedEvent(BaseModel):
+    """Consensus reached."""
+    type: Literal["event_consensus_reached"] = "event_consensus_reached"
+    proposal_id: str
+    final_decision: str
+    votes: Dict[str, str]
+    timestamp: datetime
+
+# Tool Events
+class ToolCallEvent(BaseModel):
+    """Tool call initiated."""
+    type: Literal["event_tool_call"] = "event_tool_call"
+    tool_call: ToolCall
+    agent_name: str
+    timestamp: datetime
+    sandbox_id: Optional[str] = None
+
+class ToolResultEvent(BaseModel):
+    """Tool call completed."""
+    type: Literal["event_tool_result"] = "event_tool_result"
+    tool_result: ToolResult
+    timestamp: datetime
+    execution_time_ms: Optional[int] = None
+    sandbox_id: Optional[str] = None
+
+# Memory Events
+class MemoryStoreEvent(BaseModel):
+    """Memory stored."""
+    type: Literal["event_memory_store"] = "event_memory_store"
+    memory_id: str
+    memory_type: str
+    agent_name: str
+    content_size: int
+    timestamp: datetime
+
+class MemoryRetrieveEvent(BaseModel):
+    """Memory retrieved."""
+    type: Literal["event_memory_retrieve"] = "event_memory_retrieve"
+    query: str
+    results_count: int
+    agent_name: str
+    timestamp: datetime
+    relevance_threshold: Optional[float] = None
+
+class MemoryConsolidateEvent(BaseModel):
+    """Memory consolidated."""
+    type: Literal["event_memory_consolidate"] = "event_memory_consolidate"
+    topic: str
+    items_consolidated: int
+    timestamp: datetime
+    summary_length: int
+
+# HITL Events
+class HITLRequestEvent(BaseModel):
+    """Human-in-the-loop request made."""
+    type: Literal["event_hitl_request"] = "event_hitl_request"
+    request_id: str
+    request_type: str  # "approval", "feedback", "escalation"
+    agent_name: str
+    context: Dict[str, Any]
+    timeout: Optional[int] = None
+    timestamp: datetime
+
+class HITLResponseEvent(BaseModel):
+    """Human-in-the-loop response received."""
+    type: Literal["event_hitl_response"] = "event_hitl_response"
+    request_id: str
+    response_type: str  # "approved", "rejected", "modified", "timeout"
+    response_data: Dict[str, Any]
+    response_time_ms: int
+    timestamp: datetime
+
+# Guardrail Events
+class GuardrailViolationEvent(BaseModel):
+    """Guardrail policy violation."""
+    type: Literal["event_guardrail_violation"] = "event_guardrail_violation"
+    violation_id: str
+    check_type: str
+    severity: str
+    policy_violated: str
+    agent_name: Optional[str] = None
+    content_sample: Optional[str] = None
+    action_taken: str  # "blocked", "warned", "logged"
+    timestamp: datetime
+
+class GuardrailPolicyUpdateEvent(BaseModel):
+    """Guardrail policy updated."""
+    type: Literal["event_guardrail_policy_update"] = "event_guardrail_policy_update"
+    policy_name: str
+    update_type: str  # "created", "modified", "deleted"
+    updated_by: str
+    timestamp: datetime
+
+# Artifact Events
+class ArtifactCreatedEvent(BaseModel):
+    """Artifact created."""
+    type: Literal["event_artifact_created"] = "event_artifact_created"
+    artifact: Artifact
+    created_by: str
+    timestamp: datetime
+
+class ArtifactModifiedEvent(BaseModel):
+    """Artifact modified."""
+    type: Literal["event_artifact_modified"] = "event_artifact_modified"
+    artifact_uri: str
+    modified_by: str
+    changes: Dict[str, Any]
+    version: str
+    timestamp: datetime
+
+class ArtifactVersionedEvent(BaseModel):
+    """Artifact versioned."""
+    type: Literal["event_artifact_versioned"] = "event_artifact_versioned"
+    artifact_uri: str
+    old_version: str
+    new_version: str
+    reason: str
+    timestamp: datetime
+
+# Error Events
+class ErrorEvent(BaseModel):
+    """Error occurred."""
+    type: Literal["event_error"] = "event_error"
+    error_id: str
+    error_type: str
+    error_message: str
+    context: Dict[str, Any]
+    timestamp: datetime
+    recoverable: bool
+    recovery_action: Optional[str] = None
+    stack_trace: Optional[str] = None
+
+class RecoveryEvent(BaseModel):
+    """Error recovery attempted."""
+    type: Literal["event_recovery"] = "event_recovery"
+    error_id: str
+    recovery_strategy: str
+    success: bool
+    timestamp: datetime
+    details: Dict[str, Any] = Field(default_factory=dict)
+
+# Step-Through Events
+class BreakpointHitEvent(BaseModel):
+    """Breakpoint hit during execution."""
+    type: Literal["event_breakpoint_hit"] = "event_breakpoint_hit"
+    breakpoint_id: str
+    breakpoint_type: str
+    context: Dict[str, Any]
+    timestamp: datetime
+    agent_name: Optional[str] = None
+
+class UserInterventionEvent(BaseModel):
+    """User intervention occurred."""
+    type: Literal["event_user_intervention"] = "event_user_intervention"
+    intervention_id: str
+    intervention_type: str  # "instruction", "plan_update", "agent_override", "team_modification"
+    details: Dict[str, Any]
+    timestamp: datetime
+    user_id: Optional[str] = None
+
+# System Health Events
+class HealthCheckEvent(BaseModel):
+    """System health check result."""
+    type: Literal["event_health_check"] = "event_health_check"
+    component: str
+    status: str  # "healthy", "degraded", "unhealthy"
+    metrics: Dict[str, Any]
+    timestamp: datetime
+
+class PerformanceMetricEvent(BaseModel):
+    """Performance metric recorded."""
+    type: Literal["event_performance_metric"] = "event_performance_metric"
+    metric_name: str
+    metric_value: float
+    metric_unit: str
+    component: str
+    timestamp: datetime
+    tags: Dict[str, str] = Field(default_factory=dict)
+
+# Union type for all execution events
+ExecutionEvent = Union[
+    TaskStartEvent, TaskCompleteEvent, TaskPausedEvent, TaskResumedEvent,
+    AgentStartEvent, AgentCompleteEvent, AgentHandoffEvent,
+    ParallelExecutionStartEvent, ParallelExecutionSyncEvent,
+    ConsensusProposalEvent, ConsensusVoteEvent, ConsensusReachedEvent,
+    ToolCallEvent, ToolResultEvent,
+    MemoryStoreEvent, MemoryRetrieveEvent, MemoryConsolidateEvent,
+    HITLRequestEvent, HITLResponseEvent,
+    GuardrailViolationEvent, GuardrailPolicyUpdateEvent,
+    ArtifactCreatedEvent, ArtifactModifiedEvent, ArtifactVersionedEvent,
+    ErrorEvent, RecoveryEvent,
+    BreakpointHitEvent, UserInterventionEvent,
+    HealthCheckEvent, PerformanceMetricEvent
+]

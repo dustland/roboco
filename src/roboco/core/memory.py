@@ -9,13 +9,13 @@ import asyncio
 from typing import Dict, List, Optional, Any, Union
 from dataclasses import dataclass, field
 from datetime import datetime
-import uuid
 
 from ..memory.backend import MemoryBackend
 from ..memory.factory import create_memory_backend
 from ..memory.types import MemoryType
 # MemoryConfig imported locally to avoid circular imports
 from ..utils.logger import get_logger
+from ..utils.id import generate_short_id
 
 logger = get_logger(__name__)
 
@@ -25,7 +25,7 @@ class MemoryItem:
     """Individual memory item."""
     content: str
     agent_name: str
-    memory_id: str = field(default_factory=lambda: str(uuid.uuid4()))
+    memory_id: str = field(default_factory=generate_short_id)
     timestamp: datetime = field(default_factory=datetime.now)
     memory_type: MemoryType = MemoryType.TEXT
     metadata: Dict[str, Any] = field(default_factory=dict)
@@ -119,7 +119,7 @@ class Memory:
         memory_items = []
         for result in results:
             memory_item = MemoryItem(
-                memory_id=result.get("memory_id", str(uuid.uuid4())),
+                memory_id=result.get("memory_id", generate_short_id()),
                 content=result["content"],
                 agent_name=self.agent.name,
                 timestamp=datetime.fromisoformat(result.get("timestamp", datetime.now().isoformat())),
