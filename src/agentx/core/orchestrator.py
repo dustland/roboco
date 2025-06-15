@@ -15,8 +15,12 @@ from .event import (
 )
 from .streaming import StreamChunk, StreamError, StreamComplete
 from .config import ExecutionMode
+from .guardrails import get_guardrail_engine, GuardrailContext, check_content_safety
 from ..utils.id import generate_short_id
+from ..utils.logger import get_logger
 from ..event import publish_event
+
+logger = get_logger(__name__)
 
 
 class TaskState:
@@ -34,6 +38,12 @@ class TaskState:
         self.is_paused = False
         self.created_at = datetime.now()
         self.artifacts: Dict[str, Any] = {}
+        
+        # Debugging state
+        self.execution_mode: str = "autonomous"
+        self.breakpoints: List[str] = []
+        self.debug_context: Dict[str, Any] = {}
+        self.last_breakpoint: Optional[str] = None
         
         # Create workspace directory
         self.workspace_dir.mkdir(parents=True, exist_ok=True)
@@ -80,6 +90,39 @@ class TaskState:
         }
         self._save_state()
     
+    def set_execution_mode(self, mode: str) -> None:
+        """Set the execution mode (autonomous, step_through, debug)."""
+        self.execution_mode = mode
+        self._save_state()
+    
+    def set_breakpoints(self, breakpoints: List[str]) -> None:
+        """Set breakpoints for debugging."""
+        self.breakpoints = breakpoints
+        self._save_state()
+    
+    def update_debug_context(self, context: Dict[str, Any]) -> None:
+        """Update debug context information."""
+        self.debug_context.update(context)
+        self._save_state()
+    
+    def get_inspection_data(self) -> Dict[str, Any]:
+        """Get current state data for inspection."""
+        return {
+            'task_id': self.task_id,
+            'current_agent': self.current_agent,
+            'round_count': self.round_count,
+            'is_complete': self.is_complete,
+            'is_paused': self.is_paused,
+            'execution_mode': self.execution_mode,
+            'history_length': len(self.history),
+            'artifacts': list(self.artifacts.keys()),
+            'debug_context': self.debug_context,
+            'breakpoints': self.breakpoints,
+            'last_breakpoint': self.last_breakpoint,
+            'team_agents': [agent.name for agent in self.team.agents],
+            'available_tools': self.team.get_agent_tools(self.current_agent) if self.current_agent else []
+        }
+    
     def _save_state(self) -> None:
         """Save the current state to disk."""
         state_file = self.workspace_dir / "task_state.json"
@@ -103,7 +146,11 @@ class TaskState:
             'is_paused': self.is_paused,
             'created_at': self.created_at.isoformat(),
             'history': history_data,
-            'artifacts': self.artifacts
+            'artifacts': self.artifacts,
+            'execution_mode': getattr(self, 'execution_mode', 'autonomous'),
+            'breakpoints': getattr(self, 'breakpoints', []),
+            'debug_context': getattr(self, 'debug_context', {}),
+            'last_breakpoint': getattr(self, 'last_breakpoint', None)
         }
         
         with open(state_file, 'w', encoding='utf-8') as f:
@@ -132,6 +179,12 @@ class TaskState:
         instance.is_paused = state_data['is_paused']
         instance.created_at = datetime.fromisoformat(state_data['created_at'])
         instance.artifacts = state_data.get('artifacts', {})
+        
+        # Load debugging state
+        instance.execution_mode = state_data.get('execution_mode', 'autonomous')
+        instance.breakpoints = state_data.get('breakpoints', [])
+        instance.debug_context = state_data.get('debug_context', {})
+        instance.last_breakpoint = state_data.get('last_breakpoint', None)
         
         # Reconstruct history
         instance.history = []
@@ -183,6 +236,18 @@ class Orchestrator:
         if initial_agent not in self.team.agents:
             raise ValueError(f"Initial agent '{initial_agent}' not found in team")
         
+        # Validate input prompt with guardrails
+        guardrail_result = await check_content_safety(
+            content=prompt,
+            agent_name="system",
+            task_id=task_id
+        )
+        
+        # Check if input should be blocked
+        guardrail_engine = get_guardrail_engine()
+        if guardrail_engine.should_block_content(guardrail_result):
+            raise ValueError(f"Input prompt blocked by guardrails: {guardrail_result.overall_status}")
+        
         # Create task workspace
         task_workspace = self.workspace_dir / task_id
         
@@ -233,8 +298,31 @@ class Orchestrator:
                 if task_state.round_count >= self.team.max_rounds:
                     break
                 
+                # Check for breakpoints before agent turn
+                if await self._check_breakpoints(task_state, "before_agent_turn"):
+                    break
+                
+                # Check for step-through mode
+                if task_state.execution_mode == "step_through":
+                    task_state.pause_task()
+                    await publish_event(
+                        TaskPausedEvent(
+                            task_id=task_id,
+                            timestamp=datetime.now(),
+                            reason="step_mode",
+                            context={"round": task_state.round_count, "agent": task_state.current_agent}
+                        ),
+                        source="orchestrator",
+                        correlation_id=task_id
+                    )
+                    break
+                
                 # Execute current agent turn
                 await self._execute_agent_turn(task_state)
+                
+                # Check for breakpoints after agent turn
+                if await self._check_breakpoints(task_state, "after_agent_turn"):
+                    break
                 
                 # Increment round counter
                 task_state.increment_round()
@@ -634,6 +722,24 @@ class Orchestrator:
             # Fallback response on error
             response_text = f"I apologize, but I encountered an error while processing your request: {str(e)}"
         
+        # Validate agent response with guardrails
+        agent_policies = self.team.get_guardrail_policies(current_agent)
+        policy_names = [policy['name'] for policy in agent_policies] if agent_policies else None
+        
+        guardrail_result = await check_content_safety(
+            content=response_text,
+            agent_name=current_agent,
+            policy_names=policy_names,
+            task_id=task_state.task_id,
+            step_id=step_id
+        )
+        
+        # Check if response should be blocked
+        guardrail_engine = get_guardrail_engine()
+        if guardrail_engine.should_block_content(guardrail_result):
+            # Replace blocked content with safe message
+            response_text = f"[Content blocked by guardrails: {guardrail_result.overall_status}]"
+        
         # Check for handoff requests in the response
         handoff_target = self._detect_handoff_request(response_text)
         if handoff_target:
@@ -641,11 +747,15 @@ class Orchestrator:
             await self._process_handoff(task_state, current_agent, handoff_target, response_text)
             return
         
-        # Create task step
+        # Create task step with guardrail results
+        step_parts = [TextPart(text=response_text)]
+        if guardrail_result.checks:  # Add guardrail part if there were checks
+            step_parts.append(guardrail_result)
+        
         step = TaskStep(
             step_id=step_id,
             agent_name=current_agent,
-            parts=[TextPart(text=response_text)],
+            parts=step_parts,
             timestamp=datetime.now()
         )
         
@@ -711,8 +821,232 @@ class Orchestrator:
         """Get list of active task IDs."""
         return list(self.active_tasks.keys())
     
+    async def set_breakpoints(self, task_id: str, breakpoints: List[str]) -> None:
+        """Set breakpoints for a task."""
+        if task_id not in self.active_tasks:
+            raise ValueError(f"Task not found: {task_id}")
+        
+        task_state = self.active_tasks[task_id]
+        task_state.set_breakpoints(breakpoints)
+        
+        logger.info(f"Set breakpoints for task {task_id}: {breakpoints}")
+    
+    async def set_execution_mode(self, task_id: str, mode: str) -> None:
+        """Set execution mode for a task."""
+        if task_id not in self.active_tasks:
+            raise ValueError(f"Task not found: {task_id}")
+        
+        valid_modes = ["autonomous", "step_through", "debug"]
+        if mode not in valid_modes:
+            raise ValueError(f"Invalid execution mode: {mode}. Valid modes: {valid_modes}")
+        
+        task_state = self.active_tasks[task_id]
+        task_state.set_execution_mode(mode)
+        
+        logger.info(f"Set execution mode for task {task_id}: {mode}")
+    
+    def inspect_task_state(self, task_id: str) -> Dict[str, Any]:
+        """Get detailed inspection data for a task."""
+        if task_id not in self.active_tasks:
+            raise ValueError(f"Task not found: {task_id}")
+        
+        task_state = self.active_tasks[task_id]
+        return task_state.get_inspection_data()
+    
+    async def inject_user_message(self, task_id: str, message: str, context: Dict[str, Any] = None) -> None:
+        """Inject a user message into the task history."""
+        if task_id not in self.active_tasks:
+            raise ValueError(f"Task not found: {task_id}")
+        
+        task_state = self.active_tasks[task_id]
+        
+        # Create user intervention step
+        step = TaskStep(
+            step_id=generate_short_id(),
+            agent_name="user",
+            parts=[TextPart(text=message)],
+            timestamp=datetime.now(),
+            execution_mode="debug_intervention"
+        )
+        
+        # Add to history
+        task_state.add_step(step)
+        
+        # Update debug context if provided
+        if context:
+            task_state.update_debug_context(context)
+        
+        # Emit user intervention event
+        await publish_event(
+            UserInterventionEvent(
+                intervention_id=step.step_id,
+                intervention_type="instruction",
+                details={"message": message, "context": context or {}},
+                timestamp=datetime.now()
+            ),
+            source="orchestrator",
+            correlation_id=task_id
+        )
+        
+        logger.info(f"Injected user message into task {task_id}: {message[:50]}...")
+    
+    async def modify_task_context(self, task_id: str, context_updates: Dict[str, Any]) -> None:
+        """Modify the task's debug context."""
+        if task_id not in self.active_tasks:
+            raise ValueError(f"Task not found: {task_id}")
+        
+        task_state = self.active_tasks[task_id]
+        task_state.update_debug_context(context_updates)
+        
+        logger.info(f"Updated debug context for task {task_id}: {list(context_updates.keys())}")
+    
+    async def override_next_agent(self, task_id: str, agent_name: str) -> None:
+        """Override the next agent for debugging purposes."""
+        if task_id not in self.active_tasks:
+            raise ValueError(f"Task not found: {task_id}")
+        
+        task_state = self.active_tasks[task_id]
+        
+        # Validate agent exists
+        if not self.team.get_agent(agent_name):
+            raise ValueError(f"Agent not found: {agent_name}")
+        
+        # Set the agent
+        task_state.set_current_agent(agent_name)
+        
+        # Update debug context
+        task_state.update_debug_context({
+            "agent_override": True,
+            "overridden_agent": agent_name,
+            "override_timestamp": datetime.now().isoformat()
+        })
+        
+        logger.info(f"Overrode next agent for task {task_id}: {agent_name}")
+    
+    async def _check_breakpoints(self, task_state: TaskState, context: str) -> bool:
+        """
+        Check if any breakpoints should trigger.
+        
+        Args:
+            task_state: Current task state
+            context: Context string (e.g., "before_agent_turn", "after_tool_call", "handoff")
+            
+        Returns:
+            True if execution should pause, False otherwise
+        """
+        if not task_state.breakpoints:
+            return False
+        
+        # Check for context-specific breakpoints
+        should_break = False
+        breakpoint_hit = None
+        
+        for breakpoint in task_state.breakpoints:
+            if breakpoint == "all":
+                should_break = True
+                breakpoint_hit = "all"
+                break
+            elif breakpoint == context:
+                should_break = True
+                breakpoint_hit = breakpoint
+                break
+            elif breakpoint == "agent_turn" and context in ["before_agent_turn", "after_agent_turn"]:
+                should_break = True
+                breakpoint_hit = breakpoint
+                break
+            elif breakpoint == "tool_call" and context in ["before_tool_call", "after_tool_call"]:
+                should_break = True
+                breakpoint_hit = breakpoint
+                break
+            elif breakpoint == "handoff" and context == "handoff":
+                should_break = True
+                breakpoint_hit = breakpoint
+                break
+            elif breakpoint == "error" and context == "error":
+                should_break = True
+                breakpoint_hit = breakpoint
+                break
+        
+        if should_break:
+            # Pause the task
+            task_state.pause_task()
+            task_state.last_breakpoint = breakpoint_hit
+            
+            # Emit breakpoint event
+            await publish_event(
+                BreakpointHitEvent(
+                    breakpoint_id=generate_short_id(),
+                    breakpoint_type=breakpoint_hit,
+                    context={
+                        "execution_context": context,
+                        "current_agent": task_state.current_agent,
+                        "round_count": task_state.round_count,
+                        "debug_context": task_state.debug_context
+                    },
+                    timestamp=datetime.now(),
+                    agent_name=task_state.current_agent
+                ),
+                source="orchestrator",
+                correlation_id=task_state.task_id
+            )
+            
+            logger.info(f"Breakpoint hit in task {task_state.task_id}: {breakpoint_hit} at {context}")
+        
+        return should_break
+    
     async def load_task(self, workspace_dir: Path) -> str:
         """Load a task from a workspace directory."""
         task_state = TaskState.load_state(workspace_dir, self.team)
         self.active_tasks[task_state.task_id] = task_state
-        return task_state.task_id 
+        return task_state.task_id
+    
+    def _detect_handoff_request(self, response_text: str) -> Optional[str]:
+        """Detect handoff requests in agent responses."""
+        # Simple pattern matching for handoff requests
+        # This could be enhanced with more sophisticated parsing
+        import re
+        
+        # Look for handoff patterns
+        handoff_patterns = [
+            r'🔄 HANDOFF_REQUEST:.*?"destination_agent":\s*"([^"]+)"',
+            r'handoff\s*\(\s*["\']([^"\']+)["\']',
+            r'hand.*off.*to\s+(\w+)',
+            r'transfer.*to\s+(\w+)',
+        ]
+        
+        for pattern in handoff_patterns:
+            match = re.search(pattern, response_text, re.IGNORECASE)
+            if match:
+                target_agent = match.group(1)
+                # Validate that the target agent exists
+                if target_agent in self.team.agents:
+                    return target_agent
+        
+        return None
+    
+    async def _process_handoff(self, task_state: TaskState, from_agent: str, 
+                             to_agent: str, response_text: str) -> None:
+        """Process an agent handoff."""
+        # Validate handoff is allowed
+        if not self.team.validate_handoff(from_agent, to_agent):
+            logger.warning(f"Invalid handoff from {from_agent} to {to_agent}")
+            return
+        
+        # Check for handoff breakpoints
+        await self._check_breakpoints(task_state, "handoff")
+        
+        # Update current agent
+        task_state.set_current_agent(to_agent)
+        
+        # Emit handoff event
+        await publish_event(
+            AgentHandoffEvent(
+                from_agent=from_agent,
+                to_agent=to_agent,
+                reason="agent_request",
+                timestamp=datetime.now(),
+                context={"response_text": response_text[:100]}
+            ),
+            source=f"agent:{from_agent}",
+            correlation_id=task_state.task_id
+        )

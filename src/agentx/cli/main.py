@@ -122,6 +122,21 @@ For more information, visit: https://github.com/dustland/agentx
     config_subparsers.add_parser("show", help="Show current configuration")
     config_subparsers.add_parser("init", help="Initialize default configuration")
     
+    # Debug command
+    debug_parser = subparsers.add_parser(
+        "debug",
+        help="Start debugging session for a task",
+        description="Start interactive debugging session with breakpoints and state inspection"
+    )
+    debug_parser.add_argument(
+        "team_config",
+        help="Path to team configuration file"
+    )
+    debug_parser.add_argument(
+        "task_id",
+        help="Task ID to debug"
+    )
+    
     return parser
 
 
@@ -356,6 +371,12 @@ def main():
             else:
                 print("Available config actions: show, init")
                 return 1
+            return 0
+        
+        elif args.command == "debug":
+            import asyncio
+            from .debug import debug_task
+            asyncio.run(debug_task(args.team_config, args.task_id))
             return 0
         
         else:
