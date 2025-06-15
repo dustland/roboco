@@ -3,15 +3,15 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}Roboco Observability{% endblock %}</title>
+    <title>{% block title %}AgentX Observability{% endblock %}</title>
     
     <!-- Favicon -->
     <link rel="icon" type="image/png" href="/static/logo.png">
     <link rel="shortcut icon" type="image/png" href="/static/logo.png">
     
-    <!-- TailwindCSS + Preline UI v3.10 -->
+    <!-- TailwindCSS + Preline UI v3.1.0 -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/preline@3.10.0/dist/preline.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/preline@3.1.0/dist/preline.min.js"></script>
 
     <!-- HTMX v2.0.4 -->
     <script src="https://unpkg.com/htmx.org@2.0.4"></script>
@@ -59,6 +59,49 @@
         .dark .custom-scrollbar::-webkit-scrollbar-thumb:hover {
             background: rgb(163 163 163);
         }
+        
+        /* Toast animations */
+        @keyframes slide-in-right {
+            from {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+        .animate-slide-in-right {
+            animation: slide-in-right 0.3s ease-out;
+        }
+        
+        /* Modal fallback styles */
+        #project-path-modal {
+            backdrop-filter: blur(4px);
+            z-index: 9999 !important;
+        }
+        #project-path-modal.hidden {
+            display: none !important;
+        }
+        
+        /* Ensure modal is above sidebar */
+        #project-path-modal > div {
+            z-index: 10000;
+        }
+        
+        /* Modal input styling */
+        #project-path-modal input[type="text"] {
+            padding: 8px 12px;
+            border: 1px solid #d1d5db;
+            border-radius: 6px;
+            width: 100%;
+        }
+        
+        #project-path-modal input[type="text"]:focus {
+            outline: none;
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+        }
     </style>
 </head>
 <body class="bg-gray-50 dark:bg-neutral-900">
@@ -68,8 +111,8 @@
             <!-- Logo -->
             <div class="me-5 lg:me-0 lg:hidden">
                 <a href="/" class="flex items-center text-xl font-bold text-gray-800 hover:text-gray-600 dark:text-white dark:hover:text-neutral-300 transition-colors">
-                    <img src="/static/logo.png" alt="Roboco" class="w-6 h-6 mr-2">
-                    Roboco
+                    <img src="/static/logo.png" alt="AgentX" class="w-6 h-6 mr-2">
+                    AgentX
                 </a>
             </div>
 
@@ -86,6 +129,12 @@
                 </div>
 
                 <div class="flex flex-row items-center justify-end gap-1">
+                    <!-- Project Path Selector -->
+                    <button type="button" onclick="openProjectPathModal()" class="size-[38px] relative inline-flex justify-center items-center gap-x-2 text-sm font-semibold rounded-full border border-transparent text-gray-800 hover:bg-gray-100 focus:outline-none focus:bg-gray-100 disabled:opacity-50 disabled:pointer-events-none dark:text-white dark:hover:bg-neutral-700 dark:focus:bg-neutral-700" title="Change Project Path">
+                        <i data-lucide="folder" class="shrink-0 size-4"></i>
+                        <span class="sr-only">Change Project Path</span>
+                    </button>
+
                     <!-- Theme Toggle -->
                     <button type="button" data-hs-theme-switch class="size-[38px] relative inline-flex justify-center items-center gap-x-2 text-sm font-semibold rounded-full border border-transparent text-gray-800 hover:bg-gray-100 focus:outline-none focus:bg-gray-100 disabled:opacity-50 disabled:pointer-events-none dark:text-white dark:hover:bg-neutral-700 dark:focus:bg-neutral-700">
                         <i data-lucide="sun" class="shrink-0 size-4 dark:hidden"></i>
@@ -111,8 +160,8 @@
             <div class="px-6 pt-4">
                 <!-- Logo -->
                 <a href="/" class="flex items-center text-xl font-bold text-gray-800 dark:text-white">
-                    <img src="/static/logo.png" alt="Roboco" class="w-6 h-6 mr-2">
-                    Roboco <span class="text-sm text-gray-400 ml-2">O11y</span>
+                    <img src="/static/logo.png" alt="AgentX" class="w-6 h-6 mr-2">
+                    AgentX <span class="text-sm text-gray-400 ml-2">O11y</span>
                 </a>
             </div>
 
@@ -139,9 +188,9 @@
                             </a>
                         </li>
                         <li>
-                            <a class="flex items-center gap-x-2 py-2 px-2.5 {% if page_title == 'Memory' %}bg-gray-100 dark:bg-neutral-700{% endif %} text-sm text-gray-800 rounded-lg hover:bg-gray-100 focus:outline-none focus:bg-gray-100 dark:text-neutral-200 dark:hover:bg-neutral-700 dark:focus:bg-neutral-700" href="/memory">
-                                <i data-lucide="brain" class="shrink-0 size-4"></i>
-                                Memory
+                            <a class="flex items-center gap-x-2 py-2 px-2.5 {% if page_title == 'Artifacts' %}bg-gray-100 dark:bg-neutral-700{% endif %} text-sm text-gray-800 rounded-lg hover:bg-gray-100 focus:outline-none focus:bg-gray-100 dark:text-neutral-200 dark:hover:bg-neutral-700 dark:focus:bg-neutral-700" href="/artifacts">
+                                <i data-lucide="folder-open" class="shrink-0 size-4"></i>
+                                Artifacts
                             </a>
                         </li>
                                                   <li>
@@ -184,7 +233,82 @@
         </div>
     </div>
 
-    <!-- Preline UI theme initialization (must run early) -->
+    <!-- Project Path Modal -->
+    <div id="project-path-modal" class="hidden fixed inset-0 z-[9999] overflow-y-auto" aria-labelledby="modal-title" role="dialog" aria-modal="true" style="z-index: 9999 !important;">
+        <div class="flex items-center justify-center min-h-screen pt-4 px-4 pb-20 text-center">
+            <!-- Background overlay -->
+            <div class="fixed inset-0 bg-black bg-opacity-50 transition-opacity" aria-hidden="true" onclick="closeProjectPathModal()" style="z-index: 9998;"></div>
+
+            <!-- Modal panel -->
+            <div class="relative inline-block align-middle bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all max-w-lg w-full mx-4 dark:bg-gray-800" style="z-index: 10000;">
+                <div class="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4 dark:bg-gray-800">
+                    <div class="sm:flex sm:items-start">
+                        <div class="mx-auto flex-shrink-0 flex items-center justify-center h-12 w-12 rounded-full bg-blue-100 sm:mx-0 sm:h-10 sm:w-10 dark:bg-blue-900">
+                            <i data-lucide="folder" class="h-6 w-6 text-blue-600 dark:text-blue-400"></i>
+                        </div>
+                        <div class="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left w-full">
+                            <h3 class="text-lg leading-6 font-medium text-gray-900 dark:text-white" id="modal-title">
+                                Change Project Path
+                            </h3>
+                            <div class="mt-2">
+                                <p class="text-sm text-gray-500 dark:text-gray-400">
+                                    Set the path to your AgentX project directory containing workspace/ and config/ folders
+                                </p>
+                            </div>
+
+                            <div class="mt-4">
+                                <!-- Current Project Path -->
+                                <div class="mb-4 p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Current Project Path:</label>
+                                    <code id="current-project-path" class="text-sm text-gray-800 dark:text-gray-200">{{ config_data.project_path or '.' }}</code>
+                                </div>
+
+                                <!-- New Project Path Input -->
+                                <div class="mb-4">
+                                    <label for="new-project-path" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">New Project Path:</label>
+                                    <input type="text" id="new-project-path" name="new-project-path" 
+                                           class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm dark:bg-gray-700 dark:border-gray-600 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500"
+                                           placeholder="/path/to/your/agentx/project"
+                                           value="{{ config_data.project_path or '.' }}">
+                                </div>
+
+                                <!-- Project Structure Info -->
+                                <div class="mb-4 p-3 bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-700 rounded-lg">
+                                    <div class="flex">
+                                        <i data-lucide="info" class="flex-shrink-0 w-4 h-4 text-blue-600 mt-0.5"></i>
+                                        <div class="ml-3">
+                                            <h4 class="text-sm font-medium text-blue-800 dark:text-blue-400">Expected Structure:</h4>
+                                            <div class="mt-1 text-xs text-blue-700 dark:text-blue-300">
+                                                <div>📁 project-path/</div>
+                                                <div>&nbsp;&nbsp;├── 📁 workspace/ (data files)</div>
+                                                <div>&nbsp;&nbsp;└── 📁 config/ (configuration files)</div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="bg-gray-50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse dark:bg-gray-700">
+                    <button type="button" onclick="changeProjectPath()" 
+                            class="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-blue-600 text-base font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 sm:ml-3 sm:w-auto sm:text-sm">
+                        <i data-lucide="folder" class="w-4 h-4 mr-2"></i>
+                        Change Path
+                    </button>
+                    <button type="button" onclick="closeProjectPathModal()" 
+                            class="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm dark:bg-gray-800 dark:text-gray-300 dark:border-gray-600 dark:hover:bg-gray-700">
+                        Cancel
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Preline UI v3.1.0 -->
+    <script src="https://cdn.jsdelivr.net/npm/preline@3.1.0/dist/preline.min.js"></script>
+    
+    <!-- Preline UI theme initialization (must run after Preline is loaded) -->
     <script>
         // This code should be added to <head>. It's used to prevent page load glitches.
         const html = document.querySelector('html');
@@ -203,32 +327,47 @@
         else if (isLightOrAuto && !html.classList.contains('light')) html.classList.add('light');
     </script>
     
-    <!-- Preline UI JS v3.10 -->
-    <script src="https://cdn.jsdelivr.net/npm/preline@3.10.0/dist/preline.min.js"></script>
-    
     <script>
-        // Initialize Lucide icons
-        lucide.createIcons();
-        
-        // Initialize Preline components
+        // Initialize components when DOM is ready
         document.addEventListener('DOMContentLoaded', function() {
+            console.log('DOM loaded, initializing components...');
+            
+            // Initialize Lucide icons
+            if (window.lucide) {
+                lucide.createIcons();
+                console.log('Lucide icons initialized');
+            }
+            
+            // Try to initialize Preline components if available
             if (window.HSStaticMethods) {
-                window.HSStaticMethods.autoInit();
+                try {
+                    window.HSStaticMethods.autoInit();
+                    console.log('Preline UI components initialized');
+                } catch (error) {
+                    console.log('Preline UI initialization failed, using fallback:', error);
+                }
+            } else {
+                console.log('Preline UI not available, using basic functionality');
             }
         });
         
-        // Preline UI theme switch event handling
-        document.addEventListener('DOMContentLoaded', function() {
-            // Listen for theme changes
-            document.addEventListener('on-hs-theme-switch', function(e) {
-                // Re-initialize Preline components after theme change
-                if (window.HSStaticMethods) {
-                    window.HSStaticMethods.autoInit();
-                }
-                
-                // Re-initialize Lucide icons
+        // Re-initialize after page fully loads
+        window.addEventListener('load', function() {
+            console.log('Page fully loaded, re-initializing...');
+            
+            // Re-initialize Lucide icons
+            if (window.lucide) {
                 lucide.createIcons();
-            });
+            }
+            
+            // Try to initialize theme switching if available
+            if (window.HSStaticMethods) {
+                try {
+                    window.HSStaticMethods.autoInit();
+                } catch (error) {
+                    console.log('Preline UI re-initialization failed:', error);
+                }
+            }
         });
         
 
@@ -236,12 +375,16 @@
         // Toast notification system
         function showToast(message, type = 'info') {
             const toast = document.createElement('div');
-            toast.className = `alert alert-${type} shadow-lg mb-2`;
+            const bgColor = type === 'success' ? 'bg-green-500' : type === 'error' ? 'bg-red-500' : 'bg-blue-500';
+            const iconName = type === 'success' ? 'check-circle' : type === 'error' ? 'x-circle' : 'info';
+            
+            toast.className = `${bgColor} text-white px-4 py-3 rounded-lg shadow-lg mb-2 flex items-center gap-2 animate-slide-in-right`;
             toast.innerHTML = `
-                <div>
-                    <i data-lucide="${type === 'success' ? 'check-circle' : type === 'error' ? 'x-circle' : 'info'}" class="w-5 h-5"></i>
-                    <span>${message}</span>
-                </div>
+                <i data-lucide="${iconName}" class="shrink-0 size-4"></i>
+                <span class="text-sm font-medium">${message}</span>
+                <button onclick="this.parentElement.remove()" class="ml-auto">
+                    <i data-lucide="x" class="shrink-0 size-4 hover:bg-black/20 rounded p-0.5"></i>
+                </button>
             `;
             
             document.getElementById('toast-container').appendChild(toast);
@@ -249,7 +392,9 @@
             
             // Auto remove after 5 seconds
             setTimeout(() => {
-                toast.remove();
+                if (toast.parentElement) {
+                    toast.remove();
+                }
             }, 5000);
         }
         
@@ -280,15 +425,107 @@
         function updateStatusIndicator(isRunning, isIntegrated) {
             const indicator = document.getElementById('status-indicator');
             if (isRunning && isIntegrated) {
-                indicator.className = 'indicator-item badge badge-success badge-xs';
+                indicator.className = 'absolute top-0 end-0 inline-flex items-center py-0.5 px-1.5 rounded-full text-xs font-medium transform -translate-y-1/2 translate-x-1/2 bg-green-500 text-white';
             } else if (isRunning) {
-                indicator.className = 'indicator-item badge badge-warning badge-xs';
+                indicator.className = 'absolute top-0 end-0 inline-flex items-center py-0.5 px-1.5 rounded-full text-xs font-medium transform -translate-y-1/2 translate-x-1/2 bg-yellow-500 text-white';
             } else {
-                indicator.className = 'indicator-item badge badge-error badge-xs';
+                indicator.className = 'absolute top-0 end-0 inline-flex items-center py-0.5 px-1.5 rounded-full text-xs font-medium transform -translate-y-1/2 translate-x-1/2 bg-red-500 text-white';
             }
         }
         
-        // Data Directory Management Functions
+        // Project Path Management Functions
+        function openProjectPathModal() {
+            console.log('Opening project path modal...');
+            const modal = document.getElementById('project-path-modal');
+            if (!modal) {
+                console.error('Modal element not found!');
+                return;
+            }
+            
+            console.log('Modal element found, removing hidden class...');
+            modal.classList.remove('hidden');
+            document.body.style.overflow = 'hidden';
+            
+            // Re-initialize Lucide icons in the modal
+            setTimeout(() => {
+                if (window.lucide) {
+                    lucide.createIcons();
+                }
+                console.log('Modal should be visible now');
+            }, 100);
+        }
+        
+        function closeProjectPathModal() {
+            const modal = document.getElementById('project-path-modal');
+            modal.classList.add('hidden');
+            document.body.style.overflow = '';
+        }
+        
+        // Close modal on Escape key
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') {
+                const modal = document.getElementById('project-path-modal');
+                if (!modal.classList.contains('hidden')) {
+                    closeProjectPathModal();
+                }
+            }
+        });
+        
+        function changeProjectPath() {
+            console.log('changeProjectPath called');
+            const newPath = document.getElementById('new-project-path').value.trim();
+            console.log('New path:', newPath);
+            
+            if (!newPath) {
+                showToast('Please enter a valid project path', 'error');
+                return;
+            }
+            
+            if (confirm('Changing the project path will restart the monitor. Continue?')) {
+                console.log('User confirmed path change');
+                // Show loading state
+                const button = event.target;
+                const originalText = button.innerHTML;
+                button.disabled = true;
+                button.innerHTML = '<i data-lucide="loader-2" class="w-4 h-4 mr-2 animate-spin"></i>Changing...';
+                lucide.createIcons();
+                
+                fetch('/api/project/change', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ path: newPath })
+                })
+                .then(response => {
+                    console.log('Response status:', response.status);
+                    return response.json();
+                })
+                .then(data => {
+                    console.log('Response data:', data);
+                    if (data.success) {
+                        showToast('Project path changed successfully. Reloading...', 'success');
+                        closeProjectPathModal();
+                        setTimeout(() => {
+                            window.location.reload();
+                        }, 2000);
+                    } else {
+                        showToast(data.error || 'Failed to change project path', 'error');
+                        button.disabled = false;
+                        button.innerHTML = originalText;
+                        lucide.createIcons();
+                    }
+                })
+                .catch(error => {
+                    console.error('Error changing project path:', error);
+                    showToast('Failed to change project path: ' + error.message, 'error');
+                    button.disabled = false;
+                    button.innerHTML = originalText;
+                    lucide.createIcons();
+                });
+            }
+        }
+        
         function copyToClipboard(text) {
             navigator.clipboard.writeText(text).then(function() {
                 showToast('Path copied to clipboard', 'success');
@@ -297,100 +534,11 @@
             });
         }
         
-        function openDataDirectory() {
-            // This would typically require a backend API call to open the directory
-            // For now, we'll just copy the path and show a message
-            const path = document.querySelector('#new-data-dir').value || '{{ config_data.system.data_directory }}';
-            copyToClipboard(path);
-            showToast('Path copied. Open it manually in your file manager.', 'info');
-        }
-        
-        function browseDataDirectory() {
-            // In a real implementation, this would open a file dialog
-            // For web-based implementation, we'll provide a helpful message
-            showToast('Enter the path manually or use the file manager to find the directory', 'info');
-        }
-        
-        function refreshDataDirectory() {
-            fetch('/api/data-directory/info')
-                .then(response => response.json())
-                .then(data => {
-                    updateDataDirectoryInfo(data);
-                    showToast('Data directory info refreshed', 'success');
-                })
-                .catch(error => {
-                    showToast('Failed to refresh data directory info', 'error');
-                });
-        }
-        
-        function updateDataDirectoryInfo(info) {
-            const container = document.getElementById('data-directory-info');
-            if (container && info) {
-                container.innerHTML = `
-                    <div class="flex justify-between text-sm">
-                        <span class="text-gray-600 dark:text-neutral-400">Status:</span>
-                        <span class="text-gray-800 dark:text-neutral-200">${info.exists ? 'Exists' : 'Not Found'}</span>
-                    </div>
-                    <div class="flex justify-between text-sm">
-                        <span class="text-gray-600 dark:text-neutral-400">Files:</span>
-                        <span class="text-gray-800 dark:text-neutral-200">${info.file_count || 0}</span>
-                    </div>
-                    <div class="flex justify-between text-sm">
-                        <span class="text-gray-600 dark:text-neutral-400">Size:</span>
-                        <span class="text-gray-800 dark:text-neutral-200">${info.size_mb || 0} MB</span>
-                    </div>
-                    <div class="flex justify-between text-sm">
-                        <span class="text-gray-600 dark:text-neutral-400">Last Modified:</span>
-                        <span class="text-gray-800 dark:text-neutral-200">${info.last_modified || 'Unknown'}</span>
-                    </div>
-                `;
-            }
-        }
-        
-        function changeDataDirectory() {
-            const newPath = document.getElementById('new-data-dir').value.trim();
-            if (!newPath) {
-                showToast('Please enter a valid directory path', 'error');
-                return;
-            }
-            
-            if (confirm('Changing the data directory will restart the monitor. Continue?')) {
-                fetch('/api/data-directory/change', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({ path: newPath })
-                })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.success) {
-                        showToast('Data directory changed successfully. Reloading...', 'success');
-                        setTimeout(() => {
-                            window.location.reload();
-                        }, 2000);
-                    } else {
-                        showToast(data.error || 'Failed to change data directory', 'error');
-                    }
-                })
-                .catch(error => {
-                    showToast('Failed to change data directory', 'error');
-                });
-            }
-        }
-        
-        function resetDataDirectory() {
-            const currentPath = '{{ config_data.system.data_directory }}';
-            document.getElementById('new-data-dir').value = currentPath;
-            showToast('Reset to current data directory path', 'info');
-        }
-        
-        // Auto-load data directory info on configuration page
-        document.addEventListener('DOMContentLoaded', function() {
-            if (window.location.pathname === '/configuration') {
-                refreshDataDirectory();
-            }
-        });
+        // Test functionality after initialization
+        setTimeout(() => {
+            // Test toast notification after everything is loaded
+            showToast('AgentX Observability Platform loaded successfully!', 'success');
+        }, 2000);
     </script>
     
     {% block scripts %}{% endblock %}

@@ -1,13 +1,13 @@
 {% extends "base.jinja2" %}
 
-{% block title %}Dashboard - Roboco Observability{% endblock %}
+{% block title %}Dashboard - AgentX Observability{% endblock %}
 
 {% block content %}
 <!-- Page Header -->
 <div class="sm:flex sm:justify-between sm:items-center mb-8">
     <div class="mb-4 sm:mb-0">
         <h1 class="text-2xl font-semibold text-gray-800 dark:text-neutral-200">Dashboard</h1>
-        <p class="text-sm text-gray-600 dark:text-neutral-400">Real-time observability for your Roboco system</p>
+        <p class="text-sm text-gray-600 dark:text-neutral-400">Real-time observability for your AgentX system</p>
     </div>
     
     <!-- Control buttons -->
@@ -105,24 +105,24 @@
         </div>
     </div>
 
-    <!-- Memory Items Card -->
+    <!-- Artifacts Card -->
     <div class="flex flex-col bg-white border shadow-sm rounded-xl dark:bg-neutral-800 dark:border-neutral-700">
         <div class="p-4 md:p-5">
             <div class="flex items-center gap-x-2">
                 <p class="text-xs uppercase tracking-wide text-gray-500 dark:text-neutral-500">
-                    Memory Items
+                    Artifacts
                 </p>
             </div>
             
             <div class="mt-1 flex items-center gap-x-2">
-                <i data-lucide="brain" class="shrink-0 size-5 text-purple-600"></i>
+                <i data-lucide="folder-open" class="shrink-0 size-5 text-purple-600"></i>
                 <h3 class="text-xl sm:text-2xl font-medium text-gray-800 dark:text-neutral-200">
-                    {{ dashboard_data.total_memory_items }}
+                    {{ dashboard_data.artifacts.total_files or 0 }}
                 </h3>
             </div>
             
             <p class="mt-1 text-sm text-gray-500 dark:text-neutral-500">
-                {{ dashboard_data.memory_categories }} categories
+                {{ dashboard_data.artifacts.total_size or "0 B" }}
             </p>
         </div>
     </div>
@@ -200,7 +200,7 @@
                 <div class="text-center py-8">
                     <i data-lucide="inbox" class="mx-auto size-12 text-gray-400 dark:text-neutral-500 mb-3"></i>
                     <p class="text-sm text-gray-600 dark:text-neutral-400">No recent tasks</p>
-                    <p class="text-xs text-gray-500 dark:text-neutral-500">Tasks will appear here after running Roboco</p>
+                    <p class="text-xs text-gray-500 dark:text-neutral-500">Tasks will appear here after running AgentX</p>
                 </div>
             {% endif %}
         </div>
@@ -300,9 +300,9 @@
                     <span class="mt-2 block text-sm font-medium text-gray-700 group-hover:text-gray-800 dark:text-neutral-300 dark:group-hover:text-neutral-200">View Tasks</span>
                 </a>
                 
-                <a href="/memory" class="group flex flex-col items-center justify-center text-center border-2 border-dashed border-gray-300 rounded-lg p-6 hover:border-gray-400 focus:outline-none focus:border-gray-400 dark:border-neutral-700 dark:hover:border-neutral-600 dark:focus:border-neutral-600">
-                    <i data-lucide="brain" class="size-8 text-gray-400 group-hover:text-gray-500 dark:text-neutral-500 dark:group-hover:text-neutral-400"></i>
-                    <span class="mt-2 block text-sm font-medium text-gray-700 group-hover:text-gray-800 dark:text-neutral-300 dark:group-hover:text-neutral-200">Browse Memory</span>
+                <a href="/artifacts" class="group flex flex-col items-center justify-center text-center border-2 border-dashed border-gray-300 rounded-lg p-6 hover:border-gray-400 focus:outline-none focus:border-gray-400 dark:border-neutral-700 dark:hover:border-neutral-600 dark:focus:border-neutral-600">
+                    <i data-lucide="folder-open" class="size-8 text-gray-400 group-hover:text-gray-500 dark:text-neutral-500 dark:group-hover:text-neutral-400"></i>
+                    <span class="mt-2 block text-sm font-medium text-gray-700 group-hover:text-gray-800 dark:text-neutral-300 dark:group-hover:text-neutral-200">Browse Artifacts</span>
                 </a>
                 
                 <button type="button" onclick="exportData()" class="group flex flex-col items-center justify-center text-center border-2 border-dashed border-gray-300 rounded-lg p-6 hover:border-gray-400 focus:outline-none focus:border-gray-400 dark:border-neutral-700 dark:hover:border-neutral-600 dark:focus:border-neutral-600">

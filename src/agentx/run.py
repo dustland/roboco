@@ -105,7 +105,7 @@ def start():
 
 
 
-def monitor(data_dir: Optional[str] = None):
+def monitor(project_path: Optional[str] = None):
     """Run observability monitor in independent mode (post-mortem analysis)."""
     print("🤖 Starting AgentX Observability Monitor (Independent Mode)")
     print("=" * 60)
@@ -119,8 +119,8 @@ def monitor(data_dir: Optional[str] = None):
     try:
         from agentx.observability.monitor import get_monitor
         
-        # Create monitor in independent mode with smart data directory detection
-        monitor = get_monitor(data_dir)
+        # Create monitor in independent mode with smart project directory detection
+        monitor = get_monitor(project_path)
         monitor.start()
         
         if monitor.is_integrated:
@@ -267,7 +267,7 @@ def monitor(data_dir: Optional[str] = None):
         print(f"❌ Error starting monitor: {e}")
         return 1
 
-def web(data_dir: Optional[str] = None, host: str = "0.0.0.0", port: int = 8501):
+def web(project_path: Optional[str] = None, host: str = "0.0.0.0", port: int = 8501):
     """Start the modern web-based observability dashboard."""
     print("🌐 Starting AgentX Observability Web Dashboard")
     print("=" * 50)
@@ -282,7 +282,7 @@ def web(data_dir: Optional[str] = None, host: str = "0.0.0.0", port: int = 8501)
         print()
         
         # Run the modern web app
-        run_web_app(host=host, port=port, data_dir=data_dir)
+        run_web_app(host=host, port=port, project_path=project_path)
         return 0
         
     except KeyboardInterrupt:

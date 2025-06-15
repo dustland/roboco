@@ -1,6 +1,6 @@
 {% extends "base.jinja2" %}
 
-{% block title %}Messages - Roboco Observability{% endblock %}
+{% block title %}Messages - AgentX Observability{% endblock %}
 
 {% block content %}
 <!-- Page Header -->
@@ -62,7 +62,7 @@
                     <div class="flex flex-col items-center justify-center h-full p-4">
                         <i data-lucide="inbox" class="size-12 text-gray-400 dark:text-neutral-500 mb-3"></i>
                         <p class="text-sm text-gray-600 dark:text-neutral-400 text-center">No tasks found</p>
-                        <p class="text-xs text-gray-500 dark:text-neutral-500 text-center">Tasks will appear here after running Roboco</p>
+                        <p class="text-xs text-gray-500 dark:text-neutral-500 text-center">Tasks will appear here after running AgentX</p>
                     </div>
                 {% endif %}
             </div>
@@ -331,7 +331,7 @@ function exportMessagesHistory() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `roboco-messages-${currentTaskId}-${new Date().toISOString().split('T')[0]}.json`;
+    a.download = `agentx-messages-${currentTaskId}-${new Date().toISOString().split('T')[0]}.json`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);

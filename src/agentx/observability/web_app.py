@@ -2,7 +2,7 @@
 Modern Web Interface for AgentX Observability
 
 FastAPI + HTMX + Jinja2 + TailwindCSS + Preline UI
-A beautiful, responsive web dashboard for monitoring AgentX tasks, events, and memory.
+A beautiful, responsive web dashboard for monitoring AgentX project data.
 """
 
 import json
@@ -20,21 +20,21 @@ import uvicorn
 
 from .monitor import get_monitor, ObservabilityMonitor
 
-# Global variable to store data_dir for the web app
-_web_app_data_dir: Optional[str] = None
+# Global variable to store project_path for the web app
+_web_app_project_path: Optional[str] = None
 
 # Pydantic models for API requests
-class ChangeDataDirectoryRequest(BaseModel):
+class ChangeProjectPathRequest(BaseModel):
     path: str
 
-def create_web_app(data_dir: Optional[str] = None) -> FastAPI:
+def create_web_app(project_path: Optional[str] = None) -> FastAPI:
     """Create the FastAPI web application."""
-    global _web_app_data_dir
-    _web_app_data_dir = data_dir
+    global _web_app_project_path
+    _web_app_project_path = project_path
     
     app = FastAPI(
         title="AgentX Observability Dashboard",
-        description="Modern web interface for AgentX observability",
+        description="Modern web interface for AgentX project observability",
         version="1.0.0"
     )
     
@@ -54,15 +54,17 @@ def create_web_app(data_dir: Optional[str] = None) -> FastAPI:
     
     # Dependency to get monitor
     def get_monitor_dependency() -> ObservabilityMonitor:
-        return get_monitor(_web_app_data_dir)
+        return get_monitor(_web_app_project_path)
     
     @app.get("/", response_class=HTMLResponse)
     async def dashboard(request: Request, monitor: ObservabilityMonitor = Depends(get_monitor_dependency)):
         """Main dashboard page."""
         dashboard_data = monitor.get_dashboard_data()
+        config_data = monitor.get_configuration_data()
         return templates.TemplateResponse("dashboard.jinja2", {
             "request": request,
             "dashboard_data": dashboard_data,
+            "config_data": config_data,
             "page_title": "Dashboard"
         })
     
@@ -70,31 +72,39 @@ def create_web_app(data_dir: Optional[str] = None) -> FastAPI:
     async def tasks_page(request: Request, monitor: ObservabilityMonitor = Depends(get_monitor_dependency)):
         """Tasks page."""
         recent_tasks = monitor.get_recent_tasks(20)
+        config_data = monitor.get_configuration_data()
         return templates.TemplateResponse("tasks.jinja2", {
             "request": request,
             "recent_tasks": recent_tasks,
+            "config_data": config_data,
             "page_title": "Tasks"
         })
     
     @app.get("/events", response_class=HTMLResponse)
     async def events_page(request: Request, monitor: ObservabilityMonitor = Depends(get_monitor_dependency)):
         """Events page."""
-        event_summary = monitor.get_event_summary() if monitor.is_integrated else {}
+        event_stats = monitor.event_capture.get_event_stats()
+        config_data = monitor.get_configuration_data()
         return templates.TemplateResponse("events.jinja2", {
             "request": request,
-            "event_summary": event_summary,
-            "is_integrated": monitor.is_integrated,
+            "event_stats": event_stats,
+            "config_data": config_data,
             "page_title": "Events"
         })
     
-    @app.get("/memory", response_class=HTMLResponse)
-    async def memory_page(request: Request, monitor: ObservabilityMonitor = Depends(get_monitor_dependency)):
-        """Memory page."""
-        categories = monitor.get_memory_categories()
-        return templates.TemplateResponse("memory.jinja2", {
+    @app.get("/artifacts", response_class=HTMLResponse)
+    async def artifacts_page(request: Request, monitor: ObservabilityMonitor = Depends(get_monitor_dependency)):
+        """Artifacts page."""
+        config_data = monitor.get_configuration_data()
+        artifacts_data = {
+            "files": monitor.get_artifacts_files(),
+            "stats": monitor.get_artifacts_stats()
+        }
+        return templates.TemplateResponse("artifacts.jinja2", {
             "request": request,
-            "categories": categories,
-            "page_title": "Memory"
+            "config_data": config_data,
+            "artifacts_data": artifacts_data,
+            "page_title": "Artifacts"
         })
     
     @app.get("/configuration", response_class=HTMLResponse)
@@ -111,9 +121,11 @@ def create_web_app(data_dir: Optional[str] = None) -> FastAPI:
     async def messages_page(request: Request, monitor: ObservabilityMonitor = Depends(get_monitor_dependency)):
         """Messages page - conversation history between agents."""
         all_tasks = monitor.get_recent_tasks(50)  # Get more tasks for messages view
+        config_data = monitor.get_configuration_data()
         return templates.TemplateResponse("messages.jinja2", {
             "request": request,
             "all_tasks": all_tasks,
+            "config_data": config_data,
             "page_title": "Messages"
         })
     
@@ -136,29 +148,43 @@ def create_web_app(data_dir: Optional[str] = None) -> FastAPI:
         monitor: ObservabilityMonitor = Depends(get_monitor_dependency)
     ):
         """Get events with optional filtering."""
-        if not monitor.is_integrated:
-            return {"events": [], "error": "Events only available in integrated mode"}
-        
         events = monitor.get_events(event_type, limit)
         return {"events": events}
     
-    @app.get("/api/memory/search")
-    async def search_memory(
-        q: str,
-        monitor: ObservabilityMonitor = Depends(get_monitor_dependency)
-    ):
-        """Search memory."""
-        results = monitor.search_memory(q)
-        return {"results": results}
+    @app.get("/api/artifacts/files")
+    async def get_artifacts_files(monitor: ObservabilityMonitor = Depends(get_monitor_dependency)):
+        """Get list of artifact files."""
+        files = monitor.get_artifacts_files()
+        return {"files": files}
     
-    @app.get("/api/memory/category/{category}")
-    async def memory_by_category(
-        category: str,
+    @app.get("/api/artifacts/file/{filename}")
+    async def get_artifact_file(
+        filename: str,
         monitor: ObservabilityMonitor = Depends(get_monitor_dependency)
     ):
-        """Get memory by category."""
-        memory_data = monitor.get_memory_by_category(category)
-        return {"memory_data": memory_data}
+        """Get artifact file content."""
+        result = monitor.get_artifact_content(filename)
+        return result
+    
+    @app.get("/api/artifacts/download/{filename}")
+    async def download_artifact_file(
+        filename: str,
+        monitor: ObservabilityMonitor = Depends(get_monitor_dependency)
+    ):
+        """Download artifact file."""
+        from fastapi.responses import FileResponse
+        try:
+            file_path = monitor.storage._get_workspace_file_path(filename)
+            if file_path.exists():
+                return FileResponse(
+                    path=str(file_path),
+                    filename=filename,
+                    media_type='application/octet-stream'
+                )
+            else:
+                raise HTTPException(status_code=404, detail="File not found")
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
     
     @app.get("/api/messages/tasks")
     async def get_messages_tasks(monitor: ObservabilityMonitor = Depends(get_monitor_dependency)):
@@ -171,84 +197,79 @@ def create_web_app(data_dir: Optional[str] = None) -> FastAPI:
         task_id: str,
         monitor: ObservabilityMonitor = Depends(get_monitor_dependency)
     ):
-        """Get full conversation for a task (alias for task conversation)."""
+        """Get full conversation for a task."""
         conversation = monitor.get_task_conversation(task_id)
+        task_summary = monitor.conversation_history.get_task_summary(task_id)
         return {
             "task_id": task_id,
             "conversation": conversation,
-            "message_count": len(conversation)
+            "message_count": len(conversation),
+            "summary": task_summary
         }
+    
+    @app.get("/api/task/{task_id}/summary")
+    async def get_task_summary(
+        task_id: str,
+        monitor: ObservabilityMonitor = Depends(get_monitor_dependency)
+    ):
+        """Get task summary information."""
+        summary = monitor.conversation_history.get_task_summary(task_id)
+        return {"task_id": task_id, "summary": summary}
+    
+    @app.get("/api/events/timerange")
+    async def get_events_by_timerange(
+        start_time: str,
+        end_time: str,
+        monitor: ObservabilityMonitor = Depends(get_monitor_dependency)
+    ):
+        """Get events within a time range."""
+        # For now, just return recent events since we don't have time filtering implemented
+        events = monitor.get_events(limit=1000)
+        return {"events": events, "start_time": start_time, "end_time": end_time}
+    
+    @app.get("/api/artifacts/stats")
+    async def get_artifacts_stats(monitor: ObservabilityMonitor = Depends(get_monitor_dependency)):
+        """Get artifacts statistics."""
+        stats = monitor.get_artifacts_stats()
+        return {"stats": stats}
     
     @app.post("/api/monitor/start")
     async def start_monitor(monitor: ObservabilityMonitor = Depends(get_monitor_dependency)):
         """Start the monitor."""
         monitor.start()
-        return {"status": "started"}
+        return {"status": "started", "is_running": monitor.is_running}
     
     @app.post("/api/monitor/stop")
     async def stop_monitor(monitor: ObservabilityMonitor = Depends(get_monitor_dependency)):
         """Stop the monitor."""
         monitor.stop()
-        return {"status": "stopped"}
+        return {"status": "stopped", "is_running": monitor.is_running}
     
     @app.post("/api/monitor/refresh")
     async def refresh_monitor(monitor: ObservabilityMonitor = Depends(get_monitor_dependency)):
         """Refresh monitor data."""
-        try:
-            await monitor.refresh_data()
-            return {"status": "refreshed"}
-        except Exception as e:
-            return {"status": "error", "message": str(e)}
+        monitor.refresh()
+        return {"status": "refreshed", "last_refresh": monitor.last_refresh.isoformat() if monitor.last_refresh else None}
     
-    # Data Directory Management APIs
-    @app.get("/api/data-directory/info")
-    async def get_data_directory_info(monitor: ObservabilityMonitor = Depends(get_monitor_dependency)):
-        """Get information about the current data directory."""
+    # Project Directory Management APIs
+    @app.get("/api/project/info")
+    async def get_project_info(monitor: ObservabilityMonitor = Depends(get_monitor_dependency)):
+        """Get information about the current project."""
         try:
-            from pathlib import Path
-            import os
-            from datetime import datetime
-            
-            data_dir = Path(monitor.data_dir)
-            
-            if not data_dir.exists():
-                return {
-                    "exists": False,
-                    "path": str(data_dir),
-                    "file_count": 0,
-                    "size_mb": 0,
-                    "last_modified": None
-                }
-            
-            # Count files and calculate size
-            files = list(data_dir.glob("*.json"))
-            total_size = sum(f.stat().st_size for f in files if f.is_file())
-            size_mb = round(total_size / (1024 * 1024), 2)
-            
-            # Get last modified time
-            last_modified = None
-            if files:
-                latest_file = max(files, key=lambda f: f.stat().st_mtime)
-                last_modified = datetime.fromtimestamp(latest_file.stat().st_mtime).strftime("%Y-%m-%d %H:%M:%S")
-            
+            project_status = monitor.get_project_status()
             return {
-                "exists": True,
-                "path": str(data_dir),
-                "file_count": len(files),
-                "size_mb": size_mb,
-                "last_modified": last_modified,
-                "files": [f.name for f in files]
+                "success": True,
+                "project_status": project_status
             }
-            
         except Exception as e:
-            return {"error": str(e), "exists": False}
+            return {"success": False, "error": str(e)}
     
-    @app.post("/api/data-directory/change")
-    async def change_data_directory(
-        request: ChangeDataDirectoryRequest,
+    @app.post("/api/project/change")
+    async def change_project_path(
+        request: ChangeProjectPathRequest,
         monitor: ObservabilityMonitor = Depends(get_monitor_dependency)
     ):
-        """Change the data directory."""
+        """Change the project path."""
         try:
             from pathlib import Path
             
@@ -256,95 +277,80 @@ def create_web_app(data_dir: Optional[str] = None) -> FastAPI:
             if not new_path:
                 return {"success": False, "error": "Path is required"}
             
-            new_data_dir = Path(new_path)
+            new_project_path = Path(new_path)
             
             # Validate the path
-            if not new_data_dir.is_absolute():
+            if not new_project_path.is_absolute():
                 # Make it absolute relative to current working directory
-                new_data_dir = Path.cwd() / new_data_dir
+                new_project_path = Path.cwd() / new_project_path
             
-            # Create directory if it doesn't exist
-            try:
-                new_data_dir.mkdir(parents=True, exist_ok=True)
-            except Exception as e:
-                return {"success": False, "error": f"Cannot create directory: {str(e)}"}
+            # Check if it's a valid project directory
+            workspace_dir = new_project_path / "workspace"
+            config_dir = new_project_path / "config"
             
-            # Check if we can write to the directory
-            test_file = new_data_dir / ".test_write"
-            try:
-                test_file.write_text("test")
-                test_file.unlink()
-            except Exception as e:
-                return {"success": False, "error": f"Cannot write to directory: {str(e)}"}
+            if not new_project_path.exists():
+                return {"success": False, "error": f"Project directory does not exist: {new_project_path}"}
             
-            # Update the global monitor instance to use the new data directory
-            global _web_app_data_dir
-            _web_app_data_dir = str(new_data_dir)
+            if not workspace_dir.exists():
+                return {"success": False, "error": f"Workspace directory not found: {workspace_dir}"}
             
-            # Note: In a real implementation, you might want to:
-            # 1. Stop the current monitor
-            # 2. Create a new monitor with the new data directory
-            # 3. Restart the monitor
-            # For now, we'll just update the path and let the user reload
+            if not config_dir.exists():
+                return {"success": False, "error": f"Config directory not found: {config_dir}"}
+            
+            # Update the global project path and recreate monitor
+            global _web_app_project_path
+            _web_app_project_path = str(new_project_path)
+            
+            # Force recreation of monitor with new path
+            from .monitor import get_monitor
+            if hasattr(get_monitor, '_instance'):
+                delattr(get_monitor, '_instance')
+            
+            # Create new monitor instance with the new path
+            new_monitor = get_monitor(str(new_project_path))
             
             return {
                 "success": True, 
-                "message": f"Data directory changed to {new_data_dir}",
-                "new_path": str(new_data_dir)
+                "message": f"Project path changed to {new_project_path}",
+                "new_path": str(new_project_path)
             }
             
         except Exception as e:
             return {"success": False, "error": str(e)}
     
-    @app.get("/api/data-directory/browse")
-    async def browse_data_directory(
-        path: Optional[str] = None,
+    @app.get("/api/config/files")
+    async def get_config_files(monitor: ObservabilityMonitor = Depends(get_monitor_dependency)):
+        """Get list of configuration files."""
+        try:
+            files = monitor.get_config_files()
+            return {"success": True, "files": files}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+    
+    @app.get("/api/config/file/{filename}")
+    async def get_config_file(
+        filename: str,
         monitor: ObservabilityMonitor = Depends(get_monitor_dependency)
     ):
-        """Browse directories for data directory selection."""
+        """Get specific configuration file content."""
         try:
-            from pathlib import Path
-            import os
-            
-            if path:
-                browse_path = Path(path)
-            else:
-                browse_path = Path.cwd()
-            
-            if not browse_path.exists() or not browse_path.is_dir():
-                browse_path = Path.cwd()
-            
-            # Get directories only
-            directories = []
-            try:
-                for item in browse_path.iterdir():
-                    if item.is_dir() and not item.name.startswith('.'):
-                        directories.append({
-                            "name": item.name,
-                            "path": str(item),
-                            "is_agentx_data": item.name == "agentx_data" or (item / "conversations.json").exists()
-                        })
-            except PermissionError:
-                pass
-            
-            # Sort directories
-            directories.sort(key=lambda x: x["name"].lower())
-            
+            content = monitor.get_config_file(filename)
+            file_info = monitor.config_viewer.get_config_file_info(filename)
             return {
-                "current_path": str(browse_path),
-                "parent_path": str(browse_path.parent) if browse_path.parent != browse_path else None,
-                "directories": directories
+                "success": True,
+                "filename": filename,
+                "content": content,
+                "file_info": file_info
             }
-            
         except Exception as e:
-            return {"error": str(e)}
+            return {"success": False, "error": str(e)}
     
     return app
 
 
-def run_web_app(host: str = "0.0.0.0", port: int = 8501, data_dir: Optional[str] = None):
+def run_web_app(host: str = "0.0.0.0", port: int = 8501, project_path: Optional[str] = None):
     """Run the web application."""
-    app = create_web_app(data_dir)
+    app = create_web_app(project_path)
     uvicorn.run(app, host=host, port=port)
 
 

@@ -66,9 +66,6 @@ dev = [
     { name = "pytest" },
     { name = "pytest-cov" },
 ]
-ui = [
-    { name = "streamlit" },
-]
 web-automation = [
     { name = "browser-use" },
     { name = "playwright" },
@@ -125,12 +122,11 @@ requires-dist = [
     { name = "sqlmodel", specifier = ">=0.0.8" },
     { name = "streamlit", specifier = ">=1.44.1" },
     { name = "streamlit", marker = "extra == 'all'", specifier = ">=1.32.0" },
-    { name = "streamlit", marker = "extra == 'ui'", specifier = ">=1.32.0" },
     { name = "streamlit-autorefresh", specifier = ">=1.0.1" },
     { name = "tavily-python" },
     { name = "uvicorn", specifier = ">=0.24.0" },
 ]
-provides-extras = ["dev", "ui", "code-execution", "web-automation", "all"]
+provides-extras = ["dev", "code-execution", "web-automation", "all"]
 
 [package.metadata.requires-dev]
 dev = [

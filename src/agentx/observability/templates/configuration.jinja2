@@ -1,6 +1,6 @@
 {% extends "base.jinja2" %}
 
-{% block title %}Configuration - Roboco Observability{% endblock %}
+{% block title %}Configuration - AgentX Observability{% endblock %}
 
 {% block content %}
 <!-- Page Header -->
@@ -316,58 +316,7 @@
         </div>
     </div>
 
-    <!-- Memory Configuration -->
-    <div class="flex flex-col bg-white border shadow-sm rounded-xl dark:bg-neutral-800 dark:border-neutral-700">
-        <div class="px-6 py-4 border-b border-gray-200 dark:border-neutral-700">
-            <h2 class="text-xl font-semibold text-gray-800 dark:text-neutral-200">
-                <i data-lucide="database" class="inline shrink-0 size-4 mr-2"></i>
-                Memory Configuration
-            </h2>
-        </div>
-        
-        <div class="p-6">
-            <div class="space-y-4">
-                <div class="flex justify-between">
-                    <span class="text-sm text-gray-600 dark:text-neutral-400">Provider:</span>
-                    <span class="text-sm font-medium text-gray-800 dark:text-neutral-200">{{ config_data.memory.provider }}</span>
-                </div>
-                
-                <div class="flex justify-between">
-                    <span class="text-sm text-gray-600 dark:text-neutral-400">Vector Store:</span>
-                    <span class="text-sm font-medium text-gray-800 dark:text-neutral-200">{{ config_data.memory.vector_store }}</span>
-                </div>
-                
-                <div class="flex justify-between">
-                    <span class="text-sm text-gray-600 dark:text-neutral-400">Embedder:</span>
-                    <span class="text-sm font-medium text-gray-800 dark:text-neutral-200">{{ config_data.memory.embedder }}</span>
-                </div>
-                
-                {% if config_data.memory.llm_provider %}
-                <div class="flex justify-between">
-                    <span class="text-sm text-gray-600 dark:text-neutral-400">LLM Provider:</span>
-                    <span class="text-sm font-medium text-gray-800 dark:text-neutral-200">{{ config_data.memory.llm_provider }}</span>
-                </div>
-                {% endif %}
-                
-                <div class="flex justify-between">
-                    <span class="text-sm text-gray-600 dark:text-neutral-400">Categories:</span>
-                    <span class="text-sm font-medium text-gray-800 dark:text-neutral-200">{{ config_data.memory.categories }}</span>
-                </div>
-                
-                <div class="flex justify-between">
-                    <span class="text-sm text-gray-600 dark:text-neutral-400">Total Items:</span>
-                    <span class="text-sm font-medium text-gray-800 dark:text-neutral-200">{{ config_data.memory.total_items }}</span>
-                </div>
-                
-                {% if config_data.memory.version %}
-                <div class="flex justify-between">
-                    <span class="text-sm text-gray-600 dark:text-neutral-400">Version:</span>
-                    <span class="text-sm font-medium text-gray-800 dark:text-neutral-200">{{ config_data.memory.version }}</span>
-                </div>
-                {% endif %}
-            </div>
-        </div>
-    </div>
+
 
     <!-- Tools Configuration -->
     <div class="flex flex-col bg-white border shadow-sm rounded-xl dark:bg-neutral-800 dark:border-neutral-700">

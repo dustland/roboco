@@ -1,0 +1,291 @@
+{% extends "base.jinja2" %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto">
+    <!-- Header -->
+    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
+        <div>
+            <h1 class="text-2xl font-semibold text-gray-800 dark:text-neutral-200">Artifacts</h1>
+            <p class="text-sm text-gray-600 dark:text-neutral-400">Browse and view workspace files</p>
+        </div>
+        
+        <div class="flex items-center gap-2">
+            <button onclick="refreshArtifacts()" class="py-2 px-3 inline-flex items-center gap-x-2 text-sm font-medium rounded-lg border border-gray-200 bg-white text-gray-800 shadow-sm hover:bg-gray-50 focus:outline-none focus:bg-gray-50 disabled:opacity-50 disabled:pointer-events-none dark:bg-neutral-800 dark:border-neutral-700 dark:text-white dark:hover:bg-neutral-700 dark:focus:bg-neutral-700">
+                <i data-lucide="refresh-cw" class="shrink-0 size-4"></i>
+                Refresh
+            </button>
+        </div>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <!-- File Explorer Panel -->
+        <div class="lg:col-span-1">
+            <div class="flex flex-col bg-white border shadow-sm rounded-xl dark:bg-neutral-800 dark:border-neutral-700 h-[600px]">
+                <div class="px-4 py-3 border-b border-gray-200 dark:border-neutral-700">
+                    <h3 class="text-lg font-semibold text-gray-800 dark:text-neutral-200">
+                        <i data-lucide="folder" class="inline shrink-0 size-4 mr-2"></i>
+                        Workspace Files
+                    </h3>
+                </div>
+                
+                <div class="flex-1 overflow-y-auto p-4">
+                    <div id="file-tree" class="space-y-1">
+                        {% if artifacts_data.files %}
+                            {% for file in artifacts_data.files %}
+                            <div class="file-item flex items-center gap-2 p-2 rounded-lg hover:bg-gray-50 dark:hover:bg-neutral-700 cursor-pointer" 
+                                 onclick="loadFile('{{ file.name }}', '{{ file.path }}')">
+                                <i data-lucide="{{ 'file-text' if file.type == 'file' else 'folder' }}" class="shrink-0 size-4 text-gray-500"></i>
+                                <span class="text-sm text-gray-800 dark:text-neutral-200 truncate">{{ file.name }}</span>
+                                {% if file.size %}
+                                <span class="text-xs text-gray-500 ml-auto">{{ file.size }}</span>
+                                {% endif %}
+                            </div>
+                            {% endfor %}
+                        {% else %}
+                            <div class="text-center py-8">
+                                <i data-lucide="folder-x" class="mx-auto size-12 text-gray-400 dark:text-neutral-500 mb-3"></i>
+                                <p class="text-sm text-gray-600 dark:text-neutral-400">No files found in workspace</p>
+                            </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- File Viewer Panel -->
+        <div class="lg:col-span-2">
+            <div class="flex flex-col bg-white border shadow-sm rounded-xl dark:bg-neutral-800 dark:border-neutral-700 h-[600px]">
+                <div class="px-4 py-3 border-b border-gray-200 dark:border-neutral-700">
+                    <div class="flex items-center justify-between">
+                        <h3 class="text-lg font-semibold text-gray-800 dark:text-neutral-200">
+                            <i data-lucide="file-text" class="inline shrink-0 size-4 mr-2"></i>
+                            <span id="current-file-name">Select a file to view</span>
+                        </h3>
+                        <div class="flex items-center gap-2">
+                            <button id="copy-content-btn" onclick="copyFileContent()" class="hidden py-1.5 px-2.5 inline-flex items-center gap-x-1.5 text-xs font-medium rounded-lg border border-gray-200 bg-white text-gray-800 shadow-sm hover:bg-gray-50 focus:outline-none focus:bg-gray-50 disabled:opacity-50 disabled:pointer-events-none dark:bg-neutral-800 dark:border-neutral-700 dark:text-white dark:hover:bg-neutral-700 dark:focus:bg-neutral-700">
+                                <i data-lucide="copy" class="shrink-0 size-3"></i>
+                                Copy
+                            </button>
+                            <button id="download-btn" onclick="downloadFile()" class="hidden py-1.5 px-2.5 inline-flex items-center gap-x-1.5 text-xs font-medium rounded-lg border border-gray-200 bg-white text-gray-800 shadow-sm hover:bg-gray-50 focus:outline-none focus:bg-gray-50 disabled:opacity-50 disabled:pointer-events-none dark:bg-neutral-800 dark:border-neutral-700 dark:text-white dark:hover:bg-neutral-700 dark:focus:bg-neutral-700">
+                                <i data-lucide="download" class="shrink-0 size-3"></i>
+                                Download
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="flex-1 overflow-hidden">
+                    <div id="file-content" class="h-full">
+                        <div class="flex items-center justify-center h-full text-gray-500 dark:text-neutral-400">
+                            <div class="text-center">
+                                <i data-lucide="file-search" class="mx-auto size-16 mb-4 opacity-50"></i>
+                                <p class="text-lg font-medium mb-2">No file selected</p>
+                                <p class="text-sm">Click on a file in the explorer to view its contents</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- File Statistics -->
+    <div class="mt-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div class="flex flex-col bg-white border shadow-sm rounded-xl dark:bg-neutral-800 dark:border-neutral-700">
+            <div class="p-4 md:p-5">
+                <div class="flex items-center gap-x-2">
+                    <p class="text-xs uppercase tracking-wide text-gray-500 dark:text-neutral-500">Total Files</p>
+                </div>
+                <div class="mt-1 flex items-center gap-x-2">
+                    <h3 class="text-xl sm:text-2xl font-medium text-gray-800 dark:text-neutral-200">
+                        {{ artifacts_data.stats.total_files or 0 }}
+                    </h3>
+                </div>
+            </div>
+        </div>
+
+        <div class="flex flex-col bg-white border shadow-sm rounded-xl dark:bg-neutral-800 dark:border-neutral-700">
+            <div class="p-4 md:p-5">
+                <div class="flex items-center gap-x-2">
+                    <p class="text-xs uppercase tracking-wide text-gray-500 dark:text-neutral-500">Total Size</p>
+                </div>
+                <div class="mt-1 flex items-center gap-x-2">
+                    <h3 class="text-xl sm:text-2xl font-medium text-gray-800 dark:text-neutral-200">
+                        {{ artifacts_data.stats.total_size or "0 B" }}
+                    </h3>
+                </div>
+            </div>
+        </div>
+
+        <div class="flex flex-col bg-white border shadow-sm rounded-xl dark:bg-neutral-800 dark:border-neutral-700">
+            <div class="p-4 md:p-5">
+                <div class="flex items-center gap-x-2">
+                    <p class="text-xs uppercase tracking-wide text-gray-500 dark:text-neutral-500">Text Files</p>
+                </div>
+                <div class="mt-1 flex items-center gap-x-2">
+                    <h3 class="text-xl sm:text-2xl font-medium text-gray-800 dark:text-neutral-200">
+                        {{ artifacts_data.stats.text_files or 0 }}
+                    </h3>
+                </div>
+            </div>
+        </div>
+
+        <div class="flex flex-col bg-white border shadow-sm rounded-xl dark:bg-neutral-800 dark:border-neutral-700">
+            <div class="p-4 md:p-5">
+                <div class="flex items-center gap-x-2">
+                    <p class="text-xs uppercase tracking-wide text-gray-500 dark:text-neutral-500">Last Modified</p>
+                </div>
+                <div class="mt-1 flex items-center gap-x-2">
+                    <h3 class="text-sm font-medium text-gray-800 dark:text-neutral-200">
+                        {{ artifacts_data.stats.last_modified or "Unknown" }}
+                    </h3>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+let currentFilePath = null;
+let currentFileContent = null;
+
+function loadFile(fileName, filePath) {
+    // Update UI
+    document.getElementById('current-file-name').textContent = fileName;
+    document.getElementById('copy-content-btn').classList.remove('hidden');
+    document.getElementById('download-btn').classList.remove('hidden');
+    
+    // Store current file info
+    currentFilePath = filePath;
+    
+    // Show loading state
+    const contentDiv = document.getElementById('file-content');
+    contentDiv.innerHTML = `
+        <div class="flex items-center justify-center h-full">
+            <div class="text-center">
+                <div class="animate-spin inline-block size-6 border-[3px] border-current border-t-transparent text-blue-600 rounded-full mb-4" role="status" aria-label="loading">
+                    <span class="sr-only">Loading...</span>
+                </div>
+                <p class="text-sm text-gray-600 dark:text-neutral-400">Loading ${fileName}...</p>
+            </div>
+        </div>
+    `;
+    
+    // Load file content
+    fetch(`/api/artifacts/file/${encodeURIComponent(filePath)}`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                currentFileContent = data.content;
+                displayFileContent(data.content, data.file_info);
+            } else {
+                showError(data.error || 'Failed to load file');
+            }
+        })
+        .catch(error => {
+            showError('Failed to load file: ' + error.message);
+        });
+}
+
+function displayFileContent(content, fileInfo) {
+    const contentDiv = document.getElementById('file-content');
+    
+    if (fileInfo.is_text) {
+        // Display text content with syntax highlighting
+        contentDiv.innerHTML = `
+            <div class="h-full flex flex-col">
+                <div class="px-4 py-2 bg-gray-50 dark:bg-neutral-700 border-b border-gray-200 dark:border-neutral-600 text-xs text-gray-600 dark:text-neutral-400">
+                    ${fileInfo.size} • ${fileInfo.mime_type || 'text/plain'} • ${fileInfo.lines || 0} lines
+                </div>
+                <div class="flex-1 overflow-auto">
+                    <pre class="p-4 text-sm text-gray-800 dark:text-neutral-200 whitespace-pre-wrap font-mono leading-relaxed">${escapeHtml(content)}</pre>
+                </div>
+            </div>
+        `;
+    } else {
+        // Display binary file info
+        contentDiv.innerHTML = `
+            <div class="flex items-center justify-center h-full text-gray-500 dark:text-neutral-400">
+                <div class="text-center">
+                    <i data-lucide="file" class="mx-auto size-16 mb-4 opacity-50"></i>
+                    <p class="text-lg font-medium mb-2">Binary File</p>
+                    <p class="text-sm mb-4">${fileInfo.size} • ${fileInfo.mime_type || 'application/octet-stream'}</p>
+                    <p class="text-xs text-gray-400">This file cannot be displayed as text</p>
+                </div>
+            </div>
+        `;
+    }
+    
+    // Re-initialize Lucide icons
+    lucide.createIcons();
+}
+
+function showError(message) {
+    const contentDiv = document.getElementById('file-content');
+    contentDiv.innerHTML = `
+        <div class="flex items-center justify-center h-full text-red-500">
+            <div class="text-center">
+                <i data-lucide="alert-circle" class="mx-auto size-16 mb-4 opacity-50"></i>
+                <p class="text-lg font-medium mb-2">Error</p>
+                <p class="text-sm">${escapeHtml(message)}</p>
+            </div>
+        </div>
+    `;
+    lucide.createIcons();
+}
+
+function copyFileContent() {
+    if (currentFileContent) {
+        navigator.clipboard.writeText(currentFileContent).then(() => {
+            showToast('File content copied to clipboard', 'success');
+        }).catch(() => {
+            showToast('Failed to copy content', 'error');
+        });
+    }
+}
+
+function downloadFile() {
+    if (currentFilePath) {
+        const link = document.createElement('a');
+        link.href = `/api/artifacts/download/${encodeURIComponent(currentFilePath)}`;
+        link.download = currentFilePath.split('/').pop();
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    }
+}
+
+function refreshArtifacts() {
+    window.location.reload();
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+// Highlight selected file
+function highlightSelectedFile(filePath) {
+    // Remove previous selection
+    document.querySelectorAll('.file-item').forEach(item => {
+        item.classList.remove('bg-blue-50', 'dark:bg-blue-900/30', 'border-blue-200', 'dark:border-blue-700');
+    });
+    
+    // Add selection to current file
+    const fileItems = document.querySelectorAll('.file-item');
+    fileItems.forEach(item => {
+        if (item.onclick.toString().includes(filePath)) {
+            item.classList.add('bg-blue-50', 'dark:bg-blue-900/30', 'border', 'border-blue-200', 'dark:border-blue-700');
+        }
+    });
+}
+
+// Update loadFile to highlight selection
+const originalLoadFile = loadFile;
+loadFile = function(fileName, filePath) {
+    highlightSelectedFile(filePath);
+    originalLoadFile(fileName, filePath);
+};
+</script>
+{% endblock %} 

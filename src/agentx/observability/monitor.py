@@ -1,695 +1,590 @@
 """
 AgentX Observability Monitor
 
-Context-aware observability system:
-- Integrated mode: Real-time monitoring for long-running services
-- Independent mode: Post-mortem analysis of persisted data
+Read-only observability system that monitors AgentX project data:
+- Reads workspace data from {project_path}/workspace/
+- Reads configuration from {project_path}/config/
+- Provides web interface for viewing project data
+- Does NOT create or modify any files
 """
 
 import json
-from ..utils.logger import get_logger
-import asyncio
-import sys
 from datetime import datetime
-from typing import Dict, List, Any, Optional, AsyncGenerator
-from collections import defaultdict, deque
-import os
+from typing import Dict, List, Any, Optional
+from collections import defaultdict
 from pathlib import Path
 
-from ..core.event import global_events, Event
+from ..utils.logger import get_logger
 
 logger = get_logger(__name__)
 
 
+class ProjectStorage:
+    """Read-only project-based storage for observability."""
+    
+    def __init__(self, project_path: str):
+        self.project_path = Path(project_path)
+        self.workspace_dir = self.project_path / "workspace"
+        self.config_dir = self.project_path / "config"
+        
+    def _get_workspace_file_path(self, filename: str) -> Path:
+        """Get full path for a workspace data file."""
+        if not filename.endswith('.json'):
+            filename += '.json'
+        return self.workspace_dir / filename
+    
+    def _get_config_file_path(self, filename: str) -> Path:
+        """Get full path for a config file."""
+        return self.config_dir / filename
+    
+    def read_workspace_file(self, filename: str) -> Dict[str, Any]:
+        """Read data from workspace file."""
+        file_path = self._get_workspace_file_path(filename)
+        
+        if not file_path.exists():
+            return {}
+        
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                # Remove metadata for clean data
+                data.pop('_metadata', None)
+                return data
+        except (json.JSONDecodeError, IOError) as e:
+            logger.warning(f"Failed to read workspace file {filename}: {e}")
+            return {}
+    
+    def read_config_file(self, filename: str) -> Dict[str, Any]:
+        """Read data from config file."""
+        file_path = self._get_config_file_path(filename)
+        
+        if not file_path.exists():
+            return {}
+        
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                if filename.endswith('.json'):
+                    return json.load(f)
+                else:
+                    # For non-JSON config files, return as text
+                    return {"content": f.read()}
+        except (json.JSONDecodeError, IOError) as e:
+            logger.warning(f"Failed to read config file {filename}: {e}")
+            return {}
+    
+    def workspace_file_exists(self, filename: str) -> bool:
+        """Check if workspace file exists."""
+        return self._get_workspace_file_path(filename).exists()
+    
+    def config_file_exists(self, filename: str) -> bool:
+        """Check if config file exists."""
+        return self._get_config_file_path(filename).exists()
+    
+    def get_workspace_file_info(self, filename: str) -> Dict[str, Any]:
+        """Get workspace file information."""
+        file_path = self._get_workspace_file_path(filename)
+        if not file_path.exists():
+            return {"exists": False}
+        
+        try:
+            stat = file_path.stat()
+            return {
+                "exists": True,
+                "size_bytes": stat.st_size,
+                "size_mb": round(stat.st_size / (1024 * 1024), 2),
+                "modified": datetime.fromtimestamp(stat.st_mtime).isoformat()
+            }
+        except Exception as e:
+            logger.error(f"Error getting workspace file info for {filename}: {e}")
+            return {"exists": True, "error": str(e)}
+    
+    def get_config_file_info(self, filename: str) -> Dict[str, Any]:
+        """Get config file information."""
+        file_path = self._get_config_file_path(filename)
+        if not file_path.exists():
+            return {"exists": False}
+        
+        try:
+            stat = file_path.stat()
+            return {
+                "exists": True,
+                "size_bytes": stat.st_size,
+                "size_mb": round(stat.st_size / (1024 * 1024), 2),
+                "modified": datetime.fromtimestamp(stat.st_mtime).isoformat()
+            }
+        except Exception as e:
+            logger.error(f"Error getting config file info for {filename}: {e}")
+            return {"exists": True, "error": str(e)}
+    
+    def list_workspace_files(self) -> List[str]:
+        """List all files in workspace directory."""
+        if not self.workspace_dir.exists():
+            return []
+        
+        try:
+            return [f.name for f in self.workspace_dir.iterdir() if f.is_file()]
+        except Exception as e:
+            logger.error(f"Error listing workspace files: {e}")
+            return []
+    
+    def list_config_files(self) -> List[str]:
+        """List all files in config directory."""
+        if not self.config_dir.exists():
+            return []
+        
+        try:
+            return [f.name for f in self.config_dir.iterdir() if f.is_file()]
+        except Exception as e:
+            logger.error(f"Error listing config files: {e}")
+            return []
+
+
 class ConversationHistory:
-    """Track task-level conversation history with persistence."""
+    """Read conversation history from workspace/conversations.json."""
     
-    def __init__(self, max_tasks: int = 100, persist_path: Optional[str] = None):
-        self.tasks: Dict[str, List[Dict[str, Any]]] = {}
-        self.max_tasks = max_tasks
-        self._task_order = deque(maxlen=max_tasks)
-        self.persist_path = persist_path or "agentx_conversations.json"
-        
-        # Load existing data if available
-        self._load_persisted_data()
+    def __init__(self, storage: ProjectStorage):
+        self.storage = storage
+        self.filename = "conversations"
     
-    def add_message(self, task_id: str, agent: str, message: str, message_type: str = "message"):
-        """Add a message to task conversation history."""
-        if task_id not in self.tasks:
-            self.tasks[task_id] = []
-            self._task_order.append(task_id)
-        
-        entry = {
-            "timestamp": datetime.now().isoformat(),
-            "agent": agent,
-            "message": message,
-            "type": message_type
-        }
-        
-        self.tasks[task_id].append(entry)
-        logger.debug(f"Added {message_type} from {agent} to task {task_id}")
-        
-        # Persist data
-        self._persist_data()
-    
-    def get_task_history(self, task_id: str) -> List[Dict[str, Any]]:
-        """Get conversation history for a specific task."""
-        return self.tasks.get(task_id, [])
-    
-    def get_all_tasks(self) -> List[str]:
-        """Get list of all task IDs."""
-        return list(self._task_order)
+    def get_conversation(self, task_id: str) -> List[Dict[str, Any]]:
+        """Get conversation for a task."""
+        data = self.storage.read_workspace_file(self.filename)
+        return data.get("tasks", {}).get(task_id, [])
     
     def get_recent_tasks(self, limit: int = 10) -> List[str]:
-        """Get most recent task IDs."""
-        return list(self._task_order)[-limit:]
+        """Get list of recent task IDs."""
+        data = self.storage.read_workspace_file(self.filename)
+        tasks = data.get("tasks", {})
+        
+        # Sort by last message timestamp
+        task_times = []
+        for task_id, messages in tasks.items():
+            if messages:
+                last_msg = messages[-1]
+                timestamp = last_msg.get('timestamp', '1970-01-01T00:00:00')
+                task_times.append((timestamp, task_id))
+        
+        task_times.sort(reverse=True)
+        return [task_id for _, task_id in task_times[:limit]]
     
-    def _persist_data(self):
-        """Persist conversation data to disk."""
-        try:
-            data = {
-                "tasks": dict(self.tasks),
-                "task_order": list(self._task_order),
-                "last_updated": datetime.now().isoformat()
-            }
-            with open(self.persist_path, 'w') as f:
-                json.dump(data, f, indent=2)
-        except Exception as e:
-            logger.error(f"Failed to persist conversation data: {e}")
+    def get_task_summary(self, task_id: str) -> Dict[str, Any]:
+        """Get summary of a task."""
+        messages = self.get_conversation(task_id)
+        if not messages:
+            return {"task_id": task_id, "message_count": 0}
+        
+        first_msg = messages[0]
+        last_msg = messages[-1]
+        
+        return {
+            "task_id": task_id,
+            "message_count": len(messages),
+            "started_at": first_msg.get('timestamp'),
+            "last_activity": last_msg.get('timestamp'),
+            "agents_involved": list(set(msg.get('agent_name', 'unknown') for msg in messages if msg.get('agent_name')))
+        }
     
-    def _load_persisted_data(self):
-        """Load persisted conversation data."""
-        try:
-            if os.path.exists(self.persist_path):
-                with open(self.persist_path, 'r') as f:
-                    data = json.load(f)
-                
-                self.tasks = data.get("tasks", {})
-                task_order = data.get("task_order", [])
-                self._task_order = deque(task_order, maxlen=self.max_tasks)
-                
-                logger.info(f"Loaded {len(self.tasks)} tasks from {self.persist_path}")
-        except Exception as e:
-            logger.error(f"Failed to load persisted conversation data: {e}")
-    
-    async def stream_task_history(self, task_id: str) -> AsyncGenerator[Dict[str, Any], None]:
-        """Stream conversation history for a task (only works when integrated)."""
-        history = self.get_task_history(task_id)
-        for entry in history:
-            yield entry
-            await asyncio.sleep(0.1)  # Small delay for streaming effect
+    def get_stats(self) -> Dict[str, Any]:
+        """Get conversation statistics."""
+        data = self.storage.read_workspace_file(self.filename)
+        tasks = data.get("tasks", {})
+        
+        if not tasks:
+            return {"total_tasks": 0, "total_messages": 0}
+        
+        total_messages = sum(len(messages) for messages in tasks.values())
+        agents = set()
+        
+        for messages in tasks.values():
+            for msg in messages:
+                if msg.get('agent_name'):
+                    agents.add(msg['agent_name'])
+        
+        return {
+            "total_tasks": len(tasks),
+            "total_messages": total_messages,
+            "unique_agents": len(agents),
+            "agent_names": sorted(list(agents))
+        }
 
 
 class EventCapture:
-    """Capture all events with wildcard handler (integrated mode only)."""
+    """Read events from workspace/events.json."""
     
-    def __init__(self, max_events: int = 1000, persist_path: Optional[str] = None):
-        self.events: deque = deque(maxlen=max_events)
-        self.event_counts: Dict[str, int] = defaultdict(int)
-        self.enabled = False
-        self.persist_path = persist_path or "agentx_events.json"
-    
-    def enable(self):
-        """Enable event capture (only when running integrated)."""
-        if not self.enabled:
-            self._setup_handler()
-            self.enabled = True
-            logger.info("Event capture enabled")
-    
-    def _setup_handler(self):
-        """Set up the catch-all event handler."""
-        def capture_all_events(event: Event):
-            event_data = {
-                "timestamp": datetime.now().isoformat(),
-                "event_type": event.event_type,
-                "source": event.source,
-                "data": event.data
-            }
-            
-            self.events.append(event_data)
-            self.event_counts[event.event_type] += 1
-            
-            # Persist events periodically
-            if len(self.events) % 10 == 0:  # Every 10 events
-                self._persist_events()
-            
-            logger.debug(f"Captured event: {event.event_type} from {event.source}")
-        
-        # Register for all events using the wildcard pattern
-        global_events.on("*", capture_all_events)
+    def __init__(self, storage: ProjectStorage):
+        self.storage = storage
+        self.filename = "events"
     
     def get_events(self, event_type: Optional[str] = None, limit: int = 100) -> List[Dict[str, Any]]:
-        """Get captured events, optionally filtered by type."""
-        if not self.enabled:
-            return []
-            
-        events = list(self.events)
+        """Get recent events."""
+        data = self.storage.read_workspace_file(self.filename)
+        events = data.get("events", [])
         
         if event_type:
-            events = [e for e in events if e["event_type"] == event_type]
+            events = [e for e in events if e.get("event_type") == event_type]
         
         return events[-limit:]
     
-    def get_event_types(self) -> Dict[str, int]:
-        """Get count of events by type."""
-        return dict(self.event_counts) if self.enabled else {}
-    
-    def _persist_events(self):
-        """Persist events to disk."""
-        try:
-            data = {
-                "events": list(self.events),
-                "event_counts": dict(self.event_counts),
-                "last_updated": datetime.now().isoformat()
-            }
-            with open(self.persist_path, 'w') as f:
-                json.dump(data, f, indent=2)
-        except Exception as e:
-            logger.error(f"Failed to persist events: {e}")
-
-
-class MemoryViewer:
-    """Browse and view memory with persistence support."""
-    
-    def __init__(self, persist_path: Optional[str] = None):
-        self.memory_cache: Dict[str, Any] = {}
-        self.categories: Dict[str, List[str]] = defaultdict(list)
-        self.persist_path = persist_path or "agentx_memory.json"
+    def get_event_stats(self) -> Dict[str, Any]:
+        """Get event statistics."""
+        data = self.storage.read_workspace_file(self.filename)
+        events = data.get("events", [])
         
-        # Load existing data
-        self._load_persisted_data()
+        if not events:
+            return {"total_events": 0, "event_types": {}}
+        
+        event_types = defaultdict(int)
+        for event in events:
+            event_types[event.get("event_type", "unknown")] += 1
+        
+        return {
+            "total_events": len(events),
+            "event_types": dict(event_types),
+            "oldest_event": events[0].get("timestamp") if events else None,
+            "newest_event": events[-1].get("timestamp") if events else None
+        }
     
-    def update_memory_cache(self, key: str, value: Any, category: str = "general"):
-        """Update the memory cache with new data."""
-        self.memory_cache[key] = {
-            "value": value,
-            "category": category,
-            "timestamp": datetime.now().isoformat()
+    def get_events_by_type(self, event_type: str, limit: int = 100) -> List[Dict[str, Any]]:
+        """Get events of a specific type."""
+        return self.get_events(event_type, limit)
+
+
+class ArtifactsViewer:
+    """Browse and view workspace files as artifacts."""
+    
+    def __init__(self, storage: ProjectStorage):
+        self.storage = storage
+    
+    def get_file_list(self) -> List[Dict[str, Any]]:
+        """Get list of all workspace files."""
+        files = []
+        workspace_files = self.storage.list_workspace_files()
+        
+        for filename in workspace_files:
+            try:
+                file_info = self.storage.get_workspace_file_info(filename)
+                files.append({
+                    "name": filename,
+                    "path": filename,
+                    "type": "file",
+                    "size": file_info.get("size_human", "0 B"),
+                    "size_bytes": file_info.get("size_bytes", 0),
+                    "modified": file_info.get("last_modified", "Unknown"),
+                    "is_text": self._is_text_file(filename)
+                })
+            except Exception as e:
+                logger.warning(f"Error getting info for file {filename}: {e}")
+                files.append({
+                    "name": filename,
+                    "path": filename,
+                    "type": "file",
+                    "size": "Unknown",
+                    "size_bytes": 0,
+                    "modified": "Unknown",
+                    "is_text": self._is_text_file(filename)
+                })
+        
+        return sorted(files, key=lambda x: x["name"])
+    
+    def get_file_content(self, filename: str) -> Dict[str, Any]:
+        """Get file content and metadata."""
+        try:
+            file_info = self.storage.get_workspace_file_info(filename)
+            is_text = self._is_text_file(filename)
+            
+            if is_text:
+                # Try to read as text
+                try:
+                    if filename.endswith('.json'):
+                        # For JSON files, read as dict and format nicely
+                        content_dict = self.storage.read_workspace_file(filename)
+                        import json
+                        content = json.dumps(content_dict, indent=2, ensure_ascii=False)
+                    else:
+                        # For other text files, read raw content
+                        file_path = self.storage._get_workspace_file_path(filename)
+                        with open(file_path, 'r', encoding='utf-8') as f:
+                            content = f.read()
+                    
+                    lines = len(content.split('\n'))
+                    
+                    return {
+                        "success": True,
+                        "content": content,
+                        "file_info": {
+                            **file_info,
+                            "is_text": True,
+                            "lines": lines,
+                            "mime_type": self._get_mime_type(filename)
+                        }
+                    }
+                except UnicodeDecodeError:
+                    # File is not actually text
+                    is_text = False
+            
+            if not is_text:
+                return {
+                    "success": True,
+                    "content": None,
+                    "file_info": {
+                        **file_info,
+                        "is_text": False,
+                        "mime_type": self._get_mime_type(filename)
+                    }
+                }
+                
+        except Exception as e:
+            return {
+                "success": False,
+                "error": str(e)
+            }
+    
+    def get_artifacts_stats(self) -> Dict[str, Any]:
+        """Get artifacts statistics."""
+        files = self.get_file_list()
+        
+        total_files = len(files)
+        total_size_bytes = sum(f["size_bytes"] for f in files)
+        text_files = sum(1 for f in files if f["is_text"])
+        
+        # Format total size
+        if total_size_bytes < 1024:
+            total_size = f"{total_size_bytes} B"
+        elif total_size_bytes < 1024 * 1024:
+            total_size = f"{total_size_bytes / 1024:.1f} KB"
+        elif total_size_bytes < 1024 * 1024 * 1024:
+            total_size = f"{total_size_bytes / (1024 * 1024):.1f} MB"
+        else:
+            total_size = f"{total_size_bytes / (1024 * 1024 * 1024):.1f} GB"
+        
+        # Get most recent modification time
+        last_modified = "Unknown"
+        if files:
+            try:
+                from datetime import datetime
+                modified_times = [f["modified"] for f in files if f["modified"] != "Unknown"]
+                if modified_times:
+                    # Assuming ISO format timestamps
+                    latest = max(modified_times)
+                    last_modified = latest
+            except Exception:
+                pass
+        
+        return {
+            "total_files": total_files,
+            "total_size": total_size,
+            "text_files": text_files,
+            "binary_files": total_files - text_files,
+            "last_modified": last_modified
+        }
+    
+    def _is_text_file(self, filename: str) -> bool:
+        """Check if file is likely a text file based on extension."""
+        text_extensions = {
+            '.txt', '.json', '.yaml', '.yml', '.md', '.py', '.js', '.html', '.css',
+            '.xml', '.csv', '.log', '.conf', '.cfg', '.ini', '.toml', '.sh', '.bat'
         }
         
-        if key not in self.categories[category]:
-            self.categories[category].append(key)
+        import os
+        _, ext = os.path.splitext(filename.lower())
+        return ext in text_extensions or not ext  # Files without extension might be text
+    
+    def _get_mime_type(self, filename: str) -> str:
+        """Get MIME type for file."""
+        import os
+        _, ext = os.path.splitext(filename.lower())
         
-        logger.debug(f"Updated memory cache: {key} in category {category}")
+        mime_types = {
+            '.json': 'application/json',
+            '.yaml': 'application/x-yaml',
+            '.yml': 'application/x-yaml',
+            '.md': 'text/markdown',
+            '.py': 'text/x-python',
+            '.js': 'text/javascript',
+            '.html': 'text/html',
+            '.css': 'text/css',
+            '.xml': 'application/xml',
+            '.csv': 'text/csv',
+            '.log': 'text/plain',
+            '.txt': 'text/plain'
+        }
         
-        # Persist data
-        self._persist_data()
+        return mime_types.get(ext, 'text/plain' if self._is_text_file(filename) else 'application/octet-stream')
+
+
+class ConfigViewer:
+    """Read configuration files from config/ directory."""
     
-    async def load_from_memory_api(self, base_url: str = "http://localhost:8000"):
-        """Load memory data from the main server API (independent mode)."""
-        try:
-            import httpx
-            async with httpx.AsyncClient() as client:
-                # Get all tasks first
-                response = await client.get(f"{base_url}/tasks")
-                if response.status_code == 200:
-                    tasks = response.json()
-                    
-                    for task in tasks:
-                        task_id = task["task_id"]
-                        
-                        # Get memory for each task
-                        memory_response = await client.get(f"{base_url}/tasks/{task_id}/memory")
-                        if memory_response.status_code == 200:
-                            memory_data = memory_response.json()
-                            
-                            # Update cache with task memory
-                            self.update_memory_cache(
-                                f"task_{task_id}",
-                                memory_data,
-                                "tasks"
-                            )
-                    
-                    logger.info(f"Loaded memory data from {len(tasks)} tasks")
-                    
-        except Exception as e:
-            logger.error(f"Failed to load memory from API: {e}")
+    def __init__(self, storage: ProjectStorage):
+        self.storage = storage
     
-    def get_memory_by_key(self, key: str) -> Optional[Dict[str, Any]]:
-        """Get memory item by key."""
-        return self.memory_cache.get(key)
+    def get_config_files(self) -> List[str]:
+        """Get list of config files."""
+        return self.storage.list_config_files()
     
-    def get_memory_by_category(self, category: str) -> Dict[str, Any]:
-        """Get all memory items in a category."""
-        keys = self.categories.get(category, [])
-        return {key: self.memory_cache[key] for key in keys if key in self.memory_cache}
+    def get_config_file(self, filename: str) -> Dict[str, Any]:
+        """Get specific config file content."""
+        return self.storage.read_config_file(filename)
     
-    def get_all_categories(self) -> List[str]:
-        """Get list of all memory categories."""
-        return list(self.categories.keys())
-    
-    def search_memory(self, query: str) -> Dict[str, Any]:
-        """Search memory by key or content."""
-        results = {}
-        query_lower = query.lower()
-        
-        for key, data in self.memory_cache.items():
-            if query_lower in key.lower():
-                results[key] = data
-            elif isinstance(data["value"], str) and query_lower in data["value"].lower():
-                results[key] = data
-        
-        return results
-    
-    def _persist_data(self):
-        """Persist memory data to disk."""
-        try:
-            data = {
-                "memory_cache": self.memory_cache,
-                "categories": dict(self.categories),
-                "last_updated": datetime.now().isoformat()
-            }
-            with open(self.persist_path, 'w') as f:
-                json.dump(data, f, indent=2)
-        except Exception as e:
-            logger.error(f"Failed to persist memory data: {e}")
-    
-    def _load_persisted_data(self):
-        """Load persisted memory data."""
-        try:
-            if os.path.exists(self.persist_path):
-                with open(self.persist_path, 'r') as f:
-                    data = json.load(f)
-                
-                self.memory_cache = data.get("memory_cache", {})
-                categories_data = data.get("categories", {})
-                self.categories = defaultdict(list, categories_data)
-                
-                logger.info(f"Loaded {len(self.memory_cache)} memory items from {self.persist_path}")
-        except Exception as e:
-            logger.error(f"Failed to load persisted memory data: {e}")
+    def get_config_file_info(self, filename: str) -> Dict[str, Any]:
+        """Get config file information."""
+        return self.storage.get_config_file_info(filename)
 
 
 class ObservabilityMonitor:
-    """Main observability monitor with context awareness."""
+    """Read-only observability monitor for AgentX project data."""
     
-    def __init__(self, data_dir: Optional[str] = None):
-        # Set up data directory
-        self.data_dir = Path(data_dir or "agentx_data")
-        self.data_dir.mkdir(exist_ok=True)
+    def __init__(self, project_path: Optional[str] = None):
+        self.project_path = project_path or "."
+        self.storage = ProjectStorage(self.project_path)
         
-        # Initialize components with persistence
-        self.conversation_history = ConversationHistory(
-            persist_path=str(self.data_dir / "conversations.json")
-        )
-        self.event_capture = EventCapture(
-            persist_path=str(self.data_dir / "events.json")
-        )
-        self.memory_viewer = MemoryViewer(
-            persist_path=str(self.data_dir / "memory.json")
-        )
+        # Initialize read-only components
+        self.conversation_history = ConversationHistory(self.storage)
+        self.event_capture = EventCapture(self.storage)
+        self.artifacts_viewer = ArtifactsViewer(self.storage)
+        self.config_viewer = ConfigViewer(self.storage)
         
         self.is_running = False
-        self.is_integrated = False
+        self.last_refresh = None
         
-        # Detect runtime context
-        self._detect_context()
-        
-        if self.is_integrated:
-            # Set up event handlers for automatic tracking
-            self._setup_automatic_tracking()
-            self.event_capture.enable()
-            logger.info("Observability monitor initialized (integrated mode)")
-        else:
-            logger.info("Observability monitor initialized (independent mode)")
-    
-    def _detect_context(self):
-        """Detect if we're running as part of the main server or independently."""
-        try:
-            # Try to access the global event bus - if it works, we're integrated
-            from ..core.event import global_events
-            # If we can emit a test event, we're integrated
-            test_event = Event("monitor.test", "observability", {})
-            global_events.emit(test_event)
-            self.is_integrated = True
-        except Exception:
-            self.is_integrated = False
-    
-    def _setup_automatic_tracking(self):
-        """Set up automatic tracking of key events (only when integrated)."""
-        
-        def track_agent_messages(event: Event):
-            """Track agent messages in conversation history."""
-            if event.event_type == "agent.message.sent":
-                task_id = event.data.get("task_id", "default")
-                agent = event.source
-                message = event.data.get("message", "")
-                
-                self.conversation_history.add_message(task_id, agent, message, "message")
-        
-        def track_tool_usage(event: Event):
-            """Track tool usage in conversation history."""
-            if event.event_type in ["tool.started", "tool.completed", "tool.failed"]:
-                task_id = event.data.get("task_id", "default")
-                agent = event.source
-                tool_name = event.data.get("tool_name", "unknown")
-                
-                if event.event_type == "tool.started":
-                    message = f"Started using tool: {tool_name}"
-                elif event.event_type == "tool.completed":
-                    message = f"Completed tool: {tool_name}"
-                else:
-                    message = f"Failed tool: {tool_name} - {event.data.get('error', 'Unknown error')}"
-                
-                self.conversation_history.add_message(task_id, agent, message, "tool")
-        
-        def track_memory_operations(event: Event):
-            """Track memory operations and update viewer."""
-            if event.event_type == "memory.saved":
-                # Update memory viewer cache
-                content = event.data.get("content", "")
-                agent = event.source
-                key = f"{agent}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-                category = event.data.get("category", agent)
-                
-                self.memory_viewer.update_memory_cache(key, content, category)
-        
-        # Register event handlers
-        global_events.on("agent.message.sent", track_agent_messages)
-        global_events.on("tool.started", track_tool_usage)
-        global_events.on("tool.completed", track_tool_usage)
-        global_events.on("tool.failed", track_tool_usage)
-        global_events.on("memory.saved", track_memory_operations)
-    
-    async def refresh_data(self):
-        """Refresh data (load from API if independent, or just return current data if integrated)."""
-        if not self.is_integrated:
-            # In independent mode, try to load from API if server is running
-            try:
-                await self.memory_viewer.load_from_memory_api()
-            except Exception as e:
-                logger.info(f"No API server available, using persisted data: {e}")
+        logger.info(f"Read-only observability monitor initialized for project: {self.project_path}")
     
     def start(self):
         """Start the monitor."""
         self.is_running = True
-        logger.info("Observability monitor started")
+        self.last_refresh = datetime.now()
+        logger.info("Observability monitor started (read-only mode)")
     
     def stop(self):
         """Stop the monitor."""
         self.is_running = False
         logger.info("Observability monitor stopped")
     
-    # API methods for web interface
-    def get_dashboard_data(self) -> Dict[str, Any]:
-        """Get dashboard summary data."""
+    def refresh(self):
+        """Refresh data (just updates timestamp since we read files on demand)."""
+        self.last_refresh = datetime.now()
+    
+    def get_project_status(self) -> Dict[str, Any]:
+        """Get status of the project directories."""
+        project_path = Path(self.project_path)
+        workspace_path = project_path / "workspace"
+        config_path = project_path / "config"
+        
         return {
-            "is_integrated": self.is_integrated,
-            "is_running": self.is_running,
-            "total_events": len(self.event_capture.events) if self.is_integrated else 0,
-            "total_tasks": len(self.conversation_history.tasks),
-            "total_memory_items": len(self.memory_viewer.memory_cache),
-            "memory_categories": len(self.memory_viewer.categories),
-            "event_types": self.event_capture.get_event_types() if self.is_integrated else {},
-            "recent_tasks": self.conversation_history.get_recent_tasks(5),
-            "data_dir": str(self.data_dir)
+            "project_path": str(project_path.absolute()),
+            "workspace": {
+                "exists": workspace_path.exists(),
+                "path": str(workspace_path),
+                "files": self.storage.list_workspace_files() if workspace_path.exists() else []
+            },
+            "config": {
+                "exists": config_path.exists(),
+                "path": str(config_path),
+                "files": self.storage.list_config_files() if config_path.exists() else []
+            }
         }
     
-    def get_task_conversation(self, task_id: str) -> List[Dict[str, Any]]:
-        """Get conversation history for a task."""
-        return self.conversation_history.get_task_history(task_id)
+    def get_dashboard_data(self) -> Dict[str, Any]:
+        """Get comprehensive dashboard data."""
+        try:
+            return {
+                "system": {
+                    "is_running": self.is_running,
+                    "project_path": self.project_path,
+                    "last_refresh": self.last_refresh.isoformat() if self.last_refresh else None,
+                    "project_status": self.get_project_status()
+                },
+                "conversations": self.conversation_history.get_stats(),
+                "events": self.event_capture.get_event_stats(),
+                "artifacts": self.artifacts_viewer.get_artifacts_stats()
+            }
+        except Exception as e:
+            logger.error(f"Error getting dashboard data: {e}")
+            return {"error": str(e)}
     
-    async def stream_task_conversation(self, task_id: str) -> AsyncGenerator[Dict[str, Any], None]:
-        """Stream conversation history for a task (only works when integrated)."""
-        if self.is_integrated:
-            async for entry in self.conversation_history.stream_task_history(task_id):
-                yield entry
-        else:
-            # Fallback to regular get for independent mode
-            history = self.get_task_conversation(task_id)
-            for entry in history:
-                yield entry
+    # Conversation methods
+    def get_task_conversation(self, task_id: str) -> List[Dict[str, Any]]:
+        """Get conversation for a specific task."""
+        return self.conversation_history.get_conversation(task_id)
     
     def get_recent_tasks(self, limit: int = 10) -> List[str]:
         """Get recent task IDs."""
         return self.conversation_history.get_recent_tasks(limit)
     
+    # Artifacts methods
+    def get_artifacts_files(self) -> List[Dict[str, Any]]:
+        """Get list of artifact files."""
+        return self.artifacts_viewer.get_file_list()
+    
+    def get_artifact_content(self, filename: str) -> Dict[str, Any]:
+        """Get artifact file content."""
+        return self.artifacts_viewer.get_file_content(filename)
+    
+    def get_artifacts_stats(self) -> Dict[str, Any]:
+        """Get artifacts statistics."""
+        return self.artifacts_viewer.get_artifacts_stats()
+    
+    # Event methods
     def get_events(self, event_type: Optional[str] = None, limit: int = 100) -> List[Dict[str, Any]]:
-        """Get events (only works when integrated)."""
+        """Get events."""
         return self.event_capture.get_events(event_type, limit)
     
-    def get_event_summary(self) -> Dict[str, int]:
-        """Get event summary (only works when integrated)."""
-        return self.event_capture.get_event_types()
+    # Config methods
+    def get_config_files(self) -> List[str]:
+        """Get list of config files."""
+        return self.config_viewer.get_config_files()
     
-    def get_memory_by_key(self, key: str) -> Optional[Dict[str, Any]]:
-        """Get memory by key."""
-        return self.memory_viewer.get_memory_by_key(key)
-    
-    def get_memory_by_category(self, category: str) -> Dict[str, Any]:
-        """Get memory by category."""
-        return self.memory_viewer.get_memory_by_category(category)
-    
-    def get_memory_categories(self) -> List[str]:
-        """Get all memory categories."""
-        return self.memory_viewer.get_all_categories()
-    
-    def search_memory(self, query: str) -> Dict[str, Any]:
-        """Search memory."""
-        return self.memory_viewer.search_memory(query)
+    def get_config_file(self, filename: str) -> Dict[str, Any]:
+        """Get config file content."""
+        return self.config_viewer.get_config_file(filename)
     
     def get_configuration_data(self) -> Dict[str, Any]:
-        """Get system configuration data."""
-        try:
-            config_data = {
-                "system": {
-                    "mode": "Integrated" if self.is_integrated else "Independent",
-                    "data_directory": str(self.data_dir),
-                    "running": self.is_running,
-                    "python_version": f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}",
-                    "platform": sys.platform,
-                },
-                "llm_models": self._get_llm_configuration(),
-                "agents": self._get_agent_configuration(),
-                "tools": self._get_tools_configuration(),
-                "memory": self._get_memory_configuration(),
-                "events": self._get_events_configuration(),
-            }
-            return config_data
-        except Exception as e:
-            logger.error(f"Failed to get configuration data: {e}")
-            return {
-                "system": {
-                    "mode": "Integrated" if self.is_integrated else "Independent",
-                    "data_directory": str(self.data_dir),
-                    "running": self.is_running,
-                    "error": str(e)
-                },
-                "llm_models": {},
-                "agents": {},
-                "tools": {},
-                "memory": {},
-                "events": {}
-            }
-    
-    def _get_llm_configuration(self) -> Dict[str, Any]:
-        """Get LLM configuration from environment and config files."""
-        llm_config = {}
+        """Get configuration data for the web interface."""
+        import sys
+        import platform
         
-        # Check for common environment variables
-        env_keys = [
-            ("OpenAI", "OPENAI_API_KEY"),
-            ("DeepSeek", "DEEPSEEK_API_KEY"),
-            ("Anthropic", "ANTHROPIC_API_KEY"),
-            ("Google", "GOOGLE_API_KEY"),
-        ]
-        
-        for provider, env_key in env_keys:
-            api_key = os.getenv(env_key)
-            llm_config[provider] = {
-                "configured": bool(api_key),
-                "api_key_set": bool(api_key),
-                "api_key_preview": f"{api_key[:8]}..." if api_key else None
-            }
-        
-        # Try to load from config files
-        config_paths = [
-            self.data_dir / "config" / "config.yaml",
-            Path("config/config.yaml"),
-            Path("examples/simple_team/config/config.yaml")
-        ]
-        
-        for config_path in config_paths:
-            if config_path.exists():
-                try:
-                    import yaml
-                    with open(config_path, 'r') as f:
-                        config = yaml.safe_load(f)
-                    
-                    if 'llm' in config:
-                        llm_config['config_file'] = {
-                            "path": str(config_path),
-                            "default_model": config['llm'].get('default_model', 'Not specified'),
-                            "models": list(config['llm'].get('models', {}).keys()) if 'models' in config['llm'] else []
-                        }
-                    break
-                except Exception as e:
-                    logger.debug(f"Could not load config from {config_path}: {e}")
-        
-        return llm_config
-    
-    def _get_agent_configuration(self) -> Dict[str, Any]:
-        """Get agent configuration."""
-        agents_config = {}
-        
-        # Try to load from config files
-        config_paths = [
-            self.data_dir / "config",
-            Path("config"),
-            Path("examples/simple_team/config")
-        ]
-        
-        for config_dir in config_paths:
-            if config_dir.exists():
-                try:
-                    # Look for team config files
-                    for config_file in config_dir.glob("*.yaml"):
-                        if config_file.name in ["config.yaml", "team.yaml", "default.yaml"]:
-                            try:
-                                import yaml
-                                with open(config_file, 'r') as f:
-                                    config = yaml.safe_load(f)
-                                
-                                if 'agents' in config:
-                                    for agent in config['agents']:
-                                        agent_name = agent.get('name', 'Unknown')
-                                        agents_config[agent_name] = {
-                                            "class": agent.get('class', 'Unknown'),
-                                            "role": agent.get('role', 'assistant'),
-                                            "model": self._extract_model_from_agent(agent),
-                                            "tools": agent.get('tools', []),
-                                            "config_file": str(config_file)
-                                        }
-                                break
-                            except Exception as e:
-                                logger.debug(f"Could not load agent config from {config_file}: {e}")
-                    
-                    if agents_config:
-                        break
-                except Exception as e:
-                    logger.debug(f"Could not scan config directory {config_dir}: {e}")
-        
-        return agents_config
-    
-    def _extract_model_from_agent(self, agent_config: Dict[str, Any]) -> str:
-        """Extract model name from agent configuration."""
-        llm_config = agent_config.get('llm_config', {})
-        if 'config_list' in llm_config and llm_config['config_list']:
-            return llm_config['config_list'][0].get('model', 'Unknown')
-        return llm_config.get('model', 'Unknown')
-    
-    def _get_tools_configuration(self) -> Dict[str, Any]:
-        """Get tools configuration."""
-        tools_config = {
-            "available_tools": [],
-            "enabled_tools": [],
-            "tool_modules": []
-        }
-        
-        # Try to detect available tools
-        try:
-            import pkgutil
-            import agentx.builtin_tools
-            
-            for importer, modname, ispkg in pkgutil.iter_modules(agentx.builtin_tools.__path__):
-                tools_config["tool_modules"].append(modname)
-        except Exception as e:
-            logger.debug(f"Could not scan tools: {e}")
-        
-        return tools_config
-    
-    def _get_memory_configuration(self) -> Dict[str, Any]:
-        """Get memory configuration."""
-        memory_config = {
-            "provider": "Unknown",
-            "vector_store": "Unknown",
-            "embedder": "Unknown",
-            "categories": len(self.get_memory_categories()),
-            "total_items": len(self.memory_viewer.memory_cache)
-        }
-        
-        # Try to load from config
-        config_paths = [
-            self.data_dir / "config" / "config.yaml",
-            Path("config/config.yaml"),
-            Path("examples/simple_team/config/config.yaml")
-        ]
-        
-        for config_path in config_paths:
-            if config_path.exists():
-                try:
-                    import yaml
-                    with open(config_path, 'r') as f:
-                        config = yaml.safe_load(f)
-                    
-                    if 'memory' in config:
-                        mem_config = config['memory']
-                        memory_config.update({
-                            "provider": mem_config.get('vector_store', {}).get('provider', 'Unknown'),
-                            "vector_store": mem_config.get('vector_store', {}).get('provider', 'Unknown'),
-                            "embedder": mem_config.get('embedder', {}).get('provider', 'Unknown'),
-                            "llm_provider": mem_config.get('llm', {}).get('provider', 'Unknown'),
-                            "version": mem_config.get('version', 'Unknown')
-                        })
-                    break
-                except Exception as e:
-                    logger.debug(f"Could not load memory config from {config_path}: {e}")
-        
-        return memory_config
-    
-    def _get_events_configuration(self) -> Dict[str, Any]:
-        """Get events configuration."""
         return {
-            "integrated_mode": self.is_integrated,
-            "capture_enabled": self.event_capture.enabled if hasattr(self, 'event_capture') else False,
-            "total_events": len(self.event_capture.events) if hasattr(self, 'event_capture') and self.event_capture.enabled else 0,
-            "event_types": len(self.event_capture.event_counts) if hasattr(self, 'event_capture') and self.event_capture.enabled else 0
+            "project_path": self.project_path,
+            "system": {
+                "project_path": self.project_path,
+                "python_version": sys.version.split()[0],
+                "platform": platform.system(),
+                "is_running": self.is_running,
+                "mode": "Read-Only Project Monitor",
+                "data_directory": str(self.storage.workspace_dir)
+            },
+            "storage": {
+                "workspace_dir": str(self.storage.workspace_dir),
+                "config_dir": str(self.storage.config_dir),
+                "conversations_file": str(self.storage._get_workspace_file_path("conversations")),
+                "events_file": str(self.storage._get_workspace_file_path("events")),
+                "memory_file": str(self.storage._get_workspace_file_path("memory"))
+            },
+            "project_status": self.get_project_status()
         }
 
 
-def find_data_directory() -> str:
-    """
-    Intelligently find the agentx data directory.
-    
-    Search order:
-    1. Current directory's agentx_data
-    2. Parent directories up to 3 levels for agentx_data
-    3. User's home directory .agentx/data
-    4. Default to current directory agentx_data (will be created)
-    """
+def get_monitor(project_path: Optional[str] = None) -> ObservabilityMonitor:
+    """Get or create observability monitor instance."""
+    if not hasattr(get_monitor, '_instance'):
+        get_monitor._instance = ObservabilityMonitor(project_path)
+    return get_monitor._instance
+
+
+def find_project_directory() -> str:
+    """Find existing project directory with workspace and config subdirectories."""
     current_dir = Path.cwd()
     
-    # 1. Check current directory
-    data_dir = current_dir / "agentx_data"
-    if data_dir.exists():
-        return str(data_dir)
+    # Check current directory
+    if (current_dir / "workspace").exists() and (current_dir / "config").exists():
+        return str(current_dir)
     
-    # 2. Check parent directories (up to 3 levels)
+    # Check parent directories
     for parent in [current_dir.parent, current_dir.parent.parent, current_dir.parent.parent.parent]:
-        if parent == current_dir:  # Avoid infinite loop at filesystem root
+        if parent == current_dir:
             break
-        data_dir = parent / "agentx_data"
-        if data_dir.exists():
-            return str(data_dir)
+        if (parent / "workspace").exists() and (parent / "config").exists():
+            return str(parent)
     
-    # 3. Check user's home directory
-    home_data_dir = Path.home() / ".agentx" / "data"
-    if home_data_dir.exists():
-        return str(home_data_dir)
-    
-    # 4. Default to current directory (will be created)
-    return str(current_dir / "agentx_data")
-
-
-# Global monitor instance
-_monitor_instance: Optional[ObservabilityMonitor] = None
-
-def get_monitor(data_dir: Optional[str] = None) -> ObservabilityMonitor:
-    """Get the global monitor instance."""
-    global _monitor_instance
-    if _monitor_instance is None:
-        # Use provided data_dir or intelligently find one
-        if data_dir is None:
-            data_dir = find_data_directory()
-        _monitor_instance = ObservabilityMonitor(data_dir)
-    return _monitor_instance 
+    # Return current directory as default
+    return str(current_dir) 

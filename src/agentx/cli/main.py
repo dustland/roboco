@@ -330,12 +330,12 @@ def main():
         elif args.command == "monitor":
             if args.web:
                 return web(
-                    data_dir=getattr(args, 'data_dir', None),
+                    project_path=getattr(args, 'project_path', None),
                     host=args.host,
                     port=args.port
                 )
             else:
-                return monitor(data_dir=getattr(args, 'data_dir', None))
+                return monitor(project_path=getattr(args, 'project_path', None))
         
         elif args.command == "status":
             show_status()

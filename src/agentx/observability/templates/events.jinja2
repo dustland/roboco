@@ -1,6 +1,6 @@
 {% extends "base.jinja2" %}
 
-{% block title %}Events - Roboco Observability{% endblock %}
+{% block title %}Events - AgentX Observability{% endblock %}
 
 {% block content %}
 <div class="space-y-6">
@@ -36,7 +36,7 @@
         <i data-lucide="alert-triangle" class="w-6 h-6"></i>
         <div>
             <div class="font-bold">Event monitoring unavailable</div>
-            <div class="text-sm">Event monitoring is only available in integrated mode. Start Roboco with <code>roboco server</code> to enable real-time event capture.</div>
+                            <div class="text-sm">Events are stored in JSON files. Start AgentX with <code>agentx start</code> for real-time event capture, or view persisted events from previous runs.</div>
         </div>
     </div>
     {% else %}
@@ -157,7 +157,7 @@
             <div class="text-center py-16 text-base-content/50">
                 <i data-lucide="activity" class="w-24 h-24 mx-auto mb-6"></i>
                 <h2 class="text-2xl font-bold mb-2">No Events Captured</h2>
-                <p class="text-lg mb-4">Events will appear here when Roboco is active</p>
+                <p class="text-lg mb-4">Events will appear here when AgentX is active or from persisted data</p>
                 <div class="space-y-2">
                     <p class="text-sm">Events are captured when:</p>
                     <ul class="text-sm space-y-1">
