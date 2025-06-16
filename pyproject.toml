@@ -24,27 +24,29 @@ dependencies = [
     "rich>=13.6.0",
     "loguru",
     # Opinionated Integrations (Best-in-Class)
-    "litellm",                      # LLM provider routing
-    "openai>=1.0.0",                # LLM inference with function calling
+    "litellm", # LLM provider routing
+    "openai>=1.0.0", # LLM inference with function calling
     "google-search-results>=2.4.2", # SERP API for web search (built-in)
-    "mem0ai>=0.1.106",              # Intelligent memory management
-    "mcp>=1.4.1",                   # Model Context Protocol for tools
-    "firecrawl-py>=0.0.16",         # Web content extraction (replaces Jina)
-    "browser-use>=0.1.0",           # AI-first browser automation
+    "mem0ai>=0.1.106", # Intelligent memory management
+    "mcp>=1.4.1", # Model Context Protocol for tools
+    "firecrawl-py>=0.0.16", # Web content extraction (replaces Jina)
+    "browser-use>=0.1.0", # AI-first browser automation
     # Supporting Libraries
     "numpy>=1.24.3",
-    "requests>=2.31.0",       # HTTP library
-    "httpx>=0.24.0",          # Async HTTP client
-    "aiohttp>=3.8.0",         # HTTP client for server demos
+    "requests>=2.31.0", # HTTP library
+    "httpx>=0.24.0", # Async HTTP client
+    "aiohttp>=3.8.0", # HTTP client for server demos
     "beautifulsoup4>=4.12.0", # HTML parsing (fallback)
-    "markdown>=3.4.0",        # Markdown processing
-    "jinja2>=3.1.6",          # Template engine
+    "markdown>=3.4.0", # Markdown processing
+    "jinja2>=3.1.6", # Template engine
     # Database & Storage
-    "sqlmodel>=0.0.8",   # SQL ORM
+    "sqlmodel>=0.0.8", # SQL ORM
     "sqlalchemy>=2.0.0", # SQL toolkit
-    "chromadb>=1.0.12",  # Vector database
-    "pyarrow>=19.0.1",   # Columnar data
-
+    "chromadb>=1.0.12", # Vector database
+    "pyarrow>=19.0.1", # Columnar data
+    "aiofiles>=24.1.0",
+    "gitpython>=3.1.44",
+    "pygithub>=2.6.1",
 ]
 
 [project.optional-dependencies]

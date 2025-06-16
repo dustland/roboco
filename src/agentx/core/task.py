@@ -72,8 +72,13 @@ class Task:
         self.created_at = datetime.now()
         self.artifacts: Dict[str, Any] = {}
         
-        # Create workspace directory
+        # Create workspace directory and subdirectories
         self.workspace_dir.mkdir(parents=True, exist_ok=True)
+        self._setup_workspace()
+        
+        # Register task-specific tools with this workspace
+        self._register_task_tools()
+        
         logger.info(f"🎯 Task {self.task_id} initialized")
     
     def start_task(self, prompt: str, initial_agent: str = None) -> None:
@@ -118,7 +123,7 @@ class Task:
         else:
             self.current_agent = list(self.team.agents.keys())[0]
         
-        self._save_state()
+        asyncio.create_task(self._save_state_async())
 
     async def _execute(self) -> None:
         """Execute the task without streaming."""
@@ -385,28 +390,28 @@ class Task:
     def add_step(self, step: TaskStep) -> None:
         """Add a step to the conversation history."""
         self.history.append(step)
-        self._save_state()
+        asyncio.create_task(self._save_state_async())
     
     def set_current_agent(self, agent_name: str) -> None:
         """Set the current active agent."""
         self.current_agent = agent_name
-        self._save_state()
+        asyncio.create_task(self._save_state_async())
     
     def complete_task(self) -> None:
         """Mark the task as complete."""
         self.is_complete = True
-        self._save_state()
+        asyncio.create_task(self._save_state_async())
         logger.info(f"✅ Task completed after {self.round_count} rounds")
     
     def pause_task(self) -> None:
         """Pause the task execution."""
         self.is_paused = True
-        self._save_state()
+        asyncio.create_task(self._save_state_async())
     
     def resume_task(self) -> None:
         """Resume the task execution."""
         self.is_paused = False
-        self._save_state()
+        asyncio.create_task(self._save_state_async())
     
     def add_artifact(self, name: str, content: Any, metadata: Dict[str, Any] = None) -> None:
         """Add an artifact to the task."""
@@ -415,12 +420,88 @@ class Task:
             "metadata": metadata or {},
             "created_at": datetime.now().isoformat()
         }
-        self._save_state()
+        asyncio.create_task(self._save_state_async())
     
-    def _save_state(self) -> None:
-        """Save task state to workspace."""
+    def _setup_workspace(self) -> None:
+        """Set up workspace directory structure."""
         try:
-            state_file = self.workspace_dir / "task_state.json"
+            # Create subdirectories
+            (self.workspace_dir / "artifacts").mkdir(exist_ok=True)
+            (self.workspace_dir / "logs").mkdir(exist_ok=True)
+            (self.workspace_dir / "history").mkdir(exist_ok=True)
+            
+            # Set up logging for this task
+            self._setup_task_logging()
+            
+        except Exception as e:
+            logger.warning(f"Failed to setup workspace: {e}")
+    
+    def _setup_task_logging(self) -> None:
+        """Set up task-specific logging."""
+        try:
+            import logging
+            
+            # Create task-specific logger
+            task_logger = logging.getLogger(f"agentx.task.{self.task_id}")
+            task_logger.setLevel(logging.INFO)
+            
+            # Create file handler for task logs
+            log_file = self.workspace_dir / "logs" / "task.log"
+            file_handler = logging.FileHandler(log_file)
+            file_handler.setLevel(logging.INFO)
+            
+            # Create formatter
+            formatter = logging.Formatter(
+                '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+            )
+            file_handler.setFormatter(formatter)
+            
+            # Add handler to logger
+            if not task_logger.handlers:
+                task_logger.addHandler(file_handler)
+            
+            # Log task initialization
+            task_logger.info(f"Task {self.task_id} initialized")
+            
+        except Exception as e:
+            logger.warning(f"Failed to setup task logging: {e}")
+    
+    def _register_task_tools(self) -> None:
+        """Register task-specific tools with this task's workspace."""
+        try:
+            from ..storage.factory import StorageFactory
+            from ..tools.storage_tools import create_storage_tools
+            from ..core.tool import register_tool
+            
+            # Create workspace storage for this task
+            self.workspace_storage = StorageFactory.create_workspace_storage(
+                self.workspace_dir, 
+                use_git_artifacts=True
+            )
+            
+            # Create and register storage tools
+            storage_tool, artifact_tool = create_storage_tools(str(self.workspace_dir))
+            
+            register_tool(storage_tool)
+            register_tool(artifact_tool)
+            
+            # Also register other built-in tools (context, planning, etc.)
+            from ..tools import register_builtin_tools
+            register_builtin_tools(workspace_path=str(self.workspace_dir))
+            
+            logger.info(f"Registered task-specific storage tools for workspace: {self.workspace_dir}")
+            
+        except Exception as e:
+            logger.warning(f"Failed to register task tools: {e}")
+    
+    async def _save_state_async(self) -> None:
+        """Save task state and conversation history to workspace using storage layer."""
+        try:
+            if not hasattr(self, 'workspace_storage'):
+                logger.warning("Workspace storage not initialized, skipping state save")
+                return
+                
+            # Save task state
             state = {
                 "task_id": self.task_id,
                 "initial_prompt": self.initial_prompt,
@@ -429,12 +510,63 @@ class Task:
                 "is_complete": self.is_complete,
                 "is_paused": self.is_paused,
                 "created_at": self.created_at.isoformat(),
-                "artifacts": self.artifacts
+                "artifacts": self.artifacts,
+                "history_length": len(self.history)
             }
-            with open(state_file, 'w') as f:
-                json.dump(state, f, indent=2)
+            
+            await self.workspace_storage.file_storage.write_text(
+                "task_state.json", 
+                json.dumps(state, indent=2)
+            )
+            
+            # Save conversation history
+            await self._save_conversation_history_async()
+            
         except Exception as e:
             logger.warning(f"Failed to save task state: {e}")
+    
+    async def _save_conversation_history_async(self) -> None:
+        """Save conversation history to JSONL file using storage layer."""
+        try:
+            # Prepare conversation history data
+            history_lines = []
+            for step in self.history:
+                step_data = {
+                    "step_id": step.step_id,
+                    "agent_name": step.agent_name,
+                    "timestamp": step.timestamp.isoformat(),
+                    "parts": []
+                }
+                
+                for part in step.parts:
+                    if hasattr(part, 'text'):
+                        step_data["parts"].append({
+                            "type": "text",
+                            "content": part.text
+                        })
+                    elif hasattr(part, 'tool_call'):
+                        step_data["parts"].append({
+                            "type": "tool_call",
+                            "tool_name": part.tool_call.tool_name,
+                            "arguments": part.tool_call.arguments
+                        })
+                    elif hasattr(part, 'tool_result'):
+                        step_data["parts"].append({
+                            "type": "tool_result",
+                            "result": part.tool_result.result,
+                            "success": part.tool_result.success
+                        })
+                
+                history_lines.append(json.dumps(step_data))
+            
+            # Write to storage
+            await self.workspace_storage.file_storage.write_text(
+                "history/conversation.jsonl",
+                '\n'.join(history_lines) + '\n'
+            )
+                    
+        except Exception as e:
+            logger.warning(f"Failed to save conversation history: {e}")
 
 
 # Factory function for creating tasks

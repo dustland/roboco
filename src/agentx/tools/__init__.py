@@ -17,20 +17,22 @@ from .planning_tools import PlanningTool
 
 logger = get_logger(__name__)
 
-def register_builtin_tools():
+def register_builtin_tools(workspace_path: str = "./workspace"):
     """
     Register all built-in tools for general use.
     This makes them available to be assigned to agents in YAML configs.
+    
+    Args:
+        workspace_path: Path to workspace directory for file operations
     """
-    # Always register basic tools
-    register_tool(BasicTool())
-    logger.info("Registered BasicTool")
+    # Note: Storage tools (StorageTool, ArtifactTool) are registered per-task
+    # Here we only register framework-level tools
     
     # Always register context and planning tools - these are core framework capabilities
-    register_tool(ContextTool())
+    register_tool(ContextTool(workspace_path=workspace_path))
     logger.info("Registered ContextTool (built-in framework capability)")
     
-    register_tool(PlanningTool())
+    register_tool(PlanningTool(workspace_path=workspace_path))
     logger.info("Registered PlanningTool (built-in framework capability)")
     
     # Register search tools if dependencies are available

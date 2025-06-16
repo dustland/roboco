@@ -59,12 +59,41 @@ class Agent:
         # Agent state
         self.state = AgentState(agent_name=config.name)
         
-        # Agent capabilities
-        self.tools = config.tools.copy()
+        # Agent capabilities - start with built-in tools, then add configured tools
+        self.tools = self._get_builtin_tools()
+        self.tools.extend(config.tools)
         self.memory_enabled = getattr(config, 'memory_enabled', True)
         self.max_iterations = getattr(config, 'max_iterations', 10)
         
         logger.info(f"🤖 Agent '{self.name}' initialized with {len(self.tools)} tools")
+    
+    def _get_builtin_tools(self) -> List[str]:
+        """Get list of built-in tools that should be available to all agents."""
+        builtin_tools = [
+            # Storage tools (registered per-task)
+            "read_file", 
+            "write_file",
+            "append_file",
+            "file_exists",
+            "create_directory",
+            "delete_file",
+            "list_directory",
+            
+            # Artifact tools (registered per-task)
+            "store_artifact",
+            "get_artifact",
+            "list_artifacts",
+            "get_artifact_versions",
+            "delete_artifact",
+            
+            # Framework tools (registered globally)
+            "get_context",
+            "set_context",
+            "create_plan",
+            "update_task_status",
+            "get_plan_status"
+        ]
+        return builtin_tools
     
     async def generate_response(
         self,

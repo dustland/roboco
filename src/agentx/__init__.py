@@ -82,8 +82,8 @@ def initialize():
     except ImportError:
         pass
     
-    from .tools import register_builtin_tools
-    register_builtin_tools()
+    # Note: Built-in tools are now registered per-task with task-specific workspaces
+    # Global tool registration is handled by individual tasks
 
 def execute_task(prompt: str, config_path: str, stream: bool = False):
     """

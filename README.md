@@ -20,6 +20,7 @@ AgentX is a modern, configuration-driven framework for building collaborative AI
 - **Search Integration**: Web search with SerpAPI backend
 - **Tool Ecosystem**: Built-in tools (filesystem, memory, search) plus extensible registry
 - **Event System**: Real-time monitoring and observability
+- **Git-Based Storage**: Advanced artifact versioning with Git integration for code generation workflows
 - **Task Management**: Resume interrupted workflows with persistent sessions
 - **Production Ready**: Designed for scalability and reliability
 
@@ -133,6 +134,25 @@ chat = task.get_chat()
 history = chat.get_chat_history()
 await chat.send_message("Additional instruction")
 ```
+
+## 💾 Storage & Artifact Management
+
+AgentX features Git-based artifact versioning for code generation and iterative workflows:
+
+```python
+# Automatic Git versioning for artifacts
+workspace = task.get_workspace()
+
+# Store versioned artifacts (creates Git commits automatically)
+result = await workspace.store_artifact("fibonacci.py", code, "text/python")
+print(f"Version: {result.data['version']}")  # Git commit hash
+
+# Get specific versions and compare changes
+latest = await workspace.get_artifact("fibonacci.py")
+diff = await workspace.get_artifact_diff("fibonacci.py", "v1", "v2")
+```
+
+**Key Features**: Git integration, version control with meaningful commits, diff support, graceful fallback, workspace isolation. See [Storage Architecture](docs/04-storage-architecture.md) for details.
 
 ## 📊 Observability & Monitoring
 
@@ -294,12 +314,11 @@ The Agent coordinates between Brain (for reasoning), Tools (for execution), Memo
 
 ## 📖 Documentation
 
-- **[System Architecture](docs/system-architecture.md)** - Overall design and Brain architecture
-- **[Configuration Based Design](docs/config-based-design.md)** - YAML configuration reference
-- **[Observability](docs/observability.md)** - Monitoring, web dashboard, and CLI tools
-- **[Memory System](docs/memory-system.md)** - Mem0 integration and usage
-- **[Tool System](docs/tool-system.md)** - Plugin architecture and development
-- **[Event System](docs/event-system.md)** - Real-time monitoring and events
+- **[System Architecture](docs/01-architecture.md)** - Overall design and Brain architecture
+- **[Collaboration Model](docs/02-collaboration-model.md)** - Agent handoffs and team coordination
+- **[Data and Events](docs/03-data-and-events.md)** - Event system and data flow
+- **[Storage Architecture](docs/04-storage-architecture.md)** - Git-based artifact versioning and storage layer
+- **[Requirements](docs/00-requirements.md)** - System requirements and design principles
 
 ## 🤝 Contributing
 

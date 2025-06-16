@@ -134,9 +134,16 @@ graph TD
     - `team.yaml`: The initial configuration.
     - `plan.json`: The structured, evolving execution plan.
     - `history.jsonl`: An append-only log of every `TaskStep`.
-    - `artifacts/`: A directory for all generated files (code, documents, images, etc.).
-  - This file-based approach ensures the entire task history is transparent and auditable.
-  - **(Req #25)** Supports rich artifact management with versioning and metadata.
+    - `artifacts/`: A Git-managed directory for all generated files (code, documents, images, etc.).
+  - **Git-Based Storage Architecture:**
+    - **Factory Pattern**: Clean `StorageFactory.create_workspace_storage()` API eliminates redundant delegation
+    - **Git Integration**: Automatic Git repository initialization for artifact versioning
+    - **Version Control**: Each artifact version is stored as a Git commit with meaningful messages
+    - **Diff Support**: Compare any two artifact versions using Git diff functionality
+    - **Fallback Support**: Graceful degradation to simple versioning when Git is unavailable
+    - **Async Operations**: Non-blocking storage operations with proper error handling
+  - This file-based approach with Git integration ensures the entire task history is transparent, auditable, and version-controlled.
+  - **(Req #25)** Supports rich artifact management with Git-based versioning and metadata.
 
 ### 3.6. Memory Manager
 
@@ -160,14 +167,24 @@ graph TD
 
 ### 3.8. Artifact Manager
 
-- **Role:** **(Req #25)** Manages creation, versioning, and lifecycle of various artifact types.
+- **Role:** **(Req #25)** Manages creation, versioning, and lifecycle of various artifact types with Git-based version control.
 - **Responsibilities:**
   - **Code Files**: Handles generated scripts, applications, and configurations with syntax validation.
   - **Documents**: Manages reports, analyses, and structured content with format conversion.
   - **Media Files**: Processes images, audio, and video content with metadata extraction.
   - **Data Structures**: Handles JSON, CSV, and database exports with schema validation.
-  - **Version Control**: Maintains artifact history and enables rollback capabilities.
-  - **Metadata Management**: Tracks creation, modification, and usage statistics.
+  - **Git-Based Version Control**:
+    - Each artifact version is stored as a Git commit with meaningful commit messages
+    - Full Git history tracking for all artifact modifications
+    - Git diff support for comparing any two versions of an artifact
+    - Automatic file extension detection based on content type
+    - Commit metadata includes creation time, agent information, and descriptions
+  - **Storage Architecture**:
+    - Factory pattern with `StorageFactory.create_workspace_storage()` for clean API
+    - Async operations using ThreadPoolExecutor for non-blocking Git operations
+    - Graceful fallback to simple versioning when Git is unavailable
+    - Workspace isolation with separate Git repositories per task
+  - **Metadata Management**: Tracks creation, modification, usage statistics, and Git commit information.
 
 ### 3.9. Context Manager
 
