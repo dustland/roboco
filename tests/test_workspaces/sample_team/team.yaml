@@ -73,7 +73,7 @@ tools:
           enum: ["summary", "trends", "correlations"]
       required: ["data_path", "analysis_type"]
 
-handoff_rules:
+handoffs:
   - from_agent: "coordinator"
     to_agent: "analyst"
     condition: "research_needed"

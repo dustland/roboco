@@ -1,425 +1,547 @@
-# 02: Collaboration & Planning Model
+# 02: Collaboration Model
 
-This document specifies the dynamic aspects of the AgentX framework: how agents collaborate to achieve a goal and how that work is planned and tracked. It builds on the components defined in `01-architecture.md`.
+This document defines how agents collaborate in multi-agent teams within the AgentX framework. It focuses on team dynamics, orchestrator behavior, handoff mechanisms, and message flow patterns.
 
-## 1. The Execution Plan: `plan.json`
+## 1. Team Collaboration Architecture
 
-A robust execution plan is the key to successfully completing complex, multi-step tasks. The framework elevates the plan to a first-class, structured artifact.
+### 1.1. Team Structure
 
-- **(Req #18)** At the start of a task, a `plan.json` file is created in the `Task Workspace`.
-- This file is a structured list of tasks, not a simple markdown file. This allows agents to interact with it programmatically.
-- **(Req #18)** The plan supports autonomous execution with minimal human intervention.
+A **Team** is a collection of specialized agents working together toward a common goal:
 
-### 1.1. `plan.json` Schema
+```yaml
+name: "ContentTeam"
+description: "Collaborative content creation and review"
 
-The file will contain a JSON object with a single key, `tasks`, which is a list of task objects.
-
-**Example `plan.json`:**
-
-```json
-{
-  "tasks": [
-    {
-      "task_id": "task_001",
-      "description": "Analyze the project requirements and create a file structure.",
-      "status": "completed",
-      "assigned_agent": "analyst",
-      "priority": "high",
-      "dependencies": [],
-      "estimated_duration": "15m",
-      "metadata": {
-        "completed_at": "2023-10-27T10:00:00Z",
-        "artifacts_created": ["project_structure.md"]
-      }
-    },
-    {
-      "task_id": "task_002",
-      "description": "Write the main application logic in app.py.",
-      "status": "in_progress",
-      "assigned_agent": "coder",
-      "priority": "high",
-      "dependencies": ["task_001"],
-      "estimated_duration": "30m",
-      "metadata": {
-        "started_at": "2023-10-27T10:05:00Z",
-        "progress_percentage": 60
-      }
-    },
-    {
-      "task_id": "task_003",
-      "description": "Create unit tests for app.py.",
-      "status": "pending",
-      "assigned_agent": "tester",
-      "priority": "medium",
-      "dependencies": ["task_002"],
-      "estimated_duration": "20m",
-      "metadata": {}
-    }
-  ],
-  "execution_mode": "autonomous",
-  "human_intervention_points": ["before_deployment", "on_error"],
-  "success_criteria": ["all_tests_pass", "code_coverage_80_percent"]
-}
+agents:
+  - name: "researcher"
+    role: "Information gathering and fact-checking"
+  - name: "writer"
+    role: "Content creation and drafting"
+  - name: "reviewer"
+    role: "Quality assurance and editing"
+  - name: "publisher"
+    role: "Final formatting and distribution"
 ```
 
-### 1.2. Plan Interaction Tools
+**Team Characteristics:**
 
-Agents will be provided with built-in tools to manage the plan, for example:
+- **Shared Context**: All agents have access to the complete conversation history
+- **Specialized Roles**: Each agent has distinct capabilities and responsibilities
+- **Collaborative Memory**: Work artifacts and progress are preserved across handoffs
+- **Dynamic Coordination**: The orchestrator manages workflow based on natural completion signals
 
-- `plan_add_task(description: str, priority: str, dependencies: List[str])`: Adds a new task to the plan with `pending` status.
-- `plan_update_task(task_id: str, status: str, metadata: dict)`: Updates the status and metadata of an existing task.
-- `plan_read()`: Returns the full content of `plan.json`.
-- `plan_assign_task(task_id: str, agent_name: str)`: Assigns a task to a specific agent.
-- `plan_estimate_duration(task_id: str, duration: str)`: Sets estimated duration for a task.
-- `plan_set_dependencies(task_id: str, dependencies: List[str])`: Defines task dependencies.
+### 1.2. Agent Collaboration Patterns
 
-## 2. The Collaboration Model: Handoffs
+**Sequential Collaboration:**
 
-**(Req #11)** The framework uses **Handoffs** to manage the flow of control between agents, a concept inspired by the OpenAI Agents SDK. A handoff is a specific type of tool call that signals the `Orchestrator` to switch the active agent.
+```
+Researcher → Writer → Reviewer → Publisher
+```
 
-- **(Req #4)** Handoffs enable dynamic, intelligent routing that can be determined by the agent at runtime based on the task's progress.
-- **(Req #23)** The design supports advanced collaboration patterns including parallel execution and hierarchical teams.
+Linear workflow where each agent builds on previous work.
 
-### 2.1. The `handoff` Tool
+**Iterative Collaboration:**
 
-A built-in tool named `handoff` will be available to all agents.
+```
+Writer ↔ Reviewer (until approved) → Publisher
+```
 
-- **Signature:** `handoff(destination_agent: str, reason: str, context: Optional[Dict[str, Any]] = None)`
-- When an agent calls this tool, it is signaling that its work for the current turn is complete and that the specified `destination_agent` should act next.
-- **(Req #20)** The context parameter allows passing relevant memory and state information.
+Agents work in cycles, refining output through feedback loops.
 
-**Example `TaskStep` for a handoff:**
+**Parallel Collaboration:**
 
-```json
+```
+Researcher A (Topic 1) ┐
+Researcher B (Topic 2) ├→ Writer → Reviewer
+Researcher C (Topic 3) ┘
+```
+
+Multiple agents work simultaneously, with coordination points.
+
+**Consensus Collaboration:**
+
+```
+Expert A ┐
+Expert B ├→ Synthesizer → Final Decision
+Expert C ┘
+```
+
+Multiple perspectives combined into unified output.
+
+## 2. Orchestrator Design
+
+### 2.1. Orchestrator Responsibilities
+
+The **Orchestrator** is the intelligent coordinator that manages team collaboration:
+
+**Work Routing:**
+
+- Analyzes agent completion signals using natural language understanding
+- Selects the most appropriate next agent based on context and capabilities
+- Manages work queues and handles conflicts
+- Routes based on handoff conditions and team state
+
+**Context Management:**
+
+- Maintains shared conversation history across all agents
+- Preserves work artifacts and progress tracking
+- Ensures information continuity during handoffs
+- Manages team memory and context variables
+
+**Flow Control:**
+
+- Detects natural completion signals from agents
+- Applies handoff rules and conditions
+- Handles after-work behavior when no handoffs match
+- Manages termination and error conditions
+
+### 2.2. Intelligent Routing Algorithm
+
+The orchestrator uses a multi-layered approach to determine handoffs:
+
+```python
+def determine_next_agent(agent_response, team_context):
+    # 1. Check explicit handoff conditions
+    for handoff in team.handoffs:
+        if matches_condition(agent_response, handoff.condition):
+            return handoff.to_agent
+
+    # 2. Use LLM analysis for natural language understanding
+    next_agent = analyze_completion_with_llm(agent_response, possible_handoffs)
+    if next_agent:
+        return next_agent
+
+    # 3. Apply after_work_behavior
+    return apply_after_work_behavior(team.after_work_behavior)
+```
+
+**Routing Priority:**
+
+1. **Explicit Conditions**: Defined handoff rules take precedence
+2. **LLM Analysis**: Natural language understanding of completion signals
+3. **After-Work Behavior**: Team-level default when no conditions match
+
+### 2.3. Context Transfer Mechanism
+
+When a handoff occurs, the orchestrator ensures seamless context transfer:
+
+```python
+def execute_handoff(from_agent, to_agent, context):
+    # Preserve complete conversation history
+    context.history.append({
+        'agent': from_agent,
+        'response': agent_response,
+        'timestamp': now(),
+        'handoff_reason': handoff_condition
+    })
+
+    # Transfer artifacts and work products
+    context.artifacts = preserve_artifacts(context.artifacts)
+
+    # Update current agent
+    context.current_agent = to_agent
+
+    # Render new agent prompt with full context
+    prompt = render_agent_prompt(to_agent, context)
+```
+
+## 3. Handoff Design
+
+### 3.1. Handoff Philosophy
+
+Handoffs should feel natural and intuitive, like human team collaboration:
+
+- **Natural Language Conditions**: Describe completion in human terms
+- **Context-Aware**: Consider team state and work progress
+- **Flexible Routing**: Support both simple and complex decision logic
+- **Self-Documenting**: Handoff rules explain team workflow
+
+### 3.2. Handoff Structure
+
+```yaml
+handoffs:
+  - from_agent: "writer"
+    to_agent: "reviewer"
+    condition: "draft is complete and ready for review"
+    priority: 1
+
+  - from_agent: "reviewer"
+    to_agent: "writer"
+    condition: "feedback has been provided and revisions are needed"
+    priority: 1
+
+  - from_agent: "reviewer"
+    to_agent: "publisher"
+    condition: "content is approved for publication"
+    priority: 2
+```
+
+**Field Definitions:**
+
+- **`from_agent`**: Source agent name
+- **`to_agent`**: Destination agent name
+- **`condition`**: Natural language description of when to handoff
+- **`priority`**: Higher numbers take precedence (optional, default: 1)
+
+### 3.3. Condition Types
+
+**Simple Completion:**
+
+```yaml
+condition: "research is complete"
+condition: "draft is finished"
+condition: "review is done"
+```
+
+**Quality-Based:**
+
+```yaml
+condition: "content meets quality standards"
+condition: "all requirements are satisfied"
+condition: "no errors found"
+```
+
+**Context-Aware:**
+
+```yaml
+condition: "research batch complete and source_count >= {{ min_sources }}"
+condition: "confidence_score > {{ threshold }} and ready for review"
+condition: "iteration_count < {{ max_iterations }} and needs revision"
+```
+
+**Multi-Condition:**
+
+```yaml
+condition: "draft complete and word_count >= {{ min_words }} and all sections included"
+```
+
+### 3.4. After-Work Behavior
+
+When no handoff conditions match, the team applies default behavior:
+
+```yaml
+# Team-level configuration
+after_work_behavior: "return_to_user" # Default
+```
+
+**Options:**
+
+- **`"return_to_user"`**: Hand control back to user (default)
+- **`"terminate"`**: End the task successfully
+- **`"continue"`**: Keep the conversation going with current agent
+
+## 4. Message Flow Patterns
+
+### 4.1. Basic Message Flow
+
+```
+User Request → Orchestrator → Agent A → [Work] → Completion Signal →
+Orchestrator Analysis → Agent B → [Work] → ... → Final Response
+```
+
+**Flow Steps:**
+
+1. **User Input**: Initial task or follow-up message
+2. **Agent Selection**: Orchestrator chooses appropriate agent
+3. **Context Preparation**: Full history and artifacts provided to agent
+4. **Agent Work**: Agent processes task using tools and capabilities
+5. **Completion Detection**: Orchestrator analyzes response for handoff signals
+6. **Handoff Decision**: Apply rules, LLM analysis, or after-work behavior
+7. **Context Transfer**: Preserve history and artifacts for next agent
+
+### 4.2. Conversation History Structure
+
+Each message in the conversation history contains:
+
+```python
 {
-  "step_id": "step_abc",
-  "agent_name": "coder",
-  "parts": [
-    {
-      "type": "text",
-      "text": "I have finished writing the code for app.py. Handing off to the tester."
-    },
-    {
-      "type": "tool_call",
-      "tool_call": {
-        "id": "tc_123",
-        "tool_name": "handoff",
-        "args": {
-          "destination_agent": "tester",
-          "reason": "Code implementation is complete, ready for testing.",
-          "context": {
-            "files_modified": ["app.py"],
-            "test_requirements": ["unit_tests", "integration_tests"],
-            "priority": "high"
-          }
+    'step_id': 'unique_identifier',
+    'agent_name': 'writer',
+    'timestamp': '2024-01-15T10:30:00Z',
+    'parts': [
+        {
+            'type': 'text',
+            'text': 'I have completed the first draft...'
         }
-      }
-    }
-  ]
+    ],
+    'artifacts': ['draft_v1.md', 'research_notes.json'],
+    'handoff_triggered': True,
+    'handoff_target': 'reviewer'
 }
 ```
 
-### 2.2. Orchestrator Logic for Handoffs
+### 4.3. Context Variables and Templates
 
-When the `Orchestrator` receives a `TaskStep` containing a `handoff` tool call, it will:
-
-1.  **Intercept:** It will _not_ send this tool call to the `Tool Executor`.
-2.  **Validate:** It checks that the `destination_agent` exists in the current team configuration.
-3.  **Memory Update:** **(Req #20)** Updates the memory manager with handoff context and reasoning.
-4.  **Switch Context:** It sets the `active_agent` to the `destination_agent`.
-5.  **Continue Loop:** It proceeds with the main execution loop, now preparing to invoke the new active agent in the next turn.
-
-This model allows for powerful and flexible workflows. For example, a `tester` agent could examine the results of a test run and decide to either `handoff` back to the `coder` (if tests fail) or `handoff` to a `deployer` agent (if tests pass).
-
-## 3. Advanced Collaboration Patterns
-
-**(Req #23)** The framework supports sophisticated collaboration models beyond simple handoffs:
-
-### 3.1. Parallel Execution
-
-Multiple agents can work simultaneously on different aspects of a task:
+Teams can use context variables for dynamic handoff conditions:
 
 ```yaml
-# Example team configuration for parallel execution
-collaboration_patterns:
-  parallel_groups:
-    - name: "development_team"
-      agents: ["frontend_dev", "backend_dev", "database_dev"]
-      coordination_agent: "tech_lead"
-      sync_points: ["design_review", "integration_testing"]
+# Team configuration
+context_variables:
+  min_sources: 5
+  confidence_threshold: 0.8
+  max_iterations: 3
+
+handoffs:
+  - from_agent: "researcher"
+    to_agent: "writer"
+    condition: "research complete and source_count >= {{ min_sources }}"
 ```
 
-**Parallel Handoff Tool:**
+**Variable Sources:**
 
-- `parallel_handoff(agents: List[str], tasks: List[str], coordination_strategy: str)`
+- **Team Configuration**: Predefined values
+- **Runtime Context**: Dynamic values from agent work
+- **User Input**: Parameters provided by user
+- **System State**: Current team and task status
 
-### 3.2. Dynamic Team Formation
+## 5. Advanced Collaboration Patterns
 
-Runtime creation and modification of agent teams:
+### 5.1. Multi-Stage Workflows
 
-**Dynamic Team Tools:**
-
-- `create_team(team_name: str, agents: List[str], purpose: str)`
-- `modify_team(team_name: str, add_agents: List[str], remove_agents: List[str])`
-- `dissolve_team(team_name: str, reason: str)`
-
-### 3.3. Consensus Building
-
-Mechanisms for agents to reach agreement on decisions:
-
-**Consensus Tools:**
-
-- `propose_decision(decision: str, rationale: str, stakeholders: List[str])`
-- `vote_on_proposal(proposal_id: str, vote: str, reasoning: str)`
-- `finalize_consensus(proposal_id: str)`
-
-### 3.4. Custom Collaboration Patterns
-
-Teams can define custom collaboration workflows through configuration:
+Complex workflows with multiple phases:
 
 ```yaml
-# Example custom collaboration pattern
-collaboration_patterns:
-  - name: "code_review_cycle"
-    type: "custom"
-    workflow:
-      - step: "code_generation"
-        agent: "coder"
-        next_on_success: "code_review"
-        next_on_failure: "error_handler"
-      - step: "code_review"
-        agent: "reviewer"
-        next_on_approve: "testing"
-        next_on_reject: "coder"
-      - step: "testing"
-        agent: "tester"
-        next_on_pass: "deployment"
-        next_on_fail: "coder"
+handoffs:
+  # Phase 1: Research
+  - from_agent: "coordinator"
+    to_agent: "researcher"
+    condition: "research phase needed"
+
+  - from_agent: "researcher"
+    to_agent: "analyst"
+    condition: "raw data collected and needs analysis"
+
+  # Phase 2: Content Creation
+  - from_agent: "analyst"
+    to_agent: "writer"
+    condition: "analysis complete and insights ready"
+
+  - from_agent: "writer"
+    to_agent: "reviewer"
+    condition: "draft complete"
+
+  # Phase 3: Quality Assurance
+  - from_agent: "reviewer"
+    to_agent: "writer"
+    condition: "revisions needed"
+
+  - from_agent: "reviewer"
+    to_agent: "publisher"
+    condition: "content approved"
 ```
 
-## 4. Autonomous Execution Capabilities
+### 5.2. Conditional Branching
 
-**(Req #18)** The framework enables fully autonomous multi-step task execution:
-
-### 4.1. Autonomous Planning
-
-- Agents can create and modify execution plans without human intervention
-- Automatic task decomposition based on complexity analysis
-- Dynamic replanning when obstacles or new requirements are encountered
-
-### 4.2. Self-Monitoring and Adaptation
-
-- Continuous progress monitoring against success criteria
-- Automatic error detection and recovery strategies
-- Performance optimization based on execution metrics
-
-### 4.3. Resource Management
-
-- Automatic allocation of agents to tasks based on capabilities and availability
-- Load balancing across parallel execution streams
-- Deadline-aware task prioritization and scheduling
-
-## 5. Human-in-the-Loop (HITL) Integration
-
-**(Req #19)** The framework provides configurable human intervention points:
-
-### 5.1. Intervention Triggers
-
-- **Approval Gates**: Require human approval before critical actions
-- **Error Escalation**: Automatically involve humans when errors exceed thresholds
-- **Quality Checkpoints**: Pause for human review at specified milestones
-- **Decision Points**: Involve humans in complex decision-making scenarios
-
-### 5.2. HITL Tools
-
-**Human Interaction Tools:**
-
-- `request_approval(action: str, context: Dict[str, Any], timeout: int)`
-- `escalate_to_human(issue: str, urgency: str, required_expertise: List[str])`
-- `request_feedback(artifact: str, questions: List[str])`
-
-### 5.3. Intervention Modes
-
-- **Synchronous**: Execution pauses until human response is received
-- **Asynchronous**: Execution continues on other tasks while waiting for human input
-- **Advisory**: Human input is requested but not required for continuation
-
-## 6. Universal Tool Support
-
-**(Req #9)** The framework supports a variety of tools through a universal interface:
-
-### 6.1. Built-in Tools
-
-Core tools provided by the framework:
-
-- `handoff`: Agent-to-agent routing
-- `parallel_handoff`: Multi-agent coordination
-- `plan_add_task`, `plan_update_task`, `plan_read`: Plan management
-- `create_artifact`, `read_artifact`: File system operations
-- `web_search`, `code_search`: Information retrieval
-- `request_approval`, `escalate_to_human`: HITL integration
-- `store_memory`, `retrieve_memory`, `search_memory`: Memory management
-- `create_team`, `modify_team`, `dissolve_team`: Dynamic team formation
-- `propose_decision`, `vote_on_proposal`, `finalize_consensus`: Consensus building
-
-### 6.2. Custom Tools
-
-User-defined tools loaded from the team configuration:
-
-- Python functions with type annotations
-- Shell scripts with parameter definitions
-- Docker containers with standardized interfaces
-
-### 6.3. MCP-Based Tools
-
-**(Req #9)** Model Context Protocol (MCP) tools:
-
-- External tool servers following MCP specification
-- Dynamic tool discovery and registration
-- Secure communication through MCP protocol
-
-### 6.4. Tool Registration and Discovery
-
-Tools are registered in the team configuration and made available to agents based on their role:
+Different paths based on work outcomes:
 
 ```yaml
-tools:
-  - name: "web_search"
-    type: "builtin"
-    config: {}
-  - name: "custom_analyzer"
-    type: "custom"
-    path: "./tools/analyzer.py"
-    function: "analyze_code"
-  - name: "external_api"
-    type: "mcp"
-    server_url: "http://localhost:8080/mcp"
-  - name: "approval_gateway"
-    type: "hitl"
-    config:
-      timeout: 3600
-      escalation_policy: "manager"
+handoffs:
+  - from_agent: "analyzer"
+    to_agent: "simple_writer"
+    condition: "analysis shows simple topic"
+
+  - from_agent: "analyzer"
+    to_agent: "expert_writer"
+    condition: "analysis shows complex topic requiring expertise"
+
+  - from_agent: "analyzer"
+    to_agent: "researcher"
+    condition: "insufficient data for analysis"
 ```
 
-## 7. Memory-Enhanced Collaboration
+### 5.3. Quality Gates
 
-**(Req #20)** Advanced memory systems enhance agent collaboration:
+Handoffs based on quality thresholds:
 
-### 7.1. Shared Memory
+```yaml
+handoffs:
+  - from_agent: "writer"
+    to_agent: "reviewer"
+    condition: "draft complete and word_count >= {{ min_words }}"
 
-- Cross-agent memory sharing for consistent context
-- Collaborative knowledge building across multiple tasks
-- Shared artifact and decision history
+  - from_agent: "reviewer"
+    to_agent: "writer"
+    condition: "quality_score < {{ min_quality }} and revision_count < {{ max_revisions }}"
 
-### 7.2. Memory-Driven Handoffs
-
-- Handoff decisions based on historical performance data
-- Context-aware agent selection using memory insights
-- Learning from previous collaboration patterns
-
-### 7.3. Memory Tools
-
-**Memory Management Tools:**
-
-- `store_memory(key: str, value: Any, scope: str, ttl: Optional[int])`
-- `retrieve_memory(key: str, scope: str)`
-
-## 8. LLM-Agnostic Tool Use
-
-**(Req #15, #17)** The framework assumes LLMs do not support native function calling, with DeepSeek models preferred:
-
-### 8.1. Tool Use Prompt Format
-
-The Brain formats available tools in the system prompt:
-
-```
-Available Tools:
-- handoff(destination_agent: str, reason: str, context: Optional[Dict]): Transfer control to another agent
-- web_search(query: str): Search the web for information
-- create_artifact(path: str, content: str): Create a file in the workspace
-- request_approval(action: str, context: Dict, timeout: int): Request human approval
-
-To use a tool, respond with:
-TOOL_CALL: {"tool_name": "tool_name", "args": {"param": "value"}}
+  - from_agent: "reviewer"
+    to_agent: "publisher"
+    condition: "quality_score >= {{ min_quality }}"
 ```
 
-### 8.2. DeepSeek Optimization
+## 6. Team Coordination Strategies
 
-**(Req #17)** Special optimizations for DeepSeek models:
+### 6.1. Work Distribution
 
-- Prompt templates optimized for DeepSeek's reasoning capabilities
-- Context formatting that leverages DeepSeek's strengths
-- Tool use patterns that align with DeepSeek's output format preferences
+**Load Balancing:**
 
-### 8.3. Tool Call Parsing
+```yaml
+handoffs:
+  - from_agent: "coordinator"
+    to_agent: "writer_a"
+    condition: "writing needed and writer_a_load < writer_b_load"
 
-The Brain parses LLM responses to extract tool calls:
+  - from_agent: "coordinator"
+    to_agent: "writer_b"
+    condition: "writing needed and writer_b_load <= writer_a_load"
+```
 
-1. Identifies `TOOL_CALL:` markers in the response
-2. Parses JSON tool call specifications
-3. Validates tool names and parameters
-4. Creates `ToolCallPart` objects for the `TaskStep`
+**Expertise Matching:**
 
-### 8.4. Error Handling
+```yaml
+handoffs:
+  - from_agent: "triager"
+    to_agent: "technical_writer"
+    condition: "topic requires technical expertise"
 
-When tool calls fail:
+  - from_agent: "triager"
+    to_agent: "creative_writer"
+    condition: "topic requires creative approach"
+```
 
-- Invalid JSON: Agent receives error message and can retry
-- Unknown tool: Agent is informed of available tools
-- Parameter errors: Detailed validation errors are provided
-- **(Req #24)** Automatic retry with exponential backoff for transient failures
+### 6.2. Collaboration Coordination
 
-## 9. Step-Through Execution Integration
+**Synchronization Points:**
 
-**(Req #13, #19)** The collaboration model supports step-through execution:
+```yaml
+handoffs:
+  - from_agent: "researcher_a"
+    to_agent: "synthesizer"
+    condition: "research_a complete and research_b complete"
 
-### 9.1. Execution Modes
+  - from_agent: "researcher_b"
+    to_agent: "synthesizer"
+    condition: "research_b complete and research_a complete"
+```
 
-- **Continuous**: Normal execution without pauses
-- **Step**: Pause after each agent turn, wait for user approval
-- **Breakpoint**: Pause at specific conditions (tool calls, handoffs, errors)
-- **HITL**: Human-in-the-loop intervention points for approval, review, or redirection
+**Dependency Management:**
 
-### 9.2. User Intervention Points
+```yaml
+handoffs:
+  - from_agent: "requirements_analyst"
+    to_agent: "architect"
+    condition: "requirements complete"
 
-During paused execution, users can:
+  - from_agent: "architect"
+    to_agent: "developer"
+    condition: "architecture approved and requirements_complete"
+```
 
-- Inspect current task state and history
-- Modify the execution plan
-- Inject new instructions or context
-- Override the next agent selection
-- Terminate or restart the task
-- Modify team composition or agent assignments
+## 7. Error Handling and Recovery
 
-### 9.3. State Preservation
+### 7.1. Collaborative Error Management
 
-All execution state is preserved in the Task Workspace:
+**Error Detection in Handoffs:**
 
-- Current active agent
-- Execution mode settings
-- Breakpoint conditions
-- User intervention history
-- Collaboration pattern state
-- Memory snapshots
+```yaml
+handoffs:
+  - from_agent: "any_agent"
+    to_agent: "error_handler"
+    condition: "error detected or quality issues found"
+    priority: 10 # High priority
+```
 
-## 10. Cross-Framework Compatibility
+**Recovery Strategies:**
 
-**(Req #22)** The collaboration model provides compatibility with existing frameworks:
+```yaml
+handoffs:
+  - from_agent: "error_handler"
+    to_agent: "previous_agent"
+    condition: "error resolved and retry possible"
 
-### 10.1. Framework Translation
+  - from_agent: "error_handler"
+    to_agent: "supervisor"
+    condition: "error requires human intervention"
+```
 
-- **LangChain**: Maps chains to handoff sequences
-- **AutoGen**: Translates group chat patterns to parallel execution
-- **CrewAI**: Converts crew structures to flat team configurations
+### 7.2. Quality Assurance Integration
 
-### 10.2. Migration Tools
+**Continuous Quality Checks:**
 
-**Framework Migration Tools:**
+```yaml
+handoffs:
+  - from_agent: "writer"
+    to_agent: "quality_checker"
+    condition: "draft complete"
 
-- `import_langchain_chain(chain_config: str)`
-- `import_autogen_group(group_config: str)`
-- `import_crewai_crew(crew_config: str)`
+  - from_agent: "quality_checker"
+    to_agent: "writer"
+    condition: "quality issues found"
 
-## 11. Next Steps
+  - from_agent: "quality_checker"
+    to_agent: "reviewer"
+    condition: "quality standards met"
+```
 
-This document defines the core collaboration logic and tool integration. The final design document, **`03-data-and-events.md`**, will specify the detailed schemas for all data structures (like `TaskStep` and its `Part`s) and the end-to-end eventing and streaming mechanism.
+## 8. Implementation Considerations
+
+### 8.1. Performance Optimization
+
+**Efficient Context Transfer:**
+
+- Minimize context size while preserving essential information
+- Use artifact references instead of embedding large content
+- Implement context compression for long conversations
+
+**Smart Caching:**
+
+- Cache agent prompt templates
+- Reuse LLM analysis results for similar conditions
+- Optimize handoff rule evaluation
+
+### 8.2. Scalability Patterns
+
+**Large Team Management:**
+
+- Hierarchical team structures with sub-teams
+- Specialized coordinators for different domains
+- Dynamic team formation based on task requirements
+
+**Distributed Collaboration:**
+
+- Cross-team handoffs and coordination
+- Shared context across team boundaries
+- Global orchestrator for multi-team workflows
+
+## 9. Best Practices
+
+### 9.1. Team Design Guidelines
+
+**Clear Role Definition:**
+
+- Each agent should have a distinct, well-defined role
+- Avoid overlapping responsibilities that create confusion
+- Design complementary skill sets
+
+**Natural Handoff Conditions:**
+
+- Write conditions that humans can easily understand
+- Use domain-specific language that matches the work
+- Test conditions with realistic scenarios
+
+**Balanced Workflows:**
+
+- Avoid bottlenecks where one agent becomes overloaded
+- Design parallel paths for independent work
+- Include quality gates at appropriate points
+
+### 9.2. Collaboration Optimization
+
+**Context Management:**
+
+- Provide sufficient context without overwhelming agents
+- Use structured artifacts for complex information
+- Maintain clear progress tracking
+
+**Error Prevention:**
+
+- Design robust handoff conditions
+- Include validation and quality checks
+- Plan for common failure scenarios
+
+**Human Integration:**
+
+- Design clear intervention points
+- Provide visibility into team progress
+- Enable easy override and correction mechanisms
+
+This collaboration model enables natural, efficient multi-agent teamwork while maintaining flexibility and human oversight. The next document will cover the technical implementation details and API specifications.

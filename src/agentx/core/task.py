@@ -1,328 +1,454 @@
 """
-Task management system for multi-agent collaboration.
+Task execution class - the primary interface for AgentX task execution.
 
-This module provides the main Task class and related functionality for managing
-collaborative tasks with teams of agents.
-
-This is a backwards compatibility layer that wraps our new elegant architecture.
+Clean API:
+    # One-shot execution
+    task = create_task(config_path)
+    await task.execute_task(prompt)
+    
+    # Step-by-step execution
+    task = create_task(config_path)
+    task.start_task(prompt)
+    while not task.is_complete:
+        await task.step()
 """
 
+import asyncio
 import json
-import secrets
-import string
+import time
+from dataclasses import dataclass
 from datetime import datetime
-from typing import Dict, List, Optional, Any, Callable, Union
-from pathlib import Path
-from dataclasses import dataclass, asdict
 from enum import Enum
-from ..utils.logger import get_logger
+from pathlib import Path
+from typing import Dict, Any, Optional, List
 
 from .team import Team
-from .agent import Agent, create_assistant_agent
-from .memory import Memory
-from .event import EventBus, Event
-from ..utils.id import generate_short_id
+from .agent import Agent
+from .message import TaskStep, TextPart
+from .brain import LLMMessage
+from ..event.api import publish_event
+from .event import (
+    TaskStartEvent, TaskCompleteEvent, ErrorEvent,
+    AgentStartEvent, AgentCompleteEvent, AgentHandoffEvent
+)
+from ..utils.logger import get_logger
 
 logger = get_logger(__name__)
 
 
-class TaskStatus(Enum):
-    """Task status enumeration."""
-    CREATED = "created"
-    RUNNING = "running"
-    STOPPED = "stopped"
-    COMPLETED = "completed"
-    FAILED = "failed"
-
-
-
-@dataclass
-class TaskConfig:
-    """Task configuration."""
-    name: str
-    description: str = ""
-    max_iterations: int = 10
-    timeout: Optional[int] = None
-    metadata: Dict[str, Any] = None
-    
-    def __post_init__(self):
-        if self.metadata is None:
-            self.metadata = {}
-
-
-@dataclass
-class TaskInfo:
-    """Information about a task."""
-    task_id: str
-    description: str
-    config_path: str
-    status: str  # 'created', 'running', 'stopped', 'completed', 'failed'
-    created_at: str
-    updated_at: str
-    metadata: Dict[str, Any]
-
-
-class ChatSession:
-    """Handles chat interactions for a task."""
-    
-    def __init__(self, task: 'Task'):
-        self.task = task
-        self._history: List[Dict[str, Any]] = []
-    
-    def get_chat_history(self) -> List[Dict[str, Any]]:
-        """Get the chat history for this task."""
-        return self._history.copy()
-    
-    async def send_message(self, message: str, sender: Optional[str] = None) -> Dict[str, Any]:
-        """Send a message to the task collaboration."""
-        if self.task.status != 'running':
-            raise RuntimeError(f"Cannot send message to task with status: {self.task.status}")
-        
-        # Add message to history
-        msg_entry = {
-            "timestamp": datetime.now().isoformat(),
-            "sender": sender or "user",
-            "message": message,
-            "type": "user_message"
-        }
-        self._history.append(msg_entry)
-        
-        return {"success": True, "message_id": len(self._history)}
-
-
-@dataclass
-class TaskResult:
-    """Result of a completed task."""
-    success: bool
-    summary: str
-    conversation_history: list
-
-
 class Task:
     """
-    Main Task class for managing multi-agent collaboration.
+    Primary interface for AgentX task execution.
     
-    This is a backwards compatibility wrapper around our new elegant architecture.
+    One-shot execution:
+        task = create_task(config_path)
+        await task.execute_task(prompt)
+        
+    Step-by-step execution:
+        task = create_task(config_path)
+        task.start_task(prompt)
+        while not task.is_complete:
+            await task.step()
     """
     
-    def __init__(self, config: Union[TaskConfig, Dict[str, Any]], config_path: Optional[str] = None):
-        """Initialize a task."""
-        # Convert dict to config if needed
-        if isinstance(config, dict):
-            config = TaskConfig(**config)
+    def __init__(self, team: Team, task_id: str = None, workspace_dir: Path = None):
+        """Initialize task with team configuration."""
+        self.team = team
+        self.task_id = task_id or self._generate_task_id()
+        self.workspace_dir = workspace_dir or Path("./workspace") / self.task_id
         
-        self.config = config
-        self.description = config.description
-        self.status: str = "created"
+        # Create internal orchestrator for routing decisions
+        from .orchestrator import Orchestrator, RoutingAction
+        self._orchestrator = Orchestrator(team)
+        self._RoutingAction = RoutingAction
         
-        # Generate a short, URL-friendly ID
-        self.task_id = generate_short_id()
-        
-        self.config_path = config_path or ""
+        # Task state
+        self.initial_prompt: Optional[str] = None
+        self.history: List[TaskStep] = []
+        self.current_agent: Optional[str] = None
+        self.round_count = 0
+        self.is_complete = False
+        self.is_paused = False
         self.created_at = datetime.now()
-        self.updated_at = self.created_at
-        self.metadata: Dict[str, Any] = config.metadata.copy()
+        self.artifacts: Dict[str, Any] = {}
         
-        # Internal components
-        self._team: Optional[Team] = None
-        self._event_handlers: Dict[str, List[Callable]] = {}
-        
-        # API components
-        self._chat_session: Optional[ChatSession] = None
+        # Create workspace directory
+        self.workspace_dir.mkdir(parents=True, exist_ok=True)
+        logger.info(f"🎯 Task {self.task_id} initialized")
     
-    def _update_status(self, status: str):
-        """Update task status and save state."""
-        old_status = self.status
-        self.status = status
-        self.updated_at = datetime.now()
-        
-        # Call registered handlers for status change
-        self._call_handlers("task.status_changed", {
-            "task_id": self.task_id,
-            "old_status": old_status,
-            "new_status": status,
-            "timestamp": self.updated_at
-        })
+    def start_task(self, prompt: str, initial_agent: str = None) -> None:
+        """Start task for step-by-step execution."""
+        self._initialize_task(prompt, initial_agent)
+        logger.info(f"🚀 Task started for step-by-step execution")
     
-    def _call_handlers(self, event_type: str, data: Dict[str, Any]):
-        """Call registered event handlers."""
-        handlers = self._event_handlers.get(event_type, [])
-        for handler in handlers:
-            try:
-                handler({"event_type": event_type, "data": data})
-            except Exception as e:
-                print(f"Warning: Event handler failed: {e}")
+    async def execute_task(self, prompt: str, initial_agent: str = None, stream: bool = False):
+        """Execute task to completion (one-shot)."""
+        self._initialize_task(prompt, initial_agent)
+        logger.info(f"🚀 Task started for one-shot execution")
+        
+        if stream:
+            async for chunk in self._stream_execute():
+                yield chunk
+        else:
+            await self._execute()
     
-    async def start(self, description: Optional[str] = None) -> 'TaskResult':
-        """Start or resume the task collaboration."""
-        if description:
-            self.description = description
+    async def step(self, user_input: str = None, stream: bool = False):
+        """Execute one step (for step-by-step execution)."""
+        if not self.initial_prompt:
+            raise ValueError("Task not started. Call start_task() first.")
         
-        # Update status
-        self._update_status('running')
+        if stream:
+            async for chunk in self._stream_step(user_input):
+                yield chunk
+        else:
+            result = await self._step(user_input)
+            yield result
+    
+    def _initialize_task(self, prompt: str, initial_agent: str = None) -> None:
+        """Initialize task with prompt and agent."""
+        self.initial_prompt = prompt
+        self.is_paused = False
+        self.is_complete = False
         
-        try:
-            # Initialize team if not already done
-            if not self._team:
-                # Create a simple team with one assistant agent for backwards compatibility
-                agent = create_assistant_agent(
-                    name="Assistant",
-                    system_message=f"You are helping with: {self.description}"
-                )
+        # Set initial agent
+        if initial_agent:
+            self.current_agent = initial_agent
+        elif hasattr(self.team.config.execution, 'initial_agent') and self.team.config.execution.initial_agent:
+            self.current_agent = self.team.config.execution.initial_agent
+        else:
+            self.current_agent = list(self.team.agents.keys())[0]
+        
+        self._save_state()
+
+    async def _execute(self) -> None:
+        """Execute the task without streaming."""
+        while not self.is_complete and self.round_count < self._orchestrator.max_rounds:
+            if self.is_paused:
+                break
                 
-                # This part is problematic as create_team is removed.
-                # For now, we will create a Team directly.
-                # This is a temporary fix for backwards compatibility.
-                # The proper fix is to use Team.from_config_file
-                self._team = Team(
-                    name=self.config.name,
-                    agents={"Assistant": agent},
-                    max_rounds=self.config.max_iterations
-                )
+            self.round_count += 1
+            response = await self._execute_agent_turn()
             
-            # Initialize chat session
-            if not self._chat_session:
-                self._chat_session = ChatSession(self)
-            
-            # Call start handlers
-            self._call_handlers("task.started", {
-                "task_id": self.task_id,
-                "description": self.description,
-                "timestamp": datetime.now().isoformat()
-            })
-            
-            # Run the collaboration
-            await self._team.start_conversation(
-                initial_message=self.description
+            routing_decision = await self._orchestrator.decide_next_step(
+                current_agent=self.current_agent,
+                response=response,
+                task_context=self._get_task_context()
             )
             
-            summary = f"Task completed: {self.description}"
-            if self._team and self._team.history:
-                # A simple summary from the last text part of the last step
-                last_step = self._team.history[-1]
-                for part in reversed(last_step.parts):
-                    if hasattr(part, 'text'):
-                        summary = part.text
-                        break
-
-            # Create and return a TaskResult
-            result = TaskResult(
-                success=True,
-                summary=summary,
-                conversation_history=self._team.history if self._team else []
-            )
-
-            self._update_status('completed')
-            self._call_handlers("task.completed", asdict(result))
-
-            return result
+            if routing_decision.action == self._RoutingAction.COMPLETE:
+                self.complete_task()
+                break
+            elif routing_decision.action == self._RoutingAction.HANDOFF:
+                self.set_current_agent(routing_decision.next_agent)
+    
+    async def _stream_execute(self):
+        """Execute the task with streaming."""
+        while not self.is_complete and self.round_count < self._orchestrator.max_rounds:
+            if self.is_paused:
+                break
+                
+            self.round_count += 1
             
-        except Exception as e:
-            logger.error(f"Task failed: {e}", exc_info=True)
-            self._update_status('failed')
-            self._call_handlers("task.failed", {"error": str(e)})
+            # Stream current agent turn
+            response_chunks = []
+            async for chunk in self._stream_agent_turn():
+                response_chunks.append(chunk)
+                yield chunk
             
-            return TaskResult(
-                success=False,
-                summary=f"Task failed: {e}",
-                conversation_history=self._team.history if self._team else []
+            # Get routing decision
+            full_response = "".join(chunk.get("content", "") for chunk in response_chunks if chunk.get("type") == "content")
+            routing_decision = await self._orchestrator.decide_next_step(
+                current_agent=self.current_agent,
+                response=full_response,
+                task_context=self._get_task_context()
             )
-    
-    def stop(self) -> bool:
-        """Stop the task if it is running."""
-        if self.status != 'running':
-            return False
+            
+            # Yield routing decision
+            yield {
+                "type": "routing_decision",
+                "action": routing_decision.action.value,
+                "current_agent": self.current_agent,
+                "next_agent": routing_decision.next_agent,
+                "reason": routing_decision.reason
+            }
+            
+            if routing_decision.action == self._RoutingAction.COMPLETE:
+                self.complete_task()
+                break
+            elif routing_decision.action == self._RoutingAction.HANDOFF:
+                old_agent = self.current_agent
+                self.set_current_agent(routing_decision.next_agent)
+                yield {
+                    "type": "handoff",
+                    "from_agent": old_agent,
+                    "to_agent": routing_decision.next_agent
+                }
+
+    async def _step(self, user_input: str = None) -> Dict[str, Any]:
+        """Execute one turn without streaming."""
+        if self.is_complete:
+            return {"status": "complete", "message": "Task already complete"}
         
-        self._update_status('stopped')
+        if self.round_count >= self._orchestrator.max_rounds:
+            self.complete_task()
+            return {"status": "complete", "message": "Max rounds reached"}
         
-        # Call stop handlers
-        self._call_handlers("task.stopped", {
-            "task_id": self.task_id,
-            "timestamp": datetime.now().isoformat()
-        })
+        self.round_count += 1
         
-        return True
-    
-    def delete(self) -> bool:
-        """Delete the task."""
-        self._update_status('deleted')
+        # Add user input to history if provided
+        if user_input:
+            user_step = TaskStep(
+                step_id=self._generate_step_id(),
+                agent_name="user",
+                parts=[TextPart(text=user_input)],
+                timestamp=datetime.now()
+            )
+            self.add_step(user_step)
         
-        # Call delete handlers
-        self._call_handlers("task.deleted", {
-            "task_id": self.task_id,
-            "timestamp": datetime.now().isoformat()
-        })
+        # Execute current agent turn
+        response = await self._execute_agent_turn()
         
-        # Clean up
-        if self._team:
-            self._team.reset()
-        
-        return True
-    
-    def on(self, event_type: str, handler: Callable[[Dict[str, Any]], None]):
-        """Register an event handler."""
-        if event_type not in self._event_handlers:
-            self._event_handlers[event_type] = []
-        self._event_handlers[event_type].append(handler)
-    
-    def off(self, event_type: str, handler: Callable[[Dict[str, Any]], None]):
-        """Unregister an event handler."""
-        if event_type in self._event_handlers:
-            try:
-                self._event_handlers[event_type].remove(handler)
-            except ValueError:
-                pass
-    
-    def get_chat(self) -> ChatSession:
-        """Get the chat session for this task."""
-        if not self._chat_session:
-            self._chat_session = ChatSession(self)
-        return self._chat_session
-    
-    def get_info(self) -> TaskInfo:
-        """Get task information."""
-        return TaskInfo(
-            task_id=self.task_id,
-            description=self.description,
-            config_path=self.config_path,
-            status=self.status,
-            created_at=self.created_at.isoformat(),
-            updated_at=self.updated_at.isoformat(),
-            metadata=self.metadata
+        # Get routing decision
+        routing_decision = await self._orchestrator.decide_next_step(
+            current_agent=self.current_agent,
+            response=response,
+            task_context=self._get_task_context()
         )
-    
-    def get_memory(self):
-        """Get memory interface for backwards compatibility."""
-        # Simple mock memory for demo purposes
-        class MockMemory:
-            def get_all(self, limit=None):
-                return []  # Return empty list for now
         
-        return MockMemory()
-
-
-# Global task registry for backwards compatibility
-_task_registry: Dict[str, Task] = {}
-
-
-def create_task(config_path: str, description: str = "") -> Task:
-    """Create a new task."""
-    config = TaskConfig(
-        name=f"Task-{datetime.now().strftime('%Y%m%d-%H%M%S')}",
-        description=description
-    )
+        result = {
+            "status": "continue",
+            "agent": self.current_agent,
+            "response": response,
+            "routing_action": routing_decision.action.value,
+            "next_agent": routing_decision.next_agent,
+            "reason": routing_decision.reason,
+            "round": self.round_count
+        }
+        
+        if routing_decision.action == self._RoutingAction.COMPLETE:
+            self.complete_task()
+            result["status"] = "complete"
+        elif routing_decision.action == self._RoutingAction.HANDOFF:
+            old_agent = self.current_agent
+            self.set_current_agent(routing_decision.next_agent)
+            result["handoff"] = {"from": old_agent, "to": routing_decision.next_agent}
+        
+        return result
     
-    task = Task(config, config_path)
-    _task_registry[task.task_id] = task
+    async def _stream_step(self, user_input: str = None):
+        """Execute one turn with streaming."""
+        if self.is_complete:
+            yield {"status": "complete", "message": "Task already complete"}
+            return
+        
+        if self.round_count >= self._orchestrator.max_rounds:
+            self.complete_task()
+            yield {"status": "complete", "message": "Max rounds reached"}
+            return
+        
+        self.round_count += 1
+        
+        # Add user input to history if provided
+        if user_input:
+            user_step = TaskStep(
+                step_id=self._generate_step_id(),
+                agent_name="user",
+                parts=[TextPart(text=user_input)],
+                timestamp=datetime.now()
+            )
+            self.add_step(user_step)
+        
+        # Stream the agent turn
+        response_chunks = []
+        async for chunk in self._stream_agent_turn():
+            response_chunks.append(chunk)
+            yield chunk
+        
+        # Get routing decision
+        full_response = "".join(chunk.get("content", "") for chunk in response_chunks if chunk.get("type") == "content")
+        routing_decision = await self._orchestrator.decide_next_step(
+            current_agent=self.current_agent,
+            response=full_response,
+            task_context=self._get_task_context()
+        )
+        
+        # Yield routing decision
+        yield {
+            "type": "routing_decision",
+            "action": routing_decision.action.value,
+            "current_agent": self.current_agent,
+            "next_agent": routing_decision.next_agent,
+            "reason": routing_decision.reason
+        }
+        
+        if routing_decision.action == self._RoutingAction.COMPLETE:
+            self.complete_task()
+        elif routing_decision.action == self._RoutingAction.HANDOFF:
+            old_agent = self.current_agent
+            self.set_current_agent(routing_decision.next_agent)
+            yield {
+                "type": "handoff",
+                "from_agent": old_agent,
+                "to_agent": routing_decision.next_agent
+            }
     
-    return task
+    async def _execute_agent_turn(self) -> str:
+        """Execute a single agent turn and return the response."""
+        agent = self.team.get_agent(self.current_agent)
+        if not agent:
+            raise ValueError(f"Agent not found: {self.current_agent}")
+        
+        # Prepare context
+        context = self._prepare_agent_context()
+        
+        # Call agent
+        response = await agent.generate_response(
+            task_prompt=self.initial_prompt,
+            context=context,
+            conversation_history=self.history,
+            system_prompt=self.team.render_agent_prompt(self.current_agent, context)
+        )
+        
+        # Add to history
+        step = TaskStep(
+            step_id=self._generate_step_id(),
+            agent_name=self.current_agent,
+            parts=[TextPart(text=response.content)],
+            timestamp=datetime.now()
+        )
+        self.add_step(step)
+        
+        return response.content
+    
+    async def _stream_agent_turn(self):
+        """Execute a single agent turn with streaming."""
+        agent = self.team.get_agent(self.current_agent)
+        if not agent:
+            raise ValueError(f"Agent not found: {self.current_agent}")
+        
+        # Prepare context
+        context = self._prepare_agent_context()
+        
+        # Stream agent response
+        full_response = ""
+        async for chunk in agent.stream_response(
+            task_prompt=self.initial_prompt,
+            context=context,
+            conversation_history=self.history,
+            system_prompt=self.team.render_agent_prompt(self.current_agent, context)
+        ):
+            full_response += chunk
+            yield {
+                "type": "content",
+                "content": chunk,
+                "agent": self.current_agent
+            }
+        
+        # Add to history
+        step = TaskStep(
+            step_id=self._generate_step_id(),
+            agent_name=self.current_agent,
+            parts=[TextPart(text=full_response)],
+            timestamp=datetime.now()
+        )
+        self.add_step(step)
+    
+    def _prepare_agent_context(self) -> Dict[str, Any]:
+        """Prepare context for agent execution."""
+        return {
+            "task_id": self.task_id,
+            "round_count": self.round_count,
+            "workspace_dir": str(self.workspace_dir),
+            "artifacts": self.artifacts
+        }
+    
+    def _get_task_context(self) -> Dict[str, Any]:
+        """Get current task context for routing decisions."""
+        return {
+            "task_id": self.task_id,
+            "round_count": self.round_count,
+            "total_steps": len(self.history),
+            "is_complete": self.is_complete,
+            "current_agent": self.current_agent,
+            "available_agents": list(self.team.agents.keys())
+        }
+    
+    def _generate_task_id(self) -> str:
+        """Generate a unique task ID."""
+        from ..utils.id import generate_short_id
+        return generate_short_id()
+    
+    def _generate_step_id(self) -> str:
+        """Generate a unique step ID."""
+        return f"{self.task_id}_{len(self.history) + 1}_{int(time.time() * 1000)}"
+    
+    def add_step(self, step: TaskStep) -> None:
+        """Add a step to the conversation history."""
+        self.history.append(step)
+        self._save_state()
+    
+    def set_current_agent(self, agent_name: str) -> None:
+        """Set the current active agent."""
+        self.current_agent = agent_name
+        self._save_state()
+    
+    def complete_task(self) -> None:
+        """Mark the task as complete."""
+        self.is_complete = True
+        self._save_state()
+        logger.info(f"✅ Task completed after {self.round_count} rounds")
+    
+    def pause_task(self) -> None:
+        """Pause the task execution."""
+        self.is_paused = True
+        self._save_state()
+    
+    def resume_task(self) -> None:
+        """Resume the task execution."""
+        self.is_paused = False
+        self._save_state()
+    
+    def add_artifact(self, name: str, content: Any, metadata: Dict[str, Any] = None) -> None:
+        """Add an artifact to the task."""
+        self.artifacts[name] = {
+            "content": content,
+            "metadata": metadata or {},
+            "created_at": datetime.now().isoformat()
+        }
+        self._save_state()
+    
+    def _save_state(self) -> None:
+        """Save task state to workspace."""
+        try:
+            state_file = self.workspace_dir / "task_state.json"
+            state = {
+                "task_id": self.task_id,
+                "initial_prompt": self.initial_prompt,
+                "current_agent": self.current_agent,
+                "round_count": self.round_count,
+                "is_complete": self.is_complete,
+                "is_paused": self.is_paused,
+                "created_at": self.created_at.isoformat(),
+                "artifacts": self.artifacts
+            }
+            with open(state_file, 'w') as f:
+                json.dump(state, f, indent=2)
+        except Exception as e:
+            logger.warning(f"Failed to save task state: {e}")
 
 
-def get_task(task_id: str, config_path: Optional[str] = None) -> Optional[Task]:
-    """Get a task by ID."""
-    return _task_registry.get(task_id)
-
-
-def list_tasks() -> List[Task]:
-    """List all tasks."""
-    return list(_task_registry.values())
+# Factory function for creating tasks
+def create_task(team_config_path: str, task_id: str = None, workspace_dir: Path = None) -> Task:
+    """
+    Create a new task from team configuration.
+    
+    Args:
+        team_config_path: Path to team configuration file
+        task_id: Optional task ID (auto-generated if not provided)
+        workspace_dir: Optional workspace directory (auto-generated if not provided)
+    
+    Returns:
+        Task instance ready to be started
+    """
+    team = Team.from_config(team_config_path)
+    return Task(team, task_id, workspace_dir)

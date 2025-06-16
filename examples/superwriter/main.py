@@ -36,7 +36,22 @@ from agentx.core.team import Team
 from agentx.core.orchestrator import Orchestrator
 from agentx.utils.logger import get_logger
 
+# Set up detailed logging
+logging.basicConfig(
+    level=logging.INFO,  # Changed from DEBUG to INFO to reduce log noise
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(),
+        logging.FileHandler('superwriter_debug.log')
+    ]
+)
+
+# Disable LiteLLM verbose logging to reduce console noise
+import litellm
+litellm.set_verbose = False  # Changed from True to False
+
 logger = get_logger(__name__)
+logger.setLevel(logging.INFO)  # Changed from DEBUG to INFO
 
 
 class SuperWriter:
@@ -97,20 +112,16 @@ class SuperWriter:
         print(f"📁 Workspace: {self.workspace_dir}")
         print()
         
-        # Start the task
-        task_id = await self.orchestrator.start_task(
-            prompt=research_prompt,
-            initial_agent="consultant"
-        )
+        # Create and start the task
+        task = self.orchestrator.create_task(research_prompt)
+        task_id = task.task_id
         
-        print(f"🎬 Starting research report generation (Task: {task_id})")
-        print(f"🌐 Monitor progress at: http://localhost:8506/tasks/{task_id}")
-        print()
+        logger.debug(f"Created task: {task_id}")
         
         if streaming:
-            return await self._execute_with_streaming(task_id, allow_intervention)
+            return await self._stream_execution(task, allow_intervention)
         else:
-            return await self._execute_autonomous(task_id)
+            return await self._execute_autonomous(task)
     
     def _create_research_prompt(self, topic: str, target_length: str) -> str:
         """Create a comprehensive research prompt for the given topic."""
@@ -180,9 +191,9 @@ Generate a comprehensive, professional research report that provides deep insigh
 Begin with comprehensive planning and research methodology development.
 """
     
-    async def _execute_with_streaming(
+    async def _stream_execution(
         self, 
-        task_id: str, 
+        task: Task, 
         allow_intervention: bool
     ) -> Dict[str, Any]:
         """Execute the task with real-time streaming and optional intervention."""
@@ -210,7 +221,7 @@ Begin with comprehensive planning and research methodology development.
         
         try:
             # Execute with streaming
-            async for update in self.orchestrator.execute_task_streaming(task_id):
+            async for update in task.execute(stream=True):
                 update_type = update.get("type")
                 
                 if update_type == "agent_start":
@@ -219,14 +230,16 @@ Begin with comprehensive planning and research methodology development.
                     print(f"💭 ", end="", flush=True)
                     metrics["agent_responses"][agent_name] = ""
                     
-                elif update_type == "response_chunk":
-                    chunk = update["chunk"]
-                    agent_name = update["agent_name"]
+                elif update_type == "content":
+                    chunk = update["content"]
+                    agent_name = update["agent"]
                     
-                    # Print chunk in real-time
+                    # Print chunk in real-time (this is the actual content, not debug logs)
                     print(chunk, end="", flush=True)
                     
                     # Track metrics
+                    if agent_name not in metrics["agent_responses"]:
+                        metrics["agent_responses"][agent_name] = ""
                     metrics["agent_responses"][agent_name] += chunk
                     metrics["total_chunks"] += 1
                     metrics["word_count"] += len(chunk.split())
@@ -237,9 +250,8 @@ Begin with comprehensive planning and research methodology development.
                     print(f"\n\n✅ {agent_name} completed ({response_length:,} characters)")
                     
                     # Check for artifacts
-                    task_state = self.orchestrator.get_task_state(task_id)
-                    if task_state and task_state.artifacts:
-                        new_artifacts = [name for name in task_state.artifacts.keys() 
+                    if task.artifacts:
+                        new_artifacts = [name for name in task.artifacts.keys() 
                                        if name not in metrics["artifacts_created"]]
                         if new_artifacts:
                             metrics["artifacts_created"].extend(new_artifacts)
@@ -262,10 +274,11 @@ Begin with comprehensive planning and research methodology development.
                         print("💡 Intervention opportunity - type 'INTERVENE: <message>' or press Enter to continue")
                         # Note: In a real implementation, you'd handle async input here
                     
-                elif update_type == "task_complete":
-                    total_steps = update["total_steps"]
-                    print(f"\n🎉 Research report generation completed! ({total_steps} total steps)")
-                    break
+                elif update_type == "routing_decision":
+                    action = update["action"]
+                    if action == "complete":
+                        print(f"\n🎉 Research report generation completed!")
+                        break
                     
                 elif update_type == "error":
                     error = update["error"]
@@ -273,33 +286,69 @@ Begin with comprehensive planning and research methodology development.
                     return {"success": False, "error": error, "metrics": metrics}
             
             # Final summary
-            return await self._generate_completion_summary(task_id, metrics)
+            return await self._generate_completion_summary(task, metrics)
             
         except Exception as e:
             logger.exception("Streaming execution failed")
             print(f"\n💥 Generation failed: {e}")
             return {"success": False, "error": str(e), "metrics": metrics}
     
-    async def _execute_autonomous(self, task_id: str) -> Dict[str, Any]:
+    async def _execute_autonomous(self, task: Task) -> Dict[str, Any]:
         """Execute the task autonomously without streaming."""
         print("🤖 Running in autonomous mode...")
+        logger.debug(f"Starting autonomous execution for task: {task.task_id}")
         
         try:
             # Execute task to completion
-            final_state = await self.orchestrator.execute_task(task_id)
+            logger.debug("Calling task.execute()...")
+            await task.execute()
+            logger.debug(f"Task execution completed. Final state: {task}")
+            
+            # Output the conversation in chat format
+            print("\n" + "="*80)
+            print("📝 CONVERSATION HISTORY")
+            print("="*80)
+            
+            for i, step in enumerate(task.history, 1):
+                print(f"\n🤖 {step.agent_name.upper()} (Step {i}):")
+                print("-" * 40)
+                for part in step.parts:
+                    if hasattr(part, 'text'):
+                        # Format the text nicely
+                        text = part.text.strip()
+                        if text:
+                            # Truncate very long responses for readability
+                            if len(text) > 2000:
+                                print(text[:2000] + "\n... [truncated for display] ...")
+                            else:
+                                print(text)
+                print()
             
             # Generate summary
             metrics = {
-                "total_steps": len(final_state.history),
-                "artifacts_created": list(final_state.artifacts.keys()),
-                "word_count": self._estimate_word_count(final_state),
-                "completion_status": "success" if final_state.is_complete else "incomplete"
+                "total_steps": len(task.history),
+                "artifacts_created": list(task.artifacts.keys()),
+                "word_count": self._estimate_word_count(task),
+                "completion_status": "success" if task.is_complete else "incomplete"
             }
             
-            return {"success": True, "task_id": task_id, "metrics": metrics}
+            print("="*80)
+            print("📊 EXECUTION SUMMARY")
+            print("="*80)
+            print(f"✅ Total Steps: {metrics['total_steps']}")
+            print(f"📎 Artifacts: {len(metrics['artifacts_created'])}")
+            print(f"📝 Estimated Words: {metrics['word_count']}")
+            print(f"🎯 Status: {metrics['completion_status']}")
+            if metrics['artifacts_created']:
+                print(f"📁 Created: {', '.join(metrics['artifacts_created'])}")
+            print("="*80)
+            
+            logger.debug(f"Generated metrics: {metrics}")
+            return {"success": True, "task_id": task.task_id, "metrics": metrics}
             
         except Exception as e:
             logger.exception("Autonomous execution failed")
+            print(f"❌ Generation failed: {e}")
             return {"success": False, "error": str(e)}
     
     def _show_progress_update(self, metrics: Dict[str, Any]):
@@ -315,13 +364,10 @@ Begin with comprehensive planning and research methodology development.
     
     async def _generate_completion_summary(
         self, 
-        task_id: str, 
+        task: Task, 
         metrics: Dict[str, Any]
     ) -> Dict[str, Any]:
         """Generate a comprehensive completion summary."""
-        
-        # Get final task state
-        task_state = self.orchestrator.get_task_state(task_id)
         
         print("\n" + "=" * 60)
         print("🎊 RESEARCH REPORT GENERATION COMPLETE!")
@@ -354,7 +400,7 @@ Begin with comprehensive planning and research methodology development.
         print()
         
         print(f"📁 Workspace: {self.workspace_dir}")
-        print(f"🌐 View details: http://localhost:8506/tasks/{task_id}")
+        print(f"🌐 View details: http://localhost:8506/tasks/{task.task_id}")
         print()
         
         # Check if target was met
@@ -367,11 +413,10 @@ Begin with comprehensive planning and research methodology development.
         
         return {
             "success": True,
-            "task_id": task_id,
+            "task_id": task.task_id,
             "metrics": metrics,
             "target_met": target_met,
-            "workspace_path": str(self.workspace_dir),
-            "artifacts": metrics["artifacts_created"]
+            "workspace": str(self.workspace_dir)
         }
     
     def _estimate_word_count(self, task_state) -> int:

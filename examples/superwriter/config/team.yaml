@@ -155,62 +155,72 @@ execution:
       - "quality_reviewed"
       - "final_report_delivered"
 
+# Orchestrator configuration
+orchestrator:
+  max_rounds: 150
+  timeout: 10800
+  llm_config:
+    model: deepseek/deepseek-chat
+    temperature: 0.0
+    max_tokens: 150
+    timeout: 15
+
 # Context and planning are now handled by built-in tools
 # No need to define context_variables or execution_plan here
 
 # Handoff rules with requirement gathering
-handoff_rules:
+handoffs:
   # Initial requirement gathering
   - from_agent: user
     to_agent: consultant
-    condition: task_start
+    condition: "User has provided an initial request or topic for research report generation"
 
   # Consultation to research (after requirements confirmed)
   - from_agent: consultant
     to_agent: researcher
-    condition: requirements_finalized
+    condition: "Requirements have been gathered and research scope is clearly defined"
 
   # Research iterations
   - from_agent: researcher
     to_agent: reviewer
-    condition: research_batch_complete
+    condition: "Research batch is complete with sufficient sources and information gathered"
 
   - from_agent: reviewer
     to_agent: researcher
-    condition: more_research_needed
+    condition: "Review indicates more research is needed or gaps in information exist"
 
   # Research to writing
   - from_agent: reviewer
     to_agent: writer
-    condition: research_sufficient
+    condition: "Research is comprehensive and sufficient to begin writing the report"
 
   # Writing iterations
   - from_agent: writer
     to_agent: reviewer
-    condition: section_draft_complete
+    condition: "A section or chapter draft has been completed and needs review"
 
   - from_agent: reviewer
     to_agent: writer
-    condition: revision_needed
+    condition: "Review feedback indicates revisions are needed for the current section"
 
   # Continue writing more sections
   - from_agent: reviewer
     to_agent: writer
-    condition: section_approved_continue
+    condition: "Current section is approved and more sections need to be written"
 
   # Final compilation and review
   - from_agent: writer
     to_agent: reviewer
-    condition: full_report_compiled
+    condition: "Full report has been compiled and is ready for final review"
 
   - from_agent: reviewer
     to_agent: writer
-    condition: final_revisions_needed
+    condition: "Final review indicates revisions are needed before completion"
 
   # Completion
   - from_agent: reviewer
     to_agent: user
-    condition: report_approved
+    condition: "Report has been thoroughly reviewed and approved as complete and high-quality"
 
 # Guardrail policies
 guardrail_policies:

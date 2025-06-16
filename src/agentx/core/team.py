@@ -1,30 +1,58 @@
 import yaml
 from pathlib import Path
-from typing import Dict, Any, List, Optional, TYPE_CHECKING
+from typing import Dict, Any, List, Optional
 from jinja2 import Environment, FileSystemLoader
 
 from .config import TeamConfig, AgentConfig, ToolConfig
-from ..event import initialize_event_bus
+from .agent import Agent
+from ..utils.logger import get_logger
 
-if TYPE_CHECKING:
-    from .orchestrator import Orchestrator
+
+logger = get_logger(__name__)
 
 class Team:
     """
-    Represents a loaded team configuration with all agents, tools, and collaboration patterns.
-    This is a data structure, not an execution engine.
+    Pure agent container and configuration manager.
+    
+    Responsibilities:
+    - Load and validate team configuration
+    - Initialize agent instances from configuration
+    - Provide access to agents, tools, and collaboration patterns
+    - Render agent prompts with context
+    - Validate handoff rules
+    
+    Does NOT handle execution - that's the Orchestrator's job.
     """
     
     def __init__(self, config: TeamConfig, config_dir: Path):
         self.config = config
         self.config_dir = config_dir
-        self.agents: Dict[str, AgentConfig] = {agent.name: agent for agent in config.agents}
+        
+        # Store both config and active agent instances
+        self.agent_configs: Dict[str, AgentConfig] = {agent.name: agent for agent in config.agents}
+        self.agents: Dict[str, Agent] = {}
         self.tools: Dict[str, ToolConfig] = {tool.name: tool for tool in config.tools}
+        
+        # Initialize Jinja environment for prompt rendering
         self._jinja_env = Environment(
             loader=FileSystemLoader(config_dir),
             autoescape=False
         )
-        self._orchestrator: Optional["Orchestrator"] = None
+        
+        # Create agent instances from configurations
+        self._initialize_agents()
+    
+    def _initialize_agents(self) -> None:
+        """Initialize Agent instances from AgentConfig objects."""
+        self.agents = {}
+        
+        for agent_config in self.config.agents:
+            # Create Agent instance
+            agent = Agent(agent_config)
+            self.agents[agent_config.name] = agent
+            logger.info(f"✅ Initialized agent: {agent_config.name}")
+        
+        logger.info(f"🎯 Team '{self.config.name}' initialized with {len(self.agents)} agents")
     
     @property
     def name(self) -> str:
@@ -39,7 +67,7 @@ class Team:
     @property
     def handoff_rules(self) -> List[Any]:
         """Handoff rules."""
-        return self.config.handoff_rules
+        return self.config.handoffs
     
     @classmethod
     def from_config(cls, config_path: str | Path) -> "Team":
@@ -72,9 +100,13 @@ class Team:
         
         return cls(team_config, config_dir)
     
-    def get_agent(self, name: str) -> Optional[AgentConfig]:
-        """Get agent configuration by name."""
+    def get_agent(self, name: str) -> Optional[Agent]:
+        """Get agent instance by name."""
         return self.agents.get(name)
+    
+    def get_agent_config(self, name: str) -> Optional[AgentConfig]:
+        """Get agent configuration by name."""
+        return self.agent_configs.get(name)
     
     def get_tool(self, name: str) -> Optional[ToolConfig]:
         """Get tool configuration by name."""
@@ -82,11 +114,11 @@ class Team:
     
     def get_agent_tools(self, agent_name: str) -> List[ToolConfig]:
         """Get all tools available to a specific agent."""
-        agent = self.get_agent(agent_name)
-        if not agent:
+        agent_config = self.get_agent_config(agent_name)
+        if not agent_config:
             return []
         
-        return [self.tools[tool_name] for tool_name in agent.tools if tool_name in self.tools]
+        return [self.tools[tool_name] for tool_name in agent_config.tools if tool_name in self.tools]
     
     def render_agent_prompt(self, agent_name: str, context: Dict[str, Any]) -> str:
         """
@@ -102,12 +134,12 @@ class Team:
         Raises:
             ValueError: If agent not found or template error
         """
-        agent = self.get_agent(agent_name)
-        if not agent:
+        agent_config = self.get_agent_config(agent_name)
+        if not agent_config:
             raise ValueError(f"Agent not found: {agent_name}")
         
         try:
-            template = self._jinja_env.get_template(agent.prompt_template)
+            template = self._jinja_env.get_template(agent_config.prompt_template)
             return template.render(**context)
         except Exception as e:
             raise ValueError(f"Error rendering prompt for agent {agent_name}: {e}")
@@ -115,7 +147,7 @@ class Team:
     def get_handoff_targets(self, from_agent: str) -> List[str]:
         """Get possible handoff targets for an agent."""
         targets = []
-        for rule in self.config.handoff_rules:
+        for rule in self.config.handoffs:
             if rule.from_agent == from_agent:
                 targets.append(rule.to_agent)
         return targets
@@ -127,7 +159,7 @@ class Team:
             return False
         
         # Check handoff rules
-        for rule in self.config.handoff_rules:
+        for rule in self.config.handoffs:
             if rule.from_agent == from_agent and rule.to_agent == to_agent:
                 return True
         
@@ -142,12 +174,12 @@ class Team:
     
     def get_guardrail_policies(self, agent_name: str) -> List[Dict[str, Any]]:
         """Get guardrail policies for a specific agent."""
-        agent = self.get_agent(agent_name)
-        if not agent:
+        agent_config = self.get_agent_config(agent_name)
+        if not agent_config:
             return []
         
         policies = []
-        for policy_name in agent.guardrail_policies:
+        for policy_name in agent_config.guardrail_policies:
             for policy in self.config.guardrail_policies:
                 if policy.name == policy_name:
                     policies.append(policy.model_dump())
@@ -158,100 +190,9 @@ class Team:
         """Get list of agent names in the team."""
         return list(self.agents.keys())
     
-    async def _get_orchestrator(self) -> "Orchestrator":
-        """Get or create the orchestrator for this team."""
-        if self._orchestrator is None:
-            # Initialize event bus if not already done
-            await initialize_event_bus()
-            # Import here to avoid circular import
-            from .orchestrator import Orchestrator
-            self._orchestrator = Orchestrator(self)
-        return self._orchestrator
-    
-    async def run(self, initial_message: str, initial_agent: Optional[str] = None) -> "ChatHistory":
-        """
-        Run a conversation with the team.
-        
-        Args:
-            initial_message: The initial message to start the conversation
-            initial_agent: Optional agent to start with (defaults to first agent)
-            
-        Returns:
-            ChatHistory object with the conversation results
-        """
-        # Get orchestrator
-        orchestrator = await self._get_orchestrator()
-        
-        # Start the task
-        task_id = await orchestrator.start_task(
-            prompt=initial_message,
-            initial_agent=initial_agent
-        )
-        
-        # Execute the task
-        task_state = await orchestrator.execute_task(task_id)
-        
-        # Convert task state to chat history
-        return ChatHistory.from_task_state(task_state)
-    
-    async def start_conversation(self, initial_message: str) -> "ChatHistory":
-        """
-        Start a conversation (alias for run for backward compatibility).
-        
-        Args:
-            initial_message: The initial message to start the conversation
-            
-        Returns:
-            ChatHistory object with the conversation results
-        """
-        return await self.run(initial_message)
-    
     def to_dict(self) -> Dict[str, Any]:
         """Convert team configuration to dictionary."""
         return self.config.model_dump()
     
     def __repr__(self) -> str:
         return f"Team(name='{self.config.name}', agents={len(self.agents)}, tools={len(self.tools)})"
-
-
-class ChatHistory:
-    """Represents the history of a chat conversation."""
-    
-    def __init__(self, task_id: str, messages: List[Dict[str, Any]], metadata: Dict[str, Any] = None):
-        self.task_id = task_id
-        self.messages = messages
-        self.metadata = metadata or {}
-    
-    @classmethod
-    def from_task_state(cls, task_state) -> "ChatHistory":
-        """Create ChatHistory from a TaskState."""
-        messages = []
-        
-        # Convert task steps to messages
-        for step in task_state.history:
-            for part in step.parts:
-                if hasattr(part, 'text'):  # TextPart
-                    messages.append({
-                        'role': 'assistant' if step.agent_name != 'user' else 'user',
-                        'content': part.text,
-                        'agent': step.agent_name,
-                        'timestamp': step.timestamp.isoformat() if step.timestamp else None,
-                        'step_id': step.step_id
-                    })
-        
-        metadata = {
-            'task_id': task_state.task_id,
-            'total_steps': len(task_state.history),
-            'is_complete': task_state.is_complete,
-            'created_at': task_state.created_at.isoformat(),
-            'artifacts': task_state.artifacts
-        }
-        
-        return cls(task_state.task_id, messages, metadata)
-    
-    def __len__(self) -> int:
-        """Return the number of messages."""
-        return len(self.messages)
-    
-    def __repr__(self) -> str:
-        return f"ChatHistory(task_id='{self.task_id}', messages={len(self.messages)})" 

@@ -4,34 +4,56 @@ output_dir: "workspace"
 
 agents:
   - name: writer
-    class: "agentx.core.agents.Agent"
-    system_message_file: "config/prompts/writer.md"
+    description: "Professional content writer for creating high-quality articles and documents"
+    class: agentx.core.agents.Agent
+    prompt_template: "prompts/writer.md"
     llm_config:
-      config_list:
-        - model: "deepseek-chat"
-          api_key: null
+      model: deepseek/deepseek-chat
+      temperature: 0.4
+      max_tokens: 4096
 
   - name: reviewer
-    class: "agentx.core.agents.Agent"
-    system_message_file: "config/prompts/reviewer.md"
+    description: "Quality assurance specialist for reviewing and improving content"
+    class: agentx.core.agents.Agent
+    prompt_template: "prompts/reviewer.md"
     llm_config:
-      config_list:
-        - model: "deepseek-chat"
-          api_key: null
+      model: deepseek/deepseek-chat
+      temperature: 0.2
+      max_tokens: 4096
 
-# Handoff rules for agent collaboration
+# Handoffs using natural language conditions
 handoffs:
-  - from: "writer"
-    to: "reviewer"
-    condition: "draft_complete"
-    description: "Writer hands off to reviewer when initial draft is complete"
+  - from_agent: "writer"
+    to_agent: "reviewer"
+    condition: "draft is complete and ready for review"
 
-  - from: "reviewer"
-    to: "writer"
-    condition: "feedback_provided"
-    description: "Reviewer hands back to writer with feedback for revisions"
+  - from_agent: "reviewer"
+    to_agent: "writer"
+    condition: "feedback has been provided and revisions are needed"
 
-  - from: "writer"
-    to: "reviewer"
-    condition: "revision_complete"
-    description: "Writer hands off revised content back to reviewer"
+  - from_agent: "reviewer"
+    to_agent: "user"
+    condition: "content is approved and ready for final delivery"
+
+# Team-level configuration
+after_work_behavior: "return_to_user"
+
+# No explicit tools - using natural language handoff detection
+tools: []
+
+# Orchestrator configuration for natural language handoff
+orchestrator:
+  max_rounds: 8
+  timeout: 600
+  llm_config:
+    model: deepseek/deepseek-chat
+    temperature: 0.0
+    max_tokens: 50
+    timeout: 10
+
+# Execution configuration
+execution:
+  mode: "autonomous"
+  max_rounds: 8
+  timeout_seconds: 600
+  initial_agent: "writer"

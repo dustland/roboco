@@ -1,0 +1,10 @@
+[project]
+name = "superwriter"
+version = "0.1.0"
+description = "Add your description here"
+requires-python = ">=3.13"
+dependencies = [
+    "jinja2>=3.1.6",
+    "openai>=1.85.0",
+    "pydantic>=2.11.7",
+]

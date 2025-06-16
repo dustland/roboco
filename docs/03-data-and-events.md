@@ -527,7 +527,7 @@ class TeamConfig(BaseModel):
     default_llm: LLMConfig
     agents: List[AgentConfig]
     tools: List[ToolConfig]
-    handoff_rules: List[HandoffRule] = []
+    handoffs: List[Handoff] = []
     collaboration_patterns: List[CollaborationPattern] = []
     guardrail_policies: List[GuardrailPolicy] = []
     memory_config: MemoryConfig = MemoryConfig()

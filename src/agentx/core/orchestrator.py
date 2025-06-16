@@ -1,1338 +1,269 @@
-from __future__ import annotations
-import json
-from pathlib import Path
-from typing import List, Dict, Any, Optional, Union, AsyncGenerator
-from datetime import datetime
+"""
+Clean orchestrator implementation - pure routing logic only.
+
+The orchestrator only makes routing decisions (complete, handoff, continue).
+Task creation and execution is handled by the Task class.
+"""
+
 import asyncio
+import json
 import time
+from dataclasses import dataclass
+from datetime import datetime
+from enum import Enum
+from pathlib import Path
+from typing import Dict, Any, Optional, List
 
 from .team import Team
-from .task_step import TaskStep, TextPart, ToolCallPart, ToolResultPart, ArtifactPart
+from .agent import Agent
 from .brain import Brain, LLMMessage
-from .event import (
-    TaskStartEvent, TaskCompleteEvent, TaskPausedEvent, TaskResumedEvent,
-    AgentStartEvent, AgentCompleteEvent, AgentHandoffEvent, ToolCallEvent, ToolResultEvent,
-    BreakpointHitEvent, UserInterventionEvent, ErrorEvent
-)
-from .streaming import StreamChunk, StreamError, StreamComplete
-from .config import ExecutionMode
-from .guardrails import get_guardrail_engine, GuardrailContext, check_content_safety
-from ..utils.id import generate_short_id
+from .config import LLMConfig
 from ..utils.logger import get_logger
-from ..event import publish_event
 
 logger = get_logger(__name__)
 
 
-class TaskState:
-    """Maintains the current state of a task execution."""
-    
-    def __init__(self, task_id: str, team: Team, initial_prompt: str, workspace_dir: Path):
-        self.task_id = task_id
-        self.team = team
-        self.initial_prompt = initial_prompt
-        self.workspace_dir = workspace_dir
-        self.history: List[TaskStep] = []
-        self.current_agent: Optional[str] = None
-        self.round_count = 0
-        self.is_complete = False
-        self.is_paused = False
-        self.created_at = datetime.now()
-        self.artifacts: Dict[str, Any] = {}
-        
-        # Debugging state
-        self.execution_mode: str = "autonomous"
-        self.breakpoints: List[str] = []
-        self.debug_context: Dict[str, Any] = {}
-        self.last_breakpoint: Optional[str] = None
-        
-        # Create workspace directory
-        self.workspace_dir.mkdir(parents=True, exist_ok=True)
-        
-        # Save initial state
-        self._save_state()
-    
-    def add_step(self, step: TaskStep) -> None:
-        """Add a new step to the history."""
-        self.history.append(step)
-        self._save_state()
-    
-    def set_current_agent(self, agent_name: str) -> None:
-        """Set the current active agent."""
-        self.current_agent = agent_name
-        self._save_state()
-    
-    def increment_round(self) -> None:
-        """Increment the round counter."""
-        self.round_count += 1
-        self._save_state()
-    
-    def complete_task(self) -> None:
-        """Mark the task as complete."""
-        self.is_complete = True
-        self._save_state()
-    
-    def pause_task(self) -> None:
-        """Pause the task execution."""
-        self.is_paused = True
-        self._save_state()
-    
-    def resume_task(self) -> None:
-        """Resume the task execution."""
-        self.is_paused = False
-        self._save_state()
-    
-    def add_artifact(self, name: str, content: Any, metadata: Dict[str, Any] = None) -> None:
-        """Add an artifact to the task state."""
-        self.artifacts[name] = {
-            'content': content,
-            'metadata': metadata or {},
-            'created_at': datetime.now().isoformat()
-        }
-        self._save_state()
-    
-    def set_execution_mode(self, mode: str) -> None:
-        """Set the execution mode (autonomous, step_through, debug)."""
-        self.execution_mode = mode
-        self._save_state()
-    
-    def set_breakpoints(self, breakpoints: List[str]) -> None:
-        """Set breakpoints for debugging."""
-        self.breakpoints = breakpoints
-        self._save_state()
-    
-    def update_debug_context(self, context: Dict[str, Any]) -> None:
-        """Update debug context information."""
-        self.debug_context.update(context)
-        self._save_state()
-    
-    def get_inspection_data(self) -> Dict[str, Any]:
-        """Get current state data for inspection."""
-        return {
-            'task_id': self.task_id,
-            'current_agent': self.current_agent,
-            'round_count': self.round_count,
-            'is_complete': self.is_complete,
-            'is_paused': self.is_paused,
-            'execution_mode': self.execution_mode,
-            'history_length': len(self.history),
-            'artifacts': list(self.artifacts.keys()),
-            'debug_context': self.debug_context,
-            'breakpoints': self.breakpoints,
-            'last_breakpoint': self.last_breakpoint,
-            'team_agents': [agent.name for agent in self.team.agents],
-            'available_tools': self.team.get_agent_tools(self.current_agent) if self.current_agent else []
-        }
-    
-    def _save_state(self) -> None:
-        """Save the current state to disk."""
-        state_file = self.workspace_dir / "task_state.json"
-        
-        # Convert history to serializable format
-        history_data = []
-        for step in self.history:
-            step_dict = step.model_dump()
-            # Convert datetime to ISO string
-            if 'timestamp' in step_dict and step_dict['timestamp']:
-                step_dict['timestamp'] = step_dict['timestamp'].isoformat() if hasattr(step_dict['timestamp'], 'isoformat') else step_dict['timestamp']
-            history_data.append(step_dict)
-        
-        state_data = {
-            'task_id': self.task_id,
-            'team_name': self.team.name,
-            'initial_prompt': self.initial_prompt,
-            'current_agent': self.current_agent,
-            'round_count': self.round_count,
-            'is_complete': self.is_complete,
-            'is_paused': self.is_paused,
-            'created_at': self.created_at.isoformat(),
-            'history': history_data,
-            'artifacts': self.artifacts,
-            'execution_mode': getattr(self, 'execution_mode', 'autonomous'),
-            'breakpoints': getattr(self, 'breakpoints', []),
-            'debug_context': getattr(self, 'debug_context', {}),
-            'last_breakpoint': getattr(self, 'last_breakpoint', None)
-        }
-        
-        with open(state_file, 'w', encoding='utf-8') as f:
-            json.dump(state_data, f, indent=2, ensure_ascii=False)
-    
-    @classmethod
-    def load_state(cls, workspace_dir: Path, team: Team) -> "TaskState":
-        """Load task state from disk."""
-        state_file = workspace_dir / "task_state.json"
-        
-        if not state_file.exists():
-            raise FileNotFoundError(f"Task state file not found: {state_file}")
-        
-        with open(state_file, 'r', encoding='utf-8') as f:
-            state_data = json.load(f)
-        
-        # Create instance
-        instance = cls.__new__(cls)
-        instance.task_id = state_data['task_id']
-        instance.team = team
-        instance.initial_prompt = state_data['initial_prompt']
-        instance.workspace_dir = workspace_dir
-        instance.current_agent = state_data['current_agent']
-        instance.round_count = state_data['round_count']
-        instance.is_complete = state_data['is_complete']
-        instance.is_paused = state_data['is_paused']
-        instance.created_at = datetime.fromisoformat(state_data['created_at'])
-        instance.artifacts = state_data.get('artifacts', {})
-        
-        # Load debugging state
-        instance.execution_mode = state_data.get('execution_mode', 'autonomous')
-        instance.breakpoints = state_data.get('breakpoints', [])
-        instance.debug_context = state_data.get('debug_context', {})
-        instance.last_breakpoint = state_data.get('last_breakpoint', None)
-        
-        # Reconstruct history
-        instance.history = []
-        for step_data in state_data.get('history', []):
-            step = TaskStep(**step_data)
-            instance.history.append(step)
-        
-        return instance
+class RoutingAction(Enum):
+    """Possible routing actions."""
+    COMPLETE = "complete"
+    HANDOFF = "handoff" 
+    CONTINUE = "continue"
+
+
+@dataclass
+class RoutingDecision:
+    """Represents a routing decision made by the orchestrator."""
+    action: RoutingAction
+    next_agent: Optional[str] = None
+    reason: str = ""
 
 
 class Orchestrator:
     """
-    The central controller for task execution. Manages the flow of collaboration
-    between agents, handles tool execution, and maintains task state.
+    Pure routing orchestrator - only makes decisions about what happens next.
+    Does NOT create or execute tasks - that's the Task class's responsibility.
     """
     
-    def __init__(self, team: Team, max_rounds: int = 50, timeout: int = 3600):
+    def __init__(self, team: Team, max_rounds: int = None, timeout: int = None):
+        """Initialize orchestrator with team and limits."""
         self.team = team
-        self.max_rounds = max_rounds
-        self.timeout = timeout
-        self.current_agent = None
-        self.conversation_history = []
-        self.task_id = None
-        self.context_variables = {}
-        self.execution_plan = {}
-        self.workspace_dir = Path.cwd() / "workspace"
-        self.active_tasks: Dict[str, TaskState] = {}
-    
-    async def start_task(
-        self,
-        prompt: str,
-        initial_agent: str = None,
-        execution_mode: ExecutionMode = ExecutionMode.AUTONOMOUS,
-        task_id: str = None
-    ) -> str:
-        """
-        Start a new task execution.
+        self.max_rounds = max_rounds or 50
+        self.timeout = timeout or 3600  # 1 hour default
         
-        Args:
-            prompt: The initial task prompt
-            initial_agent: Name of the agent to start with (defaults to first agent)
-            execution_mode: Execution mode (autonomous or step-through)
-            task_id: Optional task ID (generated if not provided)
-            
-        Returns:
-            Task ID for tracking the execution
-        """
-        # Generate task ID if not provided
-        if task_id is None:
-            task_id = generate_short_id()
-        
-        # Determine initial agent
-        if initial_agent is None:
-            initial_agent = list(self.team.agents.keys())[0]
-        
-        if initial_agent not in self.team.agents:
-            raise ValueError(f"Initial agent '{initial_agent}' not found in team")
-        
-        # Validate input prompt with guardrails
-        guardrail_result = await check_content_safety(
-            content=prompt,
-            agent_name="system",
-            task_id=task_id
+        # Initialize orchestrator's brain for intelligent decisions
+        orchestrator_llm_config = LLMConfig(
+            model="deepseek-chat",
+            temperature=0.0,  # Low temperature for consistent decisions
+            max_tokens=200,   # Short responses for routing decisions
+            timeout=10        # Quick decisions
         )
+        self.brain = Brain(orchestrator_llm_config)
         
-        # Check if input should be blocked
-        guardrail_engine = get_guardrail_engine()
-        if guardrail_engine.should_block_content(guardrail_result):
-            raise ValueError(f"Input prompt blocked by guardrails: {guardrail_result.overall_status}")
-        
-        # Create task workspace
-        task_workspace = self.workspace_dir / task_id
-        
-        # Create task state
-        task_state = TaskState(task_id, self.team, prompt, task_workspace)
-        task_state.set_current_agent(initial_agent)
-        
-        # Store active task
-        self.active_tasks[task_id] = task_state
-        
-        return task_id
-    
-    async def execute_task(
-        self,
-        task_id: str
-    ) -> TaskState:
-        """
-        Execute a task to completion or until paused.
-        
-        Args:
-            task_id: ID of the task to execute
-            
-        Returns:
-            Final task state
-        """
-        if task_id not in self.active_tasks:
-            raise ValueError(f"Task not found: {task_id}")
-        
-        task_state = self.active_tasks[task_id]
-        
-        # Emit task started event
-        await publish_event(
-            TaskStartEvent(
-                task_id=task_id,
-                timestamp=datetime.now(),
-                initial_prompt=task_state.initial_prompt,
-                execution_mode="autonomous",
-                team_config=self.team.to_dict()
-            ),
-            source="orchestrator",
-            correlation_id=task_id
-        )
-        
-        try:
-            # Main execution loop
-            while not task_state.is_complete and not task_state.is_paused:
-                # Check round limit
-                if task_state.round_count >= self.max_rounds:
-                    break
-                
-                # Check for breakpoints before agent turn
-                if await self._check_breakpoints(task_state, "before_agent_turn"):
-                    break
-                
-                # Check for step-through mode
-                if task_state.execution_mode == "step_through":
-                    task_state.pause_task()
-                    await publish_event(
-                        TaskPausedEvent(
-                            task_id=task_id,
-                            timestamp=datetime.now(),
-                            reason="step_mode",
-                            context={"round": task_state.round_count, "agent": task_state.current_agent}
-                        ),
-                        source="orchestrator",
-                        correlation_id=task_id
-                    )
-                    break
-                
-                # Execute current agent turn
-                await self._execute_agent_turn(task_state)
-                
-                # Check for breakpoints after agent turn
-                if await self._check_breakpoints(task_state, "after_agent_turn"):
-                    break
-                
-                # Increment round counter
-                task_state.increment_round()
-            
-            # Mark as complete if not paused
-            if not task_state.is_paused:
-                task_state.complete_task()
-                
-                await publish_event(
-                    TaskCompleteEvent(
-                        task_id=task_id,
-                        timestamp=datetime.now(),
-                        final_status="success",
-                        total_steps=len(task_state.history),
-                        total_duration_ms=int((datetime.now() - task_state.created_at).total_seconds() * 1000),
-                        artifacts_created=list(task_state.artifacts.keys())
-                    ),
-                    source="orchestrator",
-                    correlation_id=task_id
-                )
-        
-        except Exception as e:
-            await publish_event(
-                ErrorEvent(
-                    error_id=generate_short_id(),
-                    error_type="execution_error",
-                    error_message=str(e),
-                    context={"task_id": task_id, "current_agent": task_state.current_agent},
-                    timestamp=datetime.now(),
-                    recoverable=False
-                ),
-                source="orchestrator",
-                correlation_id=task_id
-            )
-            raise
-        
-        return task_state
-    
-    async def execute_task_streaming(
-        self,
-        task_id: str
-    ):
-        """
-        Execute a task with streaming responses.
-        
-        Args:
-            task_id: ID of the task to execute
-            
-        Yields:
-            Dict containing streaming updates with agent responses
-        """
-        if task_id not in self.active_tasks:
-            raise ValueError(f"Task not found: {task_id}")
+        logger.info(f"🎭 Orchestrator initialized for team '{team.name}' with {len(team.agents)} agents")
 
-        task_state = self.active_tasks[task_id]
+    async def decide_next_step(self, current_agent: str, response: str, task_context: Dict[str, Any]) -> RoutingDecision:
+        """
+        Core routing logic - decide what happens next.
         
-        # Emit task started event
-        await publish_event(
-            TaskStartEvent(
-                task_id=task_id,
-                timestamp=datetime.now(),
-                initial_prompt=task_state.initial_prompt,
-                execution_mode="streaming",
-                team_config=self.team.to_dict()
-            ),
-            source="orchestrator",
-            correlation_id=task_id
-        )
-        
-        try:
-            # Main execution loop
-            while not task_state.is_complete and not task_state.is_paused:
-                # Check round limit
-                if task_state.round_count >= self.max_rounds:
-                    break
-                
-                # Execute current agent turn with streaming
-                async for chunk in self._execute_agent_turn_streaming(task_state):
-                    yield chunk
-                
-                # Increment round counter
-                task_state.increment_round()
-            
-            # Mark as complete if not paused
-            if not task_state.is_paused:
-                task_state.complete_task()
-                
-                await publish_event(
-                    TaskCompleteEvent(
-                        task_id=task_id,
-                        timestamp=datetime.now(),
-                        final_status="success",
-                        total_steps=len(task_state.history),
-                        total_duration_ms=int((datetime.now() - task_state.created_at).total_seconds() * 1000),
-                        artifacts_created=list(task_state.artifacts.keys())
-                    ),
-                    source="orchestrator",
-                    correlation_id=task_id
-                )
-                
-                # Yield completion signal
-                yield {
-                    "type": "task_complete",
-                    "task_id": task_id,
-                    "status": "success",
-                    "total_steps": len(task_state.history)
-                }
-        
-        except Exception as e:
-            await publish_event(
-                ErrorEvent(
-                    error_id=generate_short_id(),
-                    error_type="execution_error",
-                    error_message=str(e),
-                    context={"task_id": task_id, "current_agent": task_state.current_agent},
-                    timestamp=datetime.now(),
-                    recoverable=False
-                ),
-                source="orchestrator",
-                correlation_id=task_id
+        This is the ONLY job of the orchestrator: routing decisions.
+        """
+        # Check if task should be completed
+        if await self._should_complete_task(current_agent, response, task_context):
+            return RoutingDecision(
+                action=RoutingAction.COMPLETE,
+                reason="Task completion criteria met"
             )
-            
-            # Yield error signal
-            yield {
-                "type": "error",
-                "task_id": task_id,
-                "error": str(e)
-            }
-            raise
-    
-    async def _execute_agent_turn_streaming(
-        self,
-        task_state: TaskState
-    ):
-        """Execute a single agent turn with streaming."""
-        current_agent = task_state.current_agent
-        step_id = generate_short_id()
         
-        # Yield agent start signal
-        yield {
-            "type": "agent_start",
-            "agent_name": current_agent,
-            "step_id": step_id,
-            "timestamp": datetime.now().isoformat()
-        }
+        # Check if we should handoff to another agent
+        next_agent = self._decide_handoff_target(current_agent, response, task_context)
+        if next_agent:
+            return RoutingDecision(
+                action=RoutingAction.HANDOFF,
+                next_agent=next_agent,
+                reason=f"Intelligent routing suggests handoff to {next_agent}"
+            )
         
-        await publish_event(
-            AgentStartEvent(
-                agent_name=current_agent,
-                step_id=step_id,
-                timestamp=datetime.now()
-            ),
-            source=f"agent:{current_agent}",
-            correlation_id=task_state.task_id
+        # Default: continue with current agent
+        return RoutingDecision(
+            action=RoutingAction.CONTINUE,
+            reason="No handoff needed, continue with current agent"
         )
+    
+    async def _should_complete_task(self, current_agent: str, response: str, task_context: Dict[str, Any]) -> bool:
+        """Use LLM intelligence to decide if the task should be completed."""
+        # Single agent teams complete after first response
+        if len(self.team.agents) == 1:
+            return True
         
-        # Get agent configuration
-        agent_config = self.team.get_agent(current_agent)
-        if not agent_config:
-            raise ValueError(f"Agent not found: {current_agent}")
+        round_count = task_context.get('round_count', 0)
         
-        # Prepare context for prompt rendering
-        context = {
-            'task_prompt': task_state.initial_prompt,
-            'history': task_state.history,
-            'available_tools': self.team.get_agent_tools(current_agent),
-            'handoff_targets': self.team.get_handoff_targets(current_agent),
-            'artifacts': task_state.artifacts
-        }
+        # Hard limits to prevent infinite loops
+        if round_count >= self.max_rounds:
+            return True
         
-        # Render agent prompt
-        system_prompt = self.team.render_agent_prompt(current_agent, context)
+        # Use LLM to intelligently detect completion
+        return await self._llm_detect_completion(current_agent, response, task_context)
+    
+    def _decide_handoff_target(self, current_agent: str, response: str, task_context: Dict[str, Any]) -> Optional[str]:
+        """Decide if we should handoff and to whom."""
+        # First check explicit handoff rules
+        rule_target = self._check_handoff_rules(current_agent, response)
+        if rule_target:
+            return rule_target
         
-        # Get agent's LLM configuration or use default
-        agent_llm_config = agent_config.llm_config
-        if agent_llm_config is None:
-            # Use default LLM configuration
-            from .config import LLMConfig
-            agent_llm_config = LLMConfig()
-        
-        # Create Brain instance with agent's LLM configuration
-        brain = Brain(agent_llm_config)
-        
-        # Prepare conversation messages
-        messages = []
-        
-        # Smart conversation flow detection
-        is_single_agent_chat = len(self.team.agents) == 1
-        
-        if is_single_agent_chat:
-            # For single-agent chat, only include the initial user message
-            messages.append(LLMMessage(
-                role="user",
-                content=task_state.initial_prompt,
-                timestamp=datetime.now()
-            ))
-        else:
-            # Multi-agent conversation: include full history with proper role assignment
-            messages.append(LLMMessage(
-                role="user",
-                content=task_state.initial_prompt,
-                timestamp=datetime.now()
-            ))
+        # Then use natural intelligence based on agent descriptions
+        return self._natural_handoff_decision(current_agent, response, task_context)
+    
+    def _check_handoff_rules(self, current_agent: str, response: str) -> Optional[str]:
+        """Check if handoff rules provide specific guidance."""
+        if not hasattr(self.team, 'config') or not hasattr(self.team.config, 'handoffs'):
+            return None
             
-            # Add conversation history
-            for step in task_state.history:
-                for part in step.parts:
-                    if isinstance(part, TextPart):
-                        # Determine role based on agent
-                        role = "assistant" if step.agent_name == current_agent else "user"
-                        messages.append(LLMMessage(
-                            role=role,
-                            content=part.text,
-                            timestamp=step.timestamp
-                        ))
+        possible_handoffs = [
+            rule for rule in self.team.config.handoffs 
+            if rule.from_agent == current_agent
+        ]
         
+        if not possible_handoffs:
+            return None
+            
+        # For now, return the first valid handoff rule
+        # In the future, we could use LLM to evaluate conditions
+        for rule in possible_handoffs:
+            if rule.to_agent in self.team.agents:
+                logger.info(f"🎯 Rule-based handoff: {current_agent} → {rule.to_agent}")
+                return rule.to_agent
+        
+        return None
+    
+    def _natural_handoff_decision(self, current_agent: str, response: str, task_context: Dict[str, Any]) -> Optional[str]:
+        """
+        Use natural intelligence to decide handoff based on agent descriptions.
+        
+        This uses the orchestrator's training knowledge about common workflows,
+        not hardcoded rules.
+        """
+        # Get current agent info
+        current_agent_obj = self.team.agents.get(current_agent)
+        if not current_agent_obj:
+            return None
+            
+        current_desc = current_agent_obj.config.description.lower()
+        
+        # Get other available agents
+        other_agents = {name: agent for name, agent in self.team.agents.items() 
+                       if name != current_agent}
+        
+        if not other_agents:
+            return None
+        
+        # Use natural reasoning based on descriptions
+        # Writer typically hands off to reviewer
+        if 'writ' in current_desc:
+            for name, agent in other_agents.items():
+                desc = agent.config.description.lower()
+                if any(word in desc for word in ['review', 'quality', 'edit', 'check']):
+                    logger.info(f"🧠 Natural handoff: writer → reviewer ({name})")
+                    return name
+        
+        # Researcher typically hands off to writer
+        if 'research' in current_desc:
+            for name, agent in other_agents.items():
+                desc = agent.config.description.lower()
+                if 'writ' in desc:
+                    logger.info(f"🧠 Natural handoff: researcher → writer ({name})")
+                    return name
+        
+        # Reviewer can hand back to writer or move forward
+        if 'review' in current_desc:
+            # Look for writer first (for revisions)
+            for name, agent in other_agents.items():
+                desc = agent.config.description.lower()
+                if 'writ' in desc:
+                    logger.info(f"🧠 Natural handoff: reviewer → writer ({name})")
+                    return name
+        
+        # Consultant typically hands off to researcher or writer
+        if 'consult' in current_desc:
+            for name, agent in other_agents.items():
+                desc = agent.config.description.lower()
+                if 'research' in desc:
+                    logger.info(f"🧠 Natural handoff: consultant → researcher ({name})")
+                    return name
+            for name, agent in other_agents.items():
+                desc = agent.config.description.lower()
+                if 'writ' in desc:
+                    logger.info(f"🧠 Natural handoff: consultant → writer ({name})")
+                    return name
+        
+        return None
+    
+    async def _llm_detect_completion(self, current_agent: str, response: str, task_context: Dict[str, Any]) -> bool:
+        """Use LLM intelligence to detect if the task should be completed."""
         try:
-            # Stream response using Brain
-            response_chunks = []
-            async for chunk in brain.stream_response(
+            # Get task context
+            initial_prompt = task_context.get('initial_prompt', 'Unknown task')
+            round_count = task_context.get('round_count', 0)
+            
+            # Get agent descriptions for context
+            agent_descriptions = {
+                name: agent.config.description 
+                for name, agent in self.team.agents.items()
+            }
+            
+            # Create completion detection prompt
+            system_prompt = f"""You are an intelligent task orchestrator. Your job is to determine if a multi-agent collaboration task should be completed.
+
+TASK: {initial_prompt}
+
+AGENTS AVAILABLE:
+{chr(10).join([f"- {name}: {desc}" for name, desc in agent_descriptions.items()])}
+
+CURRENT SITUATION:
+- Current agent: {current_agent}
+- Round: {round_count}
+- Latest response: {response[:500]}...
+
+Analyze if this task should be COMPLETED or CONTINUED:
+
+COMPLETE if:
+- The task objective has been fully achieved
+- All necessary work has been done (writing, reviewing, approving, etc.)
+- The output is ready for delivery/publication
+- The collaboration has reached a natural conclusion
+- Quality standards have been met and approved
+
+CONTINUE if:
+- More work is needed
+- The task is incomplete
+- Additional collaboration would improve the result
+- No clear completion signal has been given
+
+Respond with exactly one word: COMPLETE or CONTINUE"""
+
+            messages = [
+                LLMMessage(role="user", content="Should this task be completed or continued?")
+            ]
+            
+            response_obj = await self.brain.generate_response(
                 messages=messages,
                 system_prompt=system_prompt
-            ):
-                response_chunks.append(chunk)
-                
-                # Yield streaming chunk
-                yield {
-                    "type": "response_chunk",
-                    "agent_name": current_agent,
-                    "step_id": step_id,
-                    "chunk": chunk,
-                    "timestamp": datetime.now().isoformat()
-                }
-            
-            # Combine all chunks for final response
-            response_text = "".join(response_chunks)
-            
-        except Exception as e:
-            # Fallback response on error
-            response_text = f"I apologize, but I encountered an error while processing your request: {str(e)}"
-            
-            # Yield error chunk
-            yield {
-                "type": "response_chunk",
-                "agent_name": current_agent,
-                "step_id": step_id,
-                "chunk": response_text,
-                "timestamp": datetime.now().isoformat(),
-                "error": True
-            }
-        
-        # Check for handoff requests in the response
-        handoff_target = self._detect_handoff_request(response_text)
-        if handoff_target:
-            # Process handoff
-            await self._process_handoff(task_state, current_agent, handoff_target, response_text)
-            
-            # Yield handoff signal
-            yield {
-                "type": "handoff",
-                "from_agent": current_agent,
-                "to_agent": handoff_target,
-                "step_id": step_id,
-                "timestamp": datetime.now().isoformat()
-            }
-            return
-        
-        # Create task step
-        step = TaskStep(
-            step_id=step_id,
-            agent_name=current_agent,
-            parts=[TextPart(text=response_text)],
-            timestamp=datetime.now()
-        )
-        
-        # Add step to history
-        task_state.add_step(step)
-        
-        # Smart completion: For single-agent chats, complete after first response
-        is_single_agent_chat = len(self.team.agents) == 1
-        if is_single_agent_chat and len(task_state.history) >= 1:
-            task_state.complete_task()
-        
-        await publish_event(
-            AgentCompleteEvent(
-                agent_name=current_agent,
-                step_id=step_id,
-                timestamp=datetime.now()
-            ),
-            source=f"agent:{current_agent}",
-            correlation_id=task_state.task_id
-        )
-        
-        # Yield agent complete signal
-        yield {
-            "type": "agent_complete",
-            "agent_name": current_agent,
-            "step_id": step_id,
-            "response_length": len(response_text),
-            "timestamp": datetime.now().isoformat()
-        }
-    
-    async def _execute_agent_turn(
-        self,
-        task_state: TaskState
-    ) -> None:
-        """Execute a single agent turn."""
-        current_agent = task_state.current_agent
-        step_id = generate_short_id()
-        
-        await publish_event(
-            AgentStartEvent(
-                agent_name=current_agent,
-                step_id=step_id,
-                timestamp=datetime.now()
-            ),
-            source=f"agent:{current_agent}",
-            correlation_id=task_state.task_id
-        )
-        
-        # Get agent configuration
-        agent_config = self.team.get_agent(current_agent)
-        if not agent_config:
-            raise ValueError(f"Agent not found: {current_agent}")
-        
-        # Prepare context for prompt rendering
-        context = {
-            'task_prompt': task_state.initial_prompt,
-            'history': task_state.history,
-            'available_tools': self.team.get_agent_tools(current_agent),
-            'handoff_targets': self.team.get_handoff_targets(current_agent),
-            'artifacts': task_state.artifacts
-        }
-        
-        # Render agent prompt
-        system_prompt = self.team.render_agent_prompt(current_agent, context)
-        
-        # Get agent's LLM configuration or use default
-        agent_llm_config = agent_config.llm_config
-        if agent_llm_config is None:
-            # Use default LLM configuration
-            from .config import LLMConfig
-            agent_llm_config = LLMConfig()
-        
-        # Create Brain instance with agent's LLM configuration
-        brain = Brain(agent_llm_config)
-        
-        # Prepare conversation messages
-        messages = []
-        
-        # Smart conversation flow detection
-        is_single_agent_chat = len(self.team.agents) == 1
-        
-        if is_single_agent_chat:
-            # For single-agent chat, only include the initial user message
-            # Don't include agent's own responses in history to avoid self-conversation
-            messages.append(LLMMessage(
-                role="user",
-                content=task_state.initial_prompt,
-                timestamp=datetime.now()
-            ))
-            
-            # In single-agent mode, we should complete after one response
-            # The agent should not see its own previous responses
-            
-        else:
-            # Multi-agent conversation: include full history with proper role assignment
-            messages.append(LLMMessage(
-                role="user",
-                content=task_state.initial_prompt,
-                timestamp=datetime.now()
-            ))
-            
-            # Add conversation history
-            for step in task_state.history:
-                for part in step.parts:
-                    if isinstance(part, TextPart):
-                        # Determine role based on agent
-                        role = "assistant" if step.agent_name == current_agent else "user"
-                        messages.append(LLMMessage(
-                            role=role,
-                            content=part.text,
-                            timestamp=step.timestamp
-                        ))
-        
-        try:
-            # Generate response using Brain
-            response = await brain.generate_response(
-                messages=messages,
-                system_prompt=system_prompt,
-                available_tools=agent_config.tools
             )
             
-            response_text = response.content
+            decision = response_obj.content.strip().upper()
+            should_complete = decision == "COMPLETE"
             
-        except Exception as e:
-            # Fallback response on error
-            response_text = f"I apologize, but I encountered an error while processing your request: {str(e)}"
-        
-        # Validate agent response with guardrails
-        agent_policies = self.team.get_guardrail_policies(current_agent)
-        policy_names = [policy['name'] for policy in agent_policies] if agent_policies else None
-        
-        guardrail_result = await check_content_safety(
-            content=response_text,
-            agent_name=current_agent,
-            policy_names=policy_names,
-            task_id=task_state.task_id,
-            step_id=step_id
-        )
-        
-        # Check if response should be blocked
-        guardrail_engine = get_guardrail_engine()
-        if guardrail_engine.should_block_content(guardrail_result):
-            # Replace blocked content with safe message
-            response_text = f"[Content blocked by guardrails: {guardrail_result.overall_status}]"
-        
-        # Check for handoff requests in the response
-        handoff_request = self._detect_handoff_request(response_text)
-        if handoff_request:
-            logger.info(f"🔄 Handoff detected: {handoff_request}")
-            # Execute handoff
-            if self._execute_handoff(handoff_request, task_state):
-                # Handoff successful, emit event
-                target_agent = handoff_request.get('destination_agent')
-                logger.info(f"✅ Handoff successful: {current_agent} → {target_agent}")
-                try:
-                    await publish_event(
-                        AgentHandoffEvent(
-                            from_agent=current_agent,
-                            to_agent=target_agent,
-                            reason=handoff_request.get('reason', 'agent_request'),
-                            timestamp=datetime.now(),
-                            context={"response_text": response_text[:100]}
-                        ),
-                        source=f"agent:{current_agent}",
-                        correlation_id=task_state.task_id
-                    )
-                except Exception as e:
-                    logger.warning(f"Failed to publish handoff event: {e}")
-                    # Continue anyway - handoff is more important than event publishing
-                return
+            if should_complete:
+                logger.info(f"🧠 LLM decision: Task should be completed (reason: {decision})")
             else:
-                logger.warning(f"❌ Handoff failed: {current_agent} → {handoff_request.get('destination_agent')}")
-        else:
-            logger.debug(f"No handoff detected in response from {current_agent}")
-        
-        # Create task step with guardrail results
-        step_parts = [TextPart(text=response_text)]
-        if guardrail_result.checks:  # Add guardrail part if there were checks
-            step_parts.append(guardrail_result)
-        
-        step = TaskStep(
-            step_id=step_id,
-            agent_name=current_agent,
-            parts=step_parts,
-            timestamp=datetime.now()
-        )
-        
-        # Add step to history
-        task_state.add_step(step)
-        
-        # Smart completion: For single-agent chats, complete after first response
-        is_single_agent_chat = len(self.team.agents) == 1
-        if is_single_agent_chat and len(task_state.history) >= 1:
-            task_state.complete_task()
-        
-        await publish_event(
-            AgentCompleteEvent(
-                agent_name=current_agent,
-                step_id=step_id,
-                timestamp=datetime.now()
-            ),
-            source=f"agent:{current_agent}",
-            correlation_id=task_state.task_id
-        )
-    
-    async def pause_task(self, task_id: str) -> None:
-        """Pause a running task."""
-        if task_id not in self.active_tasks:
-            raise ValueError(f"Task not found: {task_id}")
-        
-        task_state = self.active_tasks[task_id]
-        task_state.pause_task()
-        
-        await publish_event(
-            TaskPausedEvent(
-                task_id=task_id,
-                timestamp=datetime.now(),
-                reason="user_request"
-            ),
-            source="orchestrator",
-            correlation_id=task_id
-        )
-    
-    async def resume_task(self, task_id: str) -> None:
-        """Resume a paused task."""
-        if task_id not in self.active_tasks:
-            raise ValueError(f"Task not found: {task_id}")
-        
-        task_state = self.active_tasks[task_id]
-        task_state.resume_task()
-        
-        await publish_event(
-            TaskResumedEvent(
-                task_id=task_id,
-                timestamp=datetime.now(),
-                reason="user_request"
-            ),
-            source="orchestrator",
-            correlation_id=task_id
-        )
-    
-    def get_task_state(self, task_id: str) -> Optional[TaskState]:
-        """Get the current state of a task."""
-        return self.active_tasks.get(task_id)
-    
-    def list_active_tasks(self) -> List[str]:
-        """Get list of active task IDs."""
-        return list(self.active_tasks.keys())
-    
-    async def set_breakpoints(self, task_id: str, breakpoints: List[str]) -> None:
-        """Set breakpoints for a task."""
-        if task_id not in self.active_tasks:
-            raise ValueError(f"Task not found: {task_id}")
-        
-        task_state = self.active_tasks[task_id]
-        task_state.set_breakpoints(breakpoints)
-        
-        logger.info(f"Set breakpoints for task {task_id}: {breakpoints}")
-    
-    async def set_execution_mode(self, task_id: str, mode: str) -> None:
-        """Set execution mode for a task."""
-        if task_id not in self.active_tasks:
-            raise ValueError(f"Task not found: {task_id}")
-        
-        valid_modes = ["autonomous", "step_through", "debug"]
-        if mode not in valid_modes:
-            raise ValueError(f"Invalid execution mode: {mode}. Valid modes: {valid_modes}")
-        
-        task_state = self.active_tasks[task_id]
-        task_state.set_execution_mode(mode)
-        
-        logger.info(f"Set execution mode for task {task_id}: {mode}")
-    
-    def inspect_task_state(self, task_id: str) -> Dict[str, Any]:
-        """Get detailed inspection data for a task."""
-        if task_id not in self.active_tasks:
-            raise ValueError(f"Task not found: {task_id}")
-        
-        task_state = self.active_tasks[task_id]
-        return task_state.get_inspection_data()
-    
-    async def inject_user_message(self, task_id: str, message: str, context: Dict[str, Any] = None) -> None:
-        """Inject a user message into the task history."""
-        if task_id not in self.active_tasks:
-            raise ValueError(f"Task not found: {task_id}")
-        
-        task_state = self.active_tasks[task_id]
-        
-        # Create user intervention step
-        step = TaskStep(
-            step_id=generate_short_id(),
-            agent_name="user",
-            parts=[TextPart(text=message)],
-            timestamp=datetime.now(),
-            execution_mode="debug_intervention"
-        )
-        
-        # Add to history
-        task_state.add_step(step)
-        
-        # Update debug context if provided
-        if context:
-            task_state.update_debug_context(context)
-        
-        # Emit user intervention event
-        await publish_event(
-            UserInterventionEvent(
-                intervention_id=step.step_id,
-                intervention_type="instruction",
-                details={"message": message, "context": context or {}},
-                timestamp=datetime.now()
-            ),
-            source="orchestrator",
-            correlation_id=task_id
-        )
-        
-        logger.info(f"Injected user message into task {task_id}: {message[:50]}...")
-    
-    async def modify_task_context(self, task_id: str, context_updates: Dict[str, Any]) -> None:
-        """Modify the task's debug context."""
-        if task_id not in self.active_tasks:
-            raise ValueError(f"Task not found: {task_id}")
-        
-        task_state = self.active_tasks[task_id]
-        task_state.update_debug_context(context_updates)
-        
-        logger.info(f"Updated debug context for task {task_id}: {list(context_updates.keys())}")
-    
-    async def override_next_agent(self, task_id: str, agent_name: str) -> None:
-        """Override the next agent for debugging purposes."""
-        if task_id not in self.active_tasks:
-            raise ValueError(f"Task not found: {task_id}")
-        
-        task_state = self.active_tasks[task_id]
-        
-        # Validate agent exists
-        if not self.team.get_agent(agent_name):
-            raise ValueError(f"Agent not found: {agent_name}")
-        
-        # Set the agent
-        task_state.set_current_agent(agent_name)
-        
-        # Update debug context
-        task_state.update_debug_context({
-            "agent_override": True,
-            "overridden_agent": agent_name,
-            "override_timestamp": datetime.now().isoformat()
-        })
-        
-        logger.info(f"Overrode next agent for task {task_id}: {agent_name}")
-    
-    async def _check_breakpoints(self, task_state: TaskState, context: str) -> bool:
-        """
-        Check if any breakpoints should trigger.
-        
-        Args:
-            task_state: Current task state
-            context: Context string (e.g., "before_agent_turn", "after_tool_call", "handoff")
+                logger.debug(f"🧠 LLM decision: Task should continue (reason: {decision})")
             
-        Returns:
-            True if execution should pause, False otherwise
-        """
-        if not task_state.breakpoints:
-            return False
-        
-        # Check for context-specific breakpoints
-        should_break = False
-        breakpoint_hit = None
-        
-        for breakpoint in task_state.breakpoints:
-            if breakpoint == "all":
-                should_break = True
-                breakpoint_hit = "all"
-                break
-            elif breakpoint == context:
-                should_break = True
-                breakpoint_hit = breakpoint
-                break
-            elif breakpoint == "agent_turn" and context in ["before_agent_turn", "after_agent_turn"]:
-                should_break = True
-                breakpoint_hit = breakpoint
-                break
-            elif breakpoint == "tool_call" and context in ["before_tool_call", "after_tool_call"]:
-                should_break = True
-                breakpoint_hit = breakpoint
-                break
-            elif breakpoint == "handoff" and context == "handoff":
-                should_break = True
-                breakpoint_hit = breakpoint
-                break
-            elif breakpoint == "error" and context == "error":
-                should_break = True
-                breakpoint_hit = breakpoint
-                break
-        
-        if should_break:
-            # Pause the task
-            task_state.pause_task()
-            task_state.last_breakpoint = breakpoint_hit
-            
-            # Emit breakpoint event
-            await publish_event(
-                BreakpointHitEvent(
-                    breakpoint_id=generate_short_id(),
-                    breakpoint_type=breakpoint_hit,
-                    context={
-                        "execution_context": context,
-                        "current_agent": task_state.current_agent,
-                        "round_count": task_state.round_count,
-                        "debug_context": task_state.debug_context
-                    },
-                    timestamp=datetime.now(),
-                    agent_name=task_state.current_agent
-                ),
-                source="orchestrator",
-                correlation_id=task_state.task_id
-            )
-            
-            logger.info(f"Breakpoint hit in task {task_state.task_id}: {breakpoint_hit} at {context}")
-        
-        return should_break
-    
-    async def load_task(self, workspace_dir: Path) -> str:
-        """Load a task from a workspace directory."""
-        task_state = TaskState.load_state(workspace_dir, self.team)
-        self.active_tasks[task_state.task_id] = task_state
-        return task_state.task_id
-    
-    def _detect_handoff_request(self, response: str) -> Optional[Dict[str, Any]]:
-        """Detect handoff requests in agent responses using multiple patterns."""
-        import re
-        import json
-        
-        # Pattern 1: Python-style handoff function calls (most common)
-        python_handoff_pattern = r'handoff\s*\(\s*destination_agent\s*=\s*["\']([^"\']+)["\']'
-        match = re.search(python_handoff_pattern, response, re.IGNORECASE | re.DOTALL)
-        if match:
-            agent_name = match.group(1)
-            
-            # Try to extract reason and context from the same call
-            reason_match = re.search(r'reason\s*=\s*["\']([^"\']+)["\']', response, re.IGNORECASE)
-            reason = reason_match.group(1) if reason_match else 'handoff_requested'
-            
-            # Try to extract context (can be complex JSON)
-            context_match = re.search(r'context\s*=\s*["\']([^"\']*)["\']', response, re.IGNORECASE | re.DOTALL)
-            context = context_match.group(1) if context_match else ''
-            
-            return {
-                'destination_agent': agent_name,
-                'reason': reason,
-                'context': context
-            }
-        
-        # Pattern 2: JSON-style handoff requests
-        json_handoff_pattern = r'🔄\s*HANDOFF_REQUEST:\s*({[^}]+})'
-        match = re.search(json_handoff_pattern, response, re.IGNORECASE)
-        if match:
-            try:
-                handoff_data = json.loads(match.group(1))
-                return {
-                    'destination_agent': handoff_data.get('destination_agent'),
-                    'reason': handoff_data.get('handoff_reason', 'handoff_requested'),
-                    'context': handoff_data.get('context', {})
-                }
-            except:
-                pass
-        
-        # Pattern 3: Simple handoff patterns
-        simple_patterns = [
-            r'transfer_to_(\w+)',
-            r'HANDOFF:\s*(\w+)',
-            r'handoff\s+to\s+(\w+)',
-            r'hand\s*off\s+to\s+(\w+)',
-        ]
-        
-        for pattern in simple_patterns:
-            match = re.search(pattern, response, re.IGNORECASE)
-            if match:
-                agent_name = match.group(1)
-                return {
-                    'destination_agent': agent_name,
-                    'reason': 'handoff_requested',
-                    'context': ''
-                }
-        
-        return None
-    
-    async def _process_handoff(self, task_state: TaskState, from_agent: str, 
-                             to_agent: str, response_text: str) -> None:
-        """Process an agent handoff."""
-        # Validate handoff is allowed
-        if not self.team.validate_handoff(from_agent, to_agent):
-            logger.warning(f"Invalid handoff from {from_agent} to {to_agent}")
-            return
-        
-        # Check for handoff breakpoints
-        await self._check_breakpoints(task_state, "handoff")
-        
-        # Update current agent
-        task_state.set_current_agent(to_agent)
-        
-        # Emit handoff event
-        await publish_event(
-            AgentHandoffEvent(
-                from_agent=from_agent,
-                to_agent=to_agent,
-                reason="agent_request",
-                timestamp=datetime.now(),
-                context={"response_text": response_text[:100]}
-            ),
-            source=f"agent:{from_agent}",
-            correlation_id=task_state.task_id
-        )
-
-    async def run_task(self, task_prompt: str, initial_agent: str = None) -> Dict[str, Any]:
-        """Run a task with proper handoff support."""
-        self.task_id = self._generate_task_id()
-        start_time = time.time()
-        
-        # Initialize
-        self.current_agent = initial_agent or self.team.config.initial_agent
-        self.conversation_history = []
-        
-        # Add initial task message
-        self.conversation_history.append({
-            'role': 'user',
-            'content': task_prompt,
-            'agent': 'user',
-            'timestamp': datetime.now().isoformat()
-        })
-        
-        logger.info(f"🚀 Starting task {self.task_id} with agent: {self.current_agent}")
-        
-        round_count = 0
-        handoff_count = 0
-        
-        try:
-            while round_count < self.max_rounds:
-                if time.time() - start_time > self.timeout:
-                    raise TimeoutError(f"Task timeout after {self.timeout} seconds")
-                
-                round_count += 1
-                
-                # Get current agent
-                agent = self.team.get_agent(self.current_agent)
-                if not agent:
-                    raise ValueError(f"Agent '{self.current_agent}' not found")
-                
-                # Prepare context for agent
-                context = self._prepare_agent_context(task_prompt)
-                
-                # Get agent response
-                logger.info(f"🤖 Round {round_count}: {self.current_agent} thinking...")
-                
-                response = await agent.process(
-                    prompt=task_prompt,
-                    context=context,
-                    conversation_history=self.conversation_history
-                )
-                
-                # Add response to conversation
-                self.conversation_history.append({
-                    'role': 'assistant',
-                    'content': response.content,
-                    'agent': self.current_agent,
-                    'timestamp': datetime.now().isoformat(),
-                    'model': response.model,
-                    'usage': response.usage
-                })
-                
-                # Check for handoff request
-                handoff_request = self._detect_handoff_request(response.content)
-                if handoff_request:
-                    # Create a minimal task state for handoff processing
-                    temp_task_state = type('TaskState', (), {
-                        'current_agent': self.current_agent,
-                        'set_current_agent': lambda agent: setattr(self, 'current_agent', agent)
-                    })()
-                    
-                    if self._execute_handoff(handoff_request, temp_task_state):
-                        handoff_count += 1
-                        continue  # Continue with new agent
-                    else:
-                        # Handoff failed, continue with current agent
-                        logger.warning("Handoff failed, continuing with current agent")
-                
-                # Check for completion
-                if self._is_task_complete(response.content):
-                    logger.info(f"✅ Task completed by {self.current_agent}")
-                    break
-                    
-                # Check for errors or issues
-                if self._has_critical_error(response.content):
-                    logger.error(f"❌ Critical error detected in {self.current_agent} response")
-                    break
-            
-            # Prepare final result
-            result = {
-                'task_id': self.task_id,
-                'status': 'completed' if round_count < self.max_rounds else 'max_rounds_reached',
-                'final_agent': self.current_agent,
-                'rounds': round_count,
-                'handoffs': handoff_count,
-                'conversation_history': self.conversation_history,
-                'execution_time': time.time() - start_time,
-                'context_variables': self.context_variables,
-                'execution_plan': self.execution_plan
-            }
-            
-            logger.info(f"🏁 Task {self.task_id} finished: {round_count} rounds, {handoff_count} handoffs")
-            return result
+            return should_complete
             
         except Exception as e:
-            logger.error(f"❌ Task {self.task_id} failed: {str(e)}")
-            return {
-                'task_id': self.task_id,
-                'status': 'error',
-                'error': str(e),
-                'final_agent': self.current_agent,
-                'rounds': round_count,
-                'handoffs': handoff_count,
-                'conversation_history': self.conversation_history,
-                'execution_time': time.time() - start_time
-            }
-
-    def _find_agent_by_name(self, agent_name: str) -> Optional[str]:
-        """Find agent by name (case-insensitive, partial match)."""
-        agent_name_lower = agent_name.lower()
-        
-        # Direct match
-        if agent_name in self.team.agents:
-            return agent_name
-            
-        # Case-insensitive match
-        for name in self.team.agents.keys():
-            if name.lower() == agent_name_lower:
-                return name
-                
-        # Partial match
-        for name in self.team.agents.keys():
-            if agent_name_lower in name.lower() or name.lower() in agent_name_lower:
-                return name
-                
-        return None
-    
-    def _can_handoff(self, from_agent: str, to_agent: str) -> bool:
-        """Check if handoff is allowed based on team configuration."""
-        if from_agent not in self.team.agents or to_agent not in self.team.agents:
-            return False
-            
-        # Check handoff rules
-        handoff_rules = self.team.config.handoff_rules
-        if not handoff_rules:
-            return True  # Allow all handoffs if no rules specified
-            
-        # Check if there's a specific rule for this handoff
-        for rule in handoff_rules:
-            if rule.from_agent == from_agent and rule.to_agent == to_agent:
+            logger.error(f"LLM completion detection failed: {e}")
+            # Fallback: complete after reasonable rounds to prevent infinite loops
+            if round_count >= 6:
+                logger.info(f"🔄 Fallback: Completing after {round_count} rounds")
                 return True
-                
-        return False
-    
-    def _execute_handoff(self, handoff_request: Dict[str, Any], task_state: TaskState) -> bool:
-        """Execute a handoff between agents."""
-        destination_agent = handoff_request.get('destination_agent')
-        if not destination_agent:
             return False
-            
-        # Find the actual agent name
-        target_agent = self._find_agent_by_name(destination_agent)
-        if not target_agent:
-            logger.warning(f"Handoff target agent '{destination_agent}' not found")
-            return False
-            
-        # Check if handoff is allowed
-        current_agent = task_state.current_agent
-        if not self._can_handoff(current_agent, target_agent):
-            logger.warning(f"Handoff from '{current_agent}' to '{target_agent}' not allowed")
-            return False
-            
-        # Execute the handoff
-        logger.info(f"🔄 Handoff: {current_agent} → {target_agent}")
-        
-        # Update task state
-        task_state.set_current_agent(target_agent)
-        
-        return True
-
-    def _is_task_complete(self, response_content: str) -> bool:
-        """Check if the task is complete based on response content."""
-        completion_indicators = [
-            'task completed',
-            'finished',
-            'done',
-            'complete',
-            'final answer',
-            'conclusion',
-            'END_OF_MEMO',
-            'FINISH'
-        ]
-        
-        response_lower = response_content.lower()
-        return any(indicator in response_lower for indicator in completion_indicators)
-    
-    def _has_critical_error(self, response_content: str) -> bool:
-        """Check if there's a critical error in the response."""
-        error_indicators = [
-            'critical error',
-            'fatal error',
-            'cannot proceed',
-            'unable to continue',
-            'system failure'
-        ]
-        
-        response_lower = response_content.lower()
-        return any(indicator in response_lower for indicator in error_indicators)
-    
-    def _prepare_agent_context(self, task_prompt: str) -> Dict[str, Any]:
-        """Prepare context for agent processing."""
-        return {
-            'task_prompt': task_prompt,
-            'current_agent': self.current_agent,
-            'conversation_history': self.conversation_history,
-            'context_variables': self.context_variables,
-            'execution_plan': self.execution_plan,
-            'available_agents': list(self.team.agents.keys()),
-            'handoff_targets': [name for name in self.team.agents.keys() if name != self.current_agent]
-        }
-
-    def _generate_task_id(self) -> str:
-        """Generate a unique task ID."""
-        from ..utils.id import generate_short_id
-        return generate_short_id()

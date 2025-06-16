@@ -1,7 +1,8 @@
 from .team import Team
 from .orchestrator import Orchestrator
+from .task import Task, create_task
 from .brain import Brain, LLMMessage, LLMResponse
-from .task_step import (
+from .message import (
     TaskStep,
     TextPart,
     ToolCall,
@@ -13,12 +14,16 @@ from .task_step import (
     AudioPart,
     MemoryPart,
     GuardrailPart,
-    Artifact
+    Artifact,
+    StreamChunk,
+    StreamError,
+    StreamComplete
 )
 
 __all__ = [
     "Team", 
     "Orchestrator",
+    "Task",
     "Brain",
     "LLMMessage", 
     "LLMResponse",
@@ -33,5 +38,9 @@ __all__ = [
     "AudioPart",
     "MemoryPart",
     "GuardrailPart",
-    "Artifact"
+    "Artifact",
+    "StreamChunk",
+    "StreamError",
+    "StreamComplete",
+    "create_task"
 ] 

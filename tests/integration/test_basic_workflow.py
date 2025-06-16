@@ -141,7 +141,7 @@ def test_team_configuration_loading():
     assert web_search.type == "python_function"
     
     # Verify handoff rules
-    assert len(team.config.handoff_rules) == 4
+    assert len(team.config.handoffs) == 4
     
     # Test handoff validation
     assert team.validate_handoff("coordinator", "analyst")

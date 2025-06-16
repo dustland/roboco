@@ -71,12 +71,12 @@ class ToolConfig(BaseModel):
     timeout: Optional[int] = None
     escalation_policy: Optional[str] = None
 
-class HandoffRule(BaseModel):
-    """Handoff rule for agent-to-agent routing."""
+class Handoff(BaseModel):
+    """Defines when and how agents should hand off control."""
     from_agent: str
     to_agent: str
-    condition: Optional[str] = None  # Future: conditional handoffs
-    handoff_type: str = "sequential"  # "sequential", "parallel"
+    condition: str  # Natural language description of when to handoff (AG2-consistent)
+    priority: int = 1  # Higher numbers = higher priority
 
 class CollaborationPattern(BaseModel):
     """Custom collaboration pattern configuration."""
@@ -116,11 +116,12 @@ class AgentConfig(BaseModel):
     collaboration_patterns: List[str] = Field(default_factory=list)
     max_parallel_tasks: int = 1
 
-class ExecutionConfig(BaseModel):
-    """Execution configuration for task control."""
+class TaskConfig(BaseModel):
+    """Task-specific configuration for execution control."""
     mode: str = "autonomous"  # "autonomous", "step_through"
     max_rounds: int = 20  # Maximum conversation rounds
     timeout_seconds: int = 300  # Task timeout
+    initial_agent: Optional[str] = None  # Initial agent to start with
     step_through_enabled: bool = False
     max_steps: Optional[int] = None
     breakpoints: List[str] = Field(default_factory=list)
@@ -128,30 +129,40 @@ class ExecutionConfig(BaseModel):
     success_criteria: List[str] = Field(default_factory=list)
     failure_criteria: List[str] = Field(default_factory=list)
 
+class OrchestratorConfig(BaseModel):
+    """Configuration for the orchestrator's Brain and behavior."""
+    llm_config: Optional[LLMConfig] = None  # Orchestrator's LLM config for routing decisions
+    max_rounds: int = 50
+    timeout: int = 3600
+    
+    def get_default_llm_config(self) -> LLMConfig:
+        """Get default LLM config for orchestrator if none specified."""
+        return LLMConfig(
+            temperature=0.0,  # Low temperature for consistent routing decisions
+            max_tokens=100,   # Short responses for handoff analysis
+            timeout=10        # Quick analysis
+        )
+
+
 class TeamConfig(BaseModel):
-    """Root team configuration model."""
+    """Configuration for a team of agents."""
     name: str
-    description: str
-    version: str = "1.0.0"
-    initial_agent: str = "consultant"  # Default initial agent
-    agents: List[AgentConfig]
-    tools: List[ToolConfig] = Field(default_factory=list)
-    handoff_rules: List[HandoffRule] = Field(default_factory=list)
+    description: str = ""
+    output_dir: str = "workspace"
+    agents: List[AgentConfig] = Field(default_factory=list)
+    handoffs: List[Handoff] = Field(default_factory=list)
     collaboration_patterns: List[CollaborationPattern] = Field(default_factory=list)
+    tools: List[ToolConfig] = Field(default_factory=list)
     guardrail_policies: List[GuardrailPolicy] = Field(default_factory=list)
     memory: MemoryConfig = Field(default_factory=MemoryConfig)
-    execution: ExecutionConfig = Field(default_factory=ExecutionConfig)
+    execution: TaskConfig = Field(default_factory=TaskConfig)
+    orchestrator: OrchestratorConfig = Field(default_factory=OrchestratorConfig)
     deployment_config: Dict[str, Any] = Field(default_factory=dict)
     
     # Dynamic context variables for agent coordination
     context_variables: Dict[str, Any] = Field(default_factory=dict)
     
-    # Execution plan configuration
-    execution_plan: Dict[str, Any] = Field(default_factory=dict)
-    
-    # LLM configuration (optional override)
-    llm: Optional[LLMConfig] = None
-    
-    # Execution limits
+    # Legacy fields for backward compatibility
     max_rounds: int = 50
-    timeout: int = 3600 
+    timeout: int = 3600
+    after_work_behavior: str = "return_to_user"  # Default behavior when no more handoffs available 
