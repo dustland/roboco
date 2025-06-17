@@ -1,5 +1,5 @@
 <div align="center">
-  <a href="https://gopher-earthy-6cf.notion.site/AgentX-Missions-Ideals-502329326b4848e6854e48c775a68786?pvs=4"><img src="docs/assets/logo.png" alt="AgentX Logo" width="150"></a>
+  <img src="docs/assets/logo.png" alt="AgentX Logo" width="120">
   <h1 align="center">AgentX</h1>
 </div>
 
@@ -9,21 +9,17 @@
   <a href="https://docs.agentx.dev"><strong>Explore the docs »</strong></a>
   <br />
   <br />
-  <a href="https://github.com/dustland/agentx/issues/new?assignees=&labels=bug&template=bug_report.md&title=">Report a Bug</a>
-  ·
-  <a href="https://github.com/dustland/agentx/issues/new?assignees=&labels=enhancement&template=feature_request.md&title=">Request a Feature</a>
-  
-  <br />
-  <span>
+  <a href="https://github.com/dustland/agentx/issues/new?assignees=&labels=bug&template=bug_report.md&title="><img src="https://img.shields.io/badge/Report%20a%20Bug-d73a4a?style=flat-square" alt="Report a Bug"/></a>
+  <a href="https://github.com/dustland/agentx/issues/new?assignees=&labels=enhancement&template=feature_request.md&title="><img src="https://img.shields.io/badge/Request%20a%20Feature-0366d6?style=flat-square" alt="Request a Feature"/></a>
+</p>
+<p align="center">
   <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/python-3.11+-blue.svg" /></a>
-
-<a href="https://opensource.org/licenses/Apache-2.0">
-<img src="https://img.shields.io/badge/License-Apache%202.0-blue.svg"/></a>
-</span>
-
+  <a href="https://opensource.org/licenses/Apache-2.0"><img src="https://img.shields.io/badge/License-Apache%202.0-blue.svg"/></a>
 </p>
 
 AgentX provides the backbone for creating, orchestrating, and observing sophisticated multi-agent systems. It moves beyond simple agent-to-agent communication to a robust, task-driven framework where teams of specialized agents collaborate to achieve complex goals.
+
+## ✨ Key Features
 
 Based on a refined and modular architecture, AgentX is built around a few core concepts:
 
@@ -38,64 +34,61 @@ Based on a refined and modular architecture, AgentX is built around a few core c
 
 The best way to get started is by following our **[Quickstart Guide](./docs/quickstart.md)**, which will walk you through building a simple chat application and a multi-agent writer/reviewer team.
 
-1.  **Clone the repository:**
+### 1. Installation
 
-    ```sh
-    git clone https://github.com/dustland/agentx.git
-    cd agentx
-    ```
+First, clone the repository and install the dependencies.
 
-2.  **Install dependencies:**
+```sh
+git clone https://github.com/dustland/agentx.git
+cd agentx
+uv sync
+```
 
-    ```sh
-    uv sync
-    ```
+### 2. Usage Examples
 
-Complete working examples in `examples/`:
+AgentX can be run directly from the command line or via its Python API. You can find complete, working examples in the `examples/` directory.
 
-### [Simple Team](examples/simple_team/) - Basic Collaboration
+#### Running an Example
 
-Basic multi-agent collaboration demonstrating Brain-powered reasoning:
+This demonstrates a basic multi-agent collaboration:
 
 ```bash
-# Using CLI
-agentx example simple_team
-
-# Or directly
+# Navigate to an example directory
 cd examples/simple_team
+
+# Run the demo script
 python demo.py
 ```
 
-### CLI Commands
+#### Using the CLI
 
-This framework comes with a convenient CLI tool for management:
+The framework includes a powerful CLI for managing your agent system:
 
 ```bash
-# Start API server with observability
+# Start the API server
 agentx start
 
-# Start observability monitor (CLI interface)
+# Monitor tasks and events in your terminal
 agentx monitor
 
-# Start web dashboard
+# Launch the web dashboard for rich observability
 agentx monitor --web
 
-# Run examples
+# Run a named example directly
 agentx example superwriter
-
-# Check system status
-agentx status
 ```
 
-### Python API
+#### Using the Python API
+
+Here is a simple example of an autonomous run:
 
 ```python
 import asyncio
 from agentx import execute_task
 
 async def main():
-    # Create a task with your team configuration
-    result = execute_task("Write a brief report on renewable energy trends")
+    # Execute a task with a simple prompt
+    result = await execute_task("Write a brief report on renewable energy trends")
 
     print(f"Success: {result.success}")
     print(f"Summary: {result.summary}")
@@ -104,27 +97,27 @@ async def main():
 asyncio.run(main())
 ```
 
-This is autonomous run. You can refer to examples for message streaming and interactive running.
+_The script above shows a simple autonomous run. For more advanced patterns like message streaming and interactive sessions, please see the complete scripts in the `/examples` directory._
 
 ## 📊 Observability & Monitoring
 
-AgentX includes a comprehensive observability system for monitoring and debugging multi-agent workflows:
+AgentX includes a comprehensive observability system for monitoring and debugging multi-agent workflows.
 
-### Web Dashboard
-
-Modern FastAPI + Preline UI dashboard with:
-
-- **Dashboard**: System overview with metrics and recent activity
-- **Tasks**: Task conversation history viewer with export
-- **Events**: Real-time event monitoring with filtering
-- **Memory**: Memory browser with search and categories
-- **Messages**: Agent conversation history during execution
-- **Configuration**: System configuration and status viewer with data directory management
+Launch a modern web dashboard built with FastAPI and Preline UI:
 
 ```bash
 # Start web dashboard
 agentx monitor --web
 ```
+
+- **Dashboard**: System overview with metrics and recent activity.
+- **Tasks**: Task conversation history viewer with export.
+- **Events**: Real-time event monitoring with filtering.
+- **Memory**: Memory browser with search and categories.
+- **Messages**: Agent conversation history during execution.
+- **Configuration**: System configuration and status viewer.
+
+You can also use the observability features in CLI mode without the option `--web`.
 
 ## 🏗️ Architecture Overview
 
@@ -179,12 +172,12 @@ graph TD
     class TOOL_EXEC,TOOLS,PLAT platform
 ```
 
-## 📖 Documentation
+You can discover more design details from following documents:
 
-1. **[System Architecture](docs/arch/01-architecture.md)** - Overall design and system architecture
-1. **[State and Context Management](docs/arch/02-state-and-context.md)** State and Context management
-1. **[Tool Calling](docs/arch/03-tool-call.md)** - Invoke tools for actual tasks
-1. **[Communication and Message](docs/arch/04-communication.md)** - Message format for composite content and streaming
+- **[System Architecture](docs/arch/01-architecture.md)** - Overall design and system architecture
+- **[State and Context Management](docs/arch/02-state-and-context.md)** State and Context management
+- **[Tool Calling](docs/arch/03-tool-call.md)** - Invoke tools for actual tasks
+- **[Communication and Message](docs/arch/04-communication.md)** - Message format for composite content and streaming
 
 ## 🤝 Contributing
 
@@ -197,11 +190,6 @@ This project was initially inspired by and built upon concepts from [AG2 (AutoGe
 ## 📄 License
 
 Licensed under the Apache License 2.0 - see [LICENSE](LICENSE) for details.
-
-## 🙋‍♀️ Support
-
-- **Issues**: [GitHub Issues](https://github.com/dustland/agentx/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/dustland/agentx/discussions)
 
 ---
 
