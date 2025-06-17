@@ -1,123 +1,103 @@
 # AgentX System Architecture
 
-## Executive Summary
+## 1. Executive Summary
 
 AgentX is an open-source backbone for building secure, observable, and fully autonomous multi-agent systems. A lightweight micro-kernel orchestrates specialised agents, turning a single user request into a coordinated workflow that spans tool execution, memory retrieval, and artifact management—all within isolated, version-controlled workspaces. Every decision, message, and side effect is captured as a structured event, providing complete auditability and real-time insight into system behaviour.
 
-## 1. Architectural Vision & Principles
+## 2. Architectural Vision & Principles
 
-### 1.1 Core Vision
+### 2.1 Core Vision
 
-AgentX enables organisations to decompose complex goals into collaborative Teams of agents, each focusing on a well-defined role. A central Orchestrator governs the conversation, selects the next agent to speak, executes tools on the agents' behalf, and enforces security boundaries. The result is a flexible framework that elevates individual agent capabilities into a cohesive, self-optimising system that can learn, adapt, and scale with minimal human intervention.
+AgentX enables organisations to decompose complex goals into collaborative **Teams** of agents, each focusing on a well-defined role. A central **Orchestrator** governs the conversation, selects the next agent to speak, and executes tools on the agents' behalf, while a **Task Executor** drives the lifecycle of the task itself. The result is a flexible framework that elevates individual agent capabilities into a cohesive, self-optimising system that can learn, adapt, and scale with minimal human intervention.
 
-### 1.2 Architectural Principles
+### 2.2 Architectural Principles
 
 The architecture rests on the following foundational principles:
 
-- **Separation of Concerns** – Each subsystem has a single, well-defined responsibility, which reduces coupling and simplifies maintenance.
-- **Centralised Orchestration** – A single Orchestrator governs coordination, security, and resource allocation, providing a uniform control plane.
-- **Agent Autonomy** – Agents manage their own reasoning loops and private Brains, delegating only cross-cutting concerns upward.
-- **Event-Driven Coordination** – Asynchronous, structured events enable scalable, loosely-coupled communication among subsystems.
-- **Configuration-Driven Behaviour** – Teams, agents, and workflows are defined declaratively, allowing rapid iteration without code changes.
-- **Security by Design** – All external interactions pass through audited, policy-enforced channels; least-privilege boundaries are maintained throughout.
-- **Workspace Isolation** – Every task executes in its own version-controlled workspace, ensuring reproducibility and clean separation of artifacts.
+- **Separation of Concerns**: Each subsystem has a single, well-defined responsibility, which reduces coupling and simplifies maintenance.
+- **Centralised Orchestration**: A single Orchestrator governs coordination, security, and resource allocation, providing a uniform control plane.
+- **Agent Autonomy**: Agents manage their own reasoning loops and private Brains, delegating only cross-cutting concerns upward.
+- **Event-Driven Coordination**: Asynchronous, structured events enable scalable, loosely-coupled communication among subsystems.
+- **Configuration-Driven Behaviour**: Teams, agents, and workflows are defined declaratively, allowing rapid iteration without code changes.
+- **Security by Design**: All external interactions pass through audited, policy-enforced channels; least-privilege boundaries are maintained throughout.
+- **Workspace Isolation**: Every task executes in its own version-controlled workspace, ensuring reproducibility and clean separation of artifacts.
 
-## 2. System Architecture Overview
+## 3. System Architecture Overview
 
 ```mermaid
-flowchart TD
-    %% Top-level layers
-    subgraph Client Layer
-        CLI[CLI Interface]
-        API[REST / WebSocket API]
-        UI[Dashboard]
-    end
+graph TD
+    %% Client Layer
+    CLI[CLI Interface]
+    API[REST / WebSocket API]
 
-    subgraph AgentX Core
-        direction TB
-        TASK[Task Executor]
-        ORCH[Orchestrator]
-        TEAM[Team of Agents]
-    end
+    %% AgentX Core
+    TE[Task Executor]
+    ORCH[Orchestrator]
+    AGENTS[Team of Agents]
+    BRAIN[Agent Brain]
+    TOOL_EXEC[Tool Executor]
+    PLAT[Platform Services]
 
-    subgraph Platform Services
-        direction TB
-        TOOLS[Tool Executor]
-        CONFIG[Configuration System]
-        EVENTS[Event Bus]
-        STORAGE[Workspace Manager]
-        MEMORY[Memory System]
-        OBSV[Observability]
-        BUILTIN_TOOLS[Builtin Tools]
-    end
+    LLM[LLM Providers]
+    TOOLS[Builtin Tools]
+    API_EXT[External APIs]
+    MCP[MCP]
 
-    subgraph External Systems
-        direction TB
-        LLM[LLM Providers]
-        VDB[Vector Database]
-        GIT[Git Repository]
-        APIS[External APIs]
-        MCP[MCP Tools]
-    end
+    %% Vertical flow connections
+    CLI --> TE
+    API --> TE
 
-    %% Primary flows
-    CLI --> TASK
-    API --> TASK
-    UI --> OBSV
+    TE --> ORCH
+    AGENTS --> BRAIN
+    BRAIN --> LLM
 
-    TASK --> ORCH
-    ORCH --> TASK
-    TASK --> TEAM
+    TE --> AGENTS
+    TE --> TOOL_EXEC
 
-    TEAM --> LLM
+    TOOL_EXEC --> TOOLS
+    TOOL_EXEC --> MCP
+    MCP --> API_EXT
 
-    TASK --> TOOLS
-    TOOLS --> BUILTIN_TOOLS
-    TOOLS --> MCP
-    TOOLS --> APIS
+    TE --> PLAT
 
-    STORAGE --> GIT
-    MEMORY --> VDB
+    %% Styling for rounded corners
+    classDef default fill:#f9f9f9,stroke:#333,stroke-width:2px,rx:10,ry:10
+    classDef client fill:#e3f2fd,stroke:#1976d2,stroke-width:2px,rx:10,ry:10
+    classDef core fill:#e8f5e8,stroke:#388e3c,stroke-width:2px,rx:10,ry:10
+    classDef external fill:#fff3e0,stroke:#f57c00,stroke-width:2px,rx:10,ry:10
+    classDef platform fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px,rx:10,ry:10
 
-    EVENTS --> OBSV
-    ORCH --> EVENTS
-    ORCH --> CONFIG
+    %% Apply styles to specific nodes
+    class CLI,API client
+    class TE,ORCH,AGENTS,BRAIN core
+    class LLM,API_EXT,MCP external
+    class TOOL_EXEC,TOOLS,PLAT platform
 ```
 
 The AgentX architecture is composed of four distinct layers:
 
 - **Client Layer**: Provides the primary user-facing interfaces, including a Command-Line Interface (CLI) for developers, a REST/WebSocket API for programmatic integration, and a web-based Dashboard for real-time monitoring.
 - **AgentX Core**: Contains the essential components for task execution and agent collaboration. The `Task Executor` drives the workflow, the `Orchestrator` makes routing decisions, and the `Team of Agents` performs the reasoning.
-- **Platform Services**: A suite of shared, pluggable services that support the core. These include the secure `Tool Executor`, `Configuration System`, `Event Bus` for observability, and stateful services for `Workspace`, `Memory`, and `Builtin Tools`.
+- **Platform Services**: A suite of shared, pluggable services that support the core. These include the secure `Tool Executor`, `Configuration System`, `Event Bus`, and stateful services for `Memory` and `Observability`.
 - **External Systems**: Represents all external dependencies, such as `LLM Providers`, `Vector Databases` for memory, `Git` for workspace versioning, and any third-party `APIs` that tools may call.
 
-## 3. Team Collaboration
+## 4. Collaboration Model
 
-In AgentX, a **Team** of collaborating agents is the primary mechanism for executing complex, multi-step tasks. The core runtime consists of three key components—the Task Executor, the Orchestrator, and the Agents themselves—that work in concert to manage the entire task lifecycle.
+In AgentX, a **Team** of collaborating agents is the primary mechanism for executing complex tasks. The core runtime consists of three key components that work in concert to manage the task lifecycle.
 
-## Key Roles
+### 4.1 Key Roles
 
-#### 3.1.1 Task Executor
+- **Task Executor**: Owns the end-to-end lifecycle of a single task. It provisions the workspace, hydrates the context, and runs the main loop: it consults the `Orchestrator` for a decision, invokes the chosen `Agent`, executes any tool calls via the `Tool Executor`, and persists state.
+- **Orchestrator**: The policy brain. After each agent turn, it analyzes the conversation and returns the next decision: `continue`, `handoff`, or `complete`. By centralizing this logic, it provides a single control plane for routing, guardrails, and quota management.
+- **Agent**: Encapsulates a specialised role (e.g., _researcher_, _writer_). It receives context, reasons with its private **Brain** (LLM interface), and returns a response, which may include tool-call requests. Agents are lightweight and composable as they never execute tools or route messages directly.
 
-The **Task Executor** owns the entire lifecycle of a single task. When a request arrives, it provisions an isolated workspace, hydrates the task context from configuration, and immediately consults the Orchestrator to determine which agent should act first. It then delivers the full conversational context and available tool schemas to that agent and waits for a response. If the agent requests tool calls, the Task Executor invokes the Tool Executor, captures the results, persists them to the workspace, and feeds them back to the agent for refinement.
+### 4.2 Execution Modes
 
-This loop—**ask orchestrator → invoke agent → run tools → persist state**—continues until the Orchestrator signals completion. Throughout execution, the Task Executor streams structured events to the Event Bus, guaranteeing a real-time audit trail.
-
-#### 3.1.2 Orchestrator
-
-The **Orchestrator** is the policy brain—responsible for choosing the next speaker, enforcing guardrails, and applying system-wide limits. After each agent turn, the Task Executor submits the agent's response to the Orchestrator, which analyses it (often via a lightweight LLM prompt) and returns one of three decisions: **continue with same agent, hand off to another agent, or complete the task**. By centralising this logic, AgentX achieves a single control plane for quota management, compliance checks, and advanced collaboration strategies, while keeping agents focused purely on reasoning and content creation.
-
-#### 3.1.3 Agents
-
-Every **Agent** encapsulates a specialised role—researcher, writer, reviewer, etc.—and owns a private Brain that interfaces with the underlying LLM provider. Agents receive richly-structured context, reason about the task, optionally call tools, and return a response. Because they never execute tools directly or route messages themselves, agents remain lightweight and easily composable, allowing teams to be re-shaped through configuration alone.
-
-### 3.2 Execution Modes
-
-AgentX supports two primary modes of task execution, offering a trade-off between autonomy and control:
+AgentX supports two primary modes of execution, offering a trade-off between autonomy and control.
 
 **1. Autonomous Execution (`execute_task`)**
 
-This is the default "fire-and-forget" mode. A client submits a task with an initial prompt and waits for a final result. The `Task Executor` runs the entire multi-agent collaboration—including all agent turns and tool calls—autonomously until the `Orchestrator` signals completion. This mode is ideal for production deployments where the goal is to fully automate a workflow.
+This "fire-and-forget" mode is ideal for production. A client submits a task and waits for a final result, while the `Task Executor` runs the entire multi-agent collaboration autonomously.
 
 ```mermaid
 sequenceDiagram
@@ -125,39 +105,53 @@ sequenceDiagram
     participant TX as Task Executor
     participant OR as Orchestrator
     participant AG as Agent
+    participant TE as Tool Executor
 
     C->>TX: execute_task(prompt)
-    loop Autonomous Execution
+    loop Autonomous Loop
         TX->>OR: request_next_agent()
         OR-->>TX: agent_to_run
         TX->>AG: invoke(agent_to_run)
-        AG-->>TX: response
+        AG-->>TX: tool_calls
+        opt Tool calls needed
+            TX->>TE: execute_tools(tool_calls)
+            TE-->>TX: tool_results
+            TX->>AG: provide_tool_results(tool_results)
+            AG-->>TX: final_response
+        end
     end
     TX-->>C: final_result
 ```
 
 **2. Interactive Execution (`start_task` & `step`)**
 
-For debugging, human-in-the-loop workflows, or fine-grained control, AgentX provides a step-wise execution model. The client first calls `start_task` to initialize the task and receive a `Task` object. The client then repeatedly calls the `step()` method on this object to advance the execution one turn at a time. After each step, control returns to the client with the latest state, allowing for inspection or user intervention before proceeding.
+For debugging or human-in-the-loop workflows, a client can call `start_task` to get a `Task` object, then repeatedly call `step()` to advance the execution one turn at a time.
 
 ```mermaid
 sequenceDiagram
     participant C as Client
     participant TX as Task Executor
     participant OR as Orchestrator
+    participant AG as Agent
+    participant TE as Tool Executor
 
     C->>TX: start_task(prompt)
     TX-->>C: task_object
 
-    C->>TX: task.step()
-    TX->>OR: Process one turn...
-    OR-->>TX: ...
-    TX-->>C: intermediate_state
-
-    C->>TX: task.step()
-    TX->>OR: Process next turn...
-    OR-->>TX: ...
-    TX-->>C: final_state (on completion)
+    loop Interactive Steps
+        C->>TX: task.step()
+        TX->>OR: request_next_agent()
+        OR-->>TX: agent_to_run
+        TX->>AG: invoke(agent_to_run)
+        AG-->>TX: tool_calls
+        opt Tool calls needed
+            TX->>TE: execute_tools(tool_calls)
+            TE-->>TX: tool_results
+            TX->>AG: provide_tool_results(tool_results)
+            AG-->>TX: final_response
+        end
+        TX-->>C: step_result
+    end
 ```
 
 ## 4. Agent Internals
@@ -305,15 +299,14 @@ Key builtin tools include:
 
 By providing these foundational capabilities, AgentX ensures that developers can build powerful and effective agent teams from day one.
 
-## 8. Extensibility
+## 7. Extensibility
 
-AgentX is designed to be a production-ready backbone, which means it must be extensible at every layer. The framework supports this through several key mechanisms:
+AgentX is designed as a production-ready backbone, which means it must be extensible at every layer.
 
-- **Adding LLM Providers**: The `Brain` component uses a provider model that allows new LLMs to be integrated by implementing a simple, common interface. This ensures that AgentX can adapt to a rapidly changing landscape of foundation models.
-- **Custom Tools**: Developers can easily add their own tools to the `Tool Executor` by decorating Python functions. These custom tools are registered alongside the builtin tools and are exposed to agents in the same way.
-- **MCP Tools & API Integration**: For more complex integrations, AgentX supports Multi-Container Platform (MCP) tools, which run in their own secure sandboxes. This allows for safe integration with enterprise APIs, SaaS platforms, and other external systems, turning them into capabilities that agents can leverage.
-- **Integration with API Marketplaces**: By exposing internal services and external tools through a consistent API, AgentX is ready to connect with emerging API marketplaces, allowing teams to monetize their custom agents or consume capabilities from a broader ecosystem.
+- **Adding LLM Providers**: The `Brain` component uses a provider model that allows new LLMs to be integrated by implementing a simple, common interface.
+- **Custom Tools**: Developers can add their own tools by decorating Python functions. These are registered alongside builtin tools and exposed to agents in the same way.
+- **MCP Tools & API Integration**: For complex integrations, the framework supports Multi-Container Platform (MCP) tools, which run in secure sandboxes, allowing safe interaction with enterprise APIs and SaaS platforms.
 
-## 9. The Future of AgentX
+## 8. The Future of AgentX
 
 AgentX will continue to evolve along three pillars: performance, interoperability, and safety. Upcoming priorities include native support for streaming multimodal models, tighter integration with external knowledge graphs to improve grounding, and progressive guardrail policies that adapt to organisational compliance requirements. We also plan to introduce a plug-and-play planning module so that teams can experiment with alternative orchestration strategies without modifying core code. Finally, deeper observability hooks—spanning trace-level token accounting through to high-level outcome metrics—will help users fine-tune cost, latency, and quality trade-offs.
