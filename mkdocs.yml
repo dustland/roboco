@@ -1,0 +1,69 @@
+site_name: AgentX
+site_description: "AgentX - The open-source backbone for building secure, observable, and fully autonomous multi-agent systems."
+site_author: AgentX Team
+site_url: "" # Will be populated by GitHub Actions
+
+repo_url: "https://github.com/your-org/agentx" # Please update this
+repo_name: "your-org/agentx" # Please update this
+
+theme:
+  name: material
+  palette:
+    - scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.top
+    - search.suggest
+    - search.highlight
+    - content.tabs.link
+    - content.code.annotation
+    - content.code.copy
+  icon:
+    repo: fontawesome/brands/github
+
+extra_css:
+  - assets/css/custom.css
+
+markdown_extensions:
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+
+nav:
+  - Home: "index.md"
+  - Quickstart: "quickstart.md"
+  - Design:
+      - "Architecture": "docs/01-architecture.md"
+      - "State and Context": "docs/02-state-and-context.md"
+      - "Tool Calls": "docs/03-tool-call.md"
+      - "Communication": "docs/04-communication.md"
+  - API Reference: "api/index.md"
+
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          options:
+            show_root_heading: true
+            show_source: false

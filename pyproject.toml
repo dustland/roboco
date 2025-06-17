@@ -50,7 +50,8 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["black", "mypy", "isort", "pytest", "pytest-cov", "flake8"]
+dev = ["pytest", "pytest-cov", "pytest-asyncio", "uv"]
+docs = ["mkdocs", "mkdocs-material", "mkdocstrings[python]"]
 code-execution = [
     "daytona>=0.1.0",
 ] # Opinionated: Daytona for sub-90ms sandboxes
@@ -71,7 +72,7 @@ all = [
 
 [project.scripts]
 # Universal CLI (primary interface)
-agentx = "agentx.cli.main:main"
+agentx = "agentx.cli.main:app"
 
 # Individual commands (backward compatibility)
 start = "agentx.run:start"

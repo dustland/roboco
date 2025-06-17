@@ -1,47 +1,74 @@
 <div align="center">
-  <img src="docs/assets/logo.png" alt="AgentX Logo" width="100" height="100">
+  <a href="https://gopher-earthy-6cf.notion.site/AgentX-Missions-Ideals-502329326b4848e6854e48c775a68786?pvs=4"><img src="docs/assets/logo.png" alt="AgentX Logo" width="150"></a>
+  <h1 align="center">AgentX</h1>
 </div>
 
-# AgentX - Multi-Agent Collaboration Framework
+<p align="center">
+  <b>An open-source framework for building autonomous AI agent teams.</b>
+  <br />
+  <a href="https://docs.agentx.dev"><strong>Explore the docs »</strong></a>
+  <br />
+  <br />
+  <a href="https://github.com/dustland/agentx/issues/new?assignees=&labels=bug&template=bug_report.md&title=">Report a Bug</a>
+  ·
+  <a href="https://github.com/dustland/agentx/issues/new?assignees=&labels=enhancement&template=feature_request.md&title=">Request a Feature</a>
+  
+  <br />
+  <span>
+  <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/python-3.11+-blue.svg" /></a>
 
-[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
-[![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+<a href="https://opensource.org/licenses/Apache-2.0">
+<img src="https://img.shields.io/badge/License-Apache%202.0-blue.svg"/></a>
+</span>
 
-AgentX is a modern, configuration-driven framework for building collaborative AI agent teams. It features a clean Task-centric API, intelligent Brain-powered reasoning, secure code execution with Daytona sandboxes, and intelligent memory management for sophisticated multi-agent workflows.
+</p>
 
-## 🚀 Key Features
+AgentX provides the backbone for creating, orchestrating, and observing sophisticated multi-agent systems. It moves beyond simple agent-to-agent communication to a robust, task-driven framework where teams of specialized agents collaborate to achieve complex goals.
 
-- **Brain-Powered Intelligence**: Each agent has a Brain component that handles all LLM reasoning, tool orchestration, and intelligent decision-making
-- **Task-Centric API**: Clean, intuitive object-oriented interface with task-level conversation management
-- **Configuration-Based**: Define agents, tools, and workflows in YAML
-- **Modern Observability**: Built-in monitoring with CLI and web dashboard (FastAPI + Preline UI)
-- **Secure Code Execution**: Daytona-powered sandboxes for safe AI code execution
-- **Memory System**: Intelligent storage with Mem0 integration (26% higher accuracy, 91% faster)
-- **Search Integration**: Web search with SerpAPI backend
-- **Tool Ecosystem**: Built-in tools (filesystem, memory, search) plus extensible registry
-- **Event System**: Real-time monitoring and observability
-- **Git-Based Storage**: Advanced artifact versioning with Git integration for code generation workflows
-- **Task Management**: Resume interrupted workflows with persistent sessions
-- **Production Ready**: Designed for scalability and reliability
+Based on a refined and modular architecture, AgentX is built around a few core concepts:
 
-## 📦 Installation
+- **🤖 Multi-Agent Teams**: Define teams of specialized agents in simple YAML files. Each agent can have its own role, tools, and configuration.
+- **🗣️ Natural Language Orchestration**: Agents hand off tasks to each other using natural language. A central `TaskExecutor` interprets these handoffs and routes work to the appropriate agent, enabling complex, dynamic workflows.
+- **🛠️ Secure & Extensible Tools**: Tools are defined with Python decorators and their schemas are automatically generated. Shell commands are executed in a secure Docker sandbox, providing safety and isolation. A flexible `ToolExecutor` manages the entire lifecycle.
+- **🧠 Stateful & Context-Aware Memory**: Agents maintain long-term memory, enabling them to recall past interactions and context. The memory system supports semantic search, ensuring agents have the information they need, when they need it.
+- **📡 Streamable Communication**: The entire lifecycle of a task, from agent thoughts to tool calls and results, is available as a real-time stream of events. This allows you to build rich, observable UIs like the Vercel AI SDK.
+- **🎯 Task-Centric API**: Interact with the system through a simple, powerful API. Kick off complex workflows with `execute_task()` or manage interactive sessions with `start_task()`.
+
+## 🚀 Getting Started
+
+The best way to get started is by following our **[Quickstart Guide](./docs/quickstart.md)**, which will walk you through building a simple chat application and a multi-agent writer/reviewer team.
+
+1.  **Clone the repository:**
+
+    ```sh
+    git clone https://github.com/dustland/agentx.git
+    cd agentx
+    ```
+
+2.  **Install dependencies:**
+
+    ```sh
+    uv sync
+    ```
+
+Complete working examples in `examples/`:
+
+### [Simple Team](examples/simple_team/) - Basic Collaboration
+
+Basic multi-agent collaboration demonstrating Brain-powered reasoning:
 
 ```bash
-git clone https://github.com/dustland/agentx.git
-cd agentx
-uv sync  # or pip install -e .
+# Using CLI
+agentx example simple_team
+
+# Or directly
+cd examples/simple_team
+python demo.py
 ```
 
-**Requirements:**
-
-- Python 3.11+
-- OpenAI API key (`OPENAI_API_KEY`)
-- Optional: SerpAPI key (`SERPAPI_KEY`) for web search
-- Optional: Daytona for secure code execution
-
-## 🏃‍♂️ Quick Start
-
 ### CLI Commands
+
+This framework comes with a convenient CLI tool for management:
 
 ```bash
 # Start API server with observability
@@ -64,14 +91,11 @@ agentx status
 
 ```python
 import asyncio
-import agentx
+from agentx import execute_task
 
 async def main():
     # Create a task with your team configuration
-    task = agentx.create_task("config/team.yaml")
-
-    # Start the collaboration - agents will use their Brains to think and collaborate
-    result = await task.start("Write a brief report on renewable energy trends")
+    result = execute_task("Write a brief report on renewable energy trends")
 
     print(f"Success: {result.success}")
     print(f"Summary: {result.summary}")
@@ -80,79 +104,7 @@ async def main():
 asyncio.run(main())
 ```
 
-### Task Management
-
-```python
-import agentx
-
-# Create and manage tasks
-task = agentx.create_task("config/team.yaml", "Research AI trends")
-task_id = task.task_id
-
-# Retrieve existing tasks
-task = agentx.get_task(task_id)
-all_tasks = agentx.list_tasks()
-
-# Task lifecycle
-await task.start("Task description")  # Start or resume
-await task.stop()                     # Stop if running
-await task.delete()                   # Clean up
-```
-
-### Memory Operations
-
-```python
-# Memory operations are automatically scoped to the task
-memory = task.get_memory()
-
-# Add memories (task_id is automatic)
-memory.add("Important context", agent_id="planner")
-
-# Search memories (task_id is automatic)
-results = memory.search("keyword", agent_id="planner")
-
-# Get all memories (task_id is automatic)
-all_memories = memory.get_all(agent_id="researcher")
-```
-
-### Event Handling
-
-```python
-# Event handling integrated with tasks
-def on_completion(event):
-    print(f"Task completed: {event.data}")
-
-task.on("task.completed", on_completion)
-task.off("task.completed", on_completion)
-```
-
-### Chat Session Access
-
-```python
-# Access chat functionality
-chat = task.get_chat()
-history = chat.get_chat_history()
-await chat.send_message("Additional instruction")
-```
-
-## 💾 Storage & Artifact Management
-
-AgentX features Git-based artifact versioning for code generation and iterative workflows:
-
-```python
-# Automatic Git versioning for artifacts
-workspace = task.get_workspace()
-
-# Store versioned artifacts (creates Git commits automatically)
-result = await workspace.store_artifact("fibonacci.py", code, "text/python")
-print(f"Version: {result.data['version']}")  # Git commit hash
-
-# Get specific versions and compare changes
-latest = await workspace.get_artifact("fibonacci.py")
-diff = await workspace.get_artifact_diff("fibonacci.py", "v1", "v2")
-```
-
-**Key Features**: Git integration, version control with meaningful commits, diff support, graceful fallback, workspace isolation. See [Storage Architecture](docs/04-storage-architecture.md) for details.
+This is autonomous run. You can refer to examples for message streaming and interactive running.
 
 ## 📊 Observability & Monitoring
 
@@ -172,153 +124,67 @@ Modern FastAPI + Preline UI dashboard with:
 ```bash
 # Start web dashboard
 agentx monitor --web
-
-# Custom port
-agentx monitor --web --port 8502
 ```
 
-### CLI Monitor
+## 🏗️ Architecture Overview
 
-Interactive command-line interface:
-
-```bash
-# Start CLI monitor
-agentx monitor
-
-# Start from any project subdirectory (auto-finds data)
-cd examples/simple_team/config
-agentx monitor --web
-
-# Specify custom data directory
-agentx monitor --data-dir /path/to/agentx_data
-
-# Available commands:
-monitor> status    # Show system status
-monitor> tasks     # List recent tasks
-monitor> memory    # Browse memory categories
-monitor> search    # Search memory content
-monitor> export    # Export data to JSON
-monitor> web       # Launch web interface
-```
-
-### Programmatic Access
-
-```python
-from agentx.observability.monitor import get_monitor
-
-# Get monitor instance
-monitor = get_monitor()
-
-# Access data
-dashboard_data = monitor.get_dashboard_data()
-recent_tasks = monitor.get_recent_tasks(10)
-conversation = monitor.get_task_conversation(task_id)
-memory_categories = monitor.get_memory_categories()
-```
-
-## 📚 Examples
-
-Complete working examples in `examples/`:
-
-### [Simple Team](examples/simple_team/) - Basic Collaboration
-
-Basic multi-agent collaboration demonstrating Brain-powered reasoning:
-
-```bash
-# Using CLI
-agentx example simple_team
-
-# Or directly
-cd examples/simple_team
-python demo.py
-```
-
-### [SuperWriter](examples/superwriter/) - Production Multi-Agent System
-
-A comprehensive writing system with research, planning, writing, and review agents:
-
-```bash
-# Using CLI
-agentx example superwriter
-
-# Or directly
-cd examples/superwriter
-python demo.py
-```
-
-## 🏗️ Architecture
+AgentX is a modular framework composed of several key components that work together to execute complex tasks. At its heart is the `TaskExecutor`, which manages the overall workflow. It interacts with a `Team of Agents` to perform work, and consults the `Orchestrator` to handle agent sequencing and tool calls.
 
 ```mermaid
-flowchart TB
-    User["User"] --> Task["Task"]
+graph TD
+    %% Client Layer
+    CLI[CLI Interface]
+    API[REST / WebSocket API]
 
-    subgraph TaskAPI["Task-Centric API"]
-        direction TB
-        Task --> Memory["Memory"]
-        Task --> Chat["ChatHistory"]
-        Task --> Events["Events"]
-        Task --> Team["Team"]
-    end
+    %% AgentX Core
+    TE[Task Executor]
+    ORCH[Orchestrator]
+    AGENTS[Team of Agents]
+    BRAIN[Agent Brain]
+    TOOL_EXEC[Tool Executor]
+    PLAT[Platform Services]
 
-    subgraph Team["Team Management"]
-        direction TB
-        TeamMgr["Team Manager"] --> Agent1["Agent 1"]
-        TeamMgr --> Agent2["Agent 2"]
-        TeamMgr --> Agent3["Agent 3"]
-    end
+    LLM[LLM Providers]
+    TOOLS[Builtin Tools]
+    API_EXT[External APIs]
+    MCP[MCP]
 
-    subgraph Agent1["Agent Architecture (All Agents Same Structure)"]
-        direction TB
-        Brain["🧠 Brain<br/>(LLM Reasoning)"]
-        Tools["🔧 Tools"]
-        Memory["💾 Memory"]
-        Events["📡 Events"]
-    end
+    %% Vertical flow connections
+    CLI --> TE
+    API --> TE
 
-    TaskAPI --> Team
-    Team --> Agent1
-    Team --> Agent2
-    Team --> Agent3
+    TE --> ORCH
+    TE --> AGENTS
+    AGENTS --> BRAIN
+    BRAIN --> LLM
 
-    subgraph CS["Core Subsystems"]
-        direction LR
-        Config["Config System"]:::sub
-        MemSys["Memory System"]:::sub
-        EventSys["Event System"]:::sub
-    end
+    ORCH --> TOOL_EXEC
+    TOOL_EXEC --> TOOLS
+    TOOL_EXEC --> MCP
+    MCP --> API_EXT
 
-    TaskAPI -.-> CS
+    TE --> PLAT
+
+    %% Styling for rounded corners
+    classDef default stroke:#333,stroke-width:2px,rx:10,ry:10
+    classDef client stroke:#1976d2,stroke-width:2px,rx:10,ry:10
+    classDef core stroke:#388e3c,stroke-width:2px,rx:10,ry:10
+    classDef external stroke:#f57c00,stroke-width:2px,rx:10,ry:10
+    classDef platform stroke:#7b1fa2,stroke-width:2px,rx:10,ry:10
+
+    %% Apply styles to specific nodes
+    class CLI,API client
+    class TE,ORCH,AGENTS,BRAIN core
+    class LLM,API_EXT,MCP external
+    class TOOL_EXEC,TOOLS,PLAT platform
 ```
-
-**Core Components:**
-
-1. **Task**: Central API object managing collaboration lifecycle
-2. **TeamManager**: Orchestrates agent collaboration
-3. **Agent**: Coordinates Brain, Tools, Memory, and Events as peer modules
-4. **Brain**: LLM reasoning and intelligent decision-making
-5. **Memory System**: Mem0-powered intelligent storage and retrieval
-6. **Tool System**: Extensible plugin architecture
-7. **Config System**: YAML-based configuration with Jinja2 templates
-
-### Brain Architecture
-
-The **Brain** component handles all LLM-related intelligence:
-
-- **LLM Integration**: Direct interface to OpenAI/providers
-- **Reasoning Engine**: Complex thinking and decision-making
-- **Tool Decision Making**: Determines which tools to call (Agent executes)
-- **Context Management**: Token counting, window management
-- **Response Generation**: Thoughtful, contextual responses
-
-The Agent coordinates between Brain (for reasoning), Tools (for execution), Memory (for context), and Events (for communication), ensuring proper separation of concerns.
 
 ## 📖 Documentation
 
-- **[System Architecture](docs/01-architecture.md)** - Overall design and Brain architecture
-- **[Collaboration Model](docs/02-collaboration-model.md)** - Agent handoffs and team coordination
-- **[Data and Events](docs/03-data-and-events.md)** - Event system and data flow
-- **[Storage Architecture](docs/04-storage-architecture.md)** - Git-based artifact versioning and storage layer
-- **[Requirements](docs/00-requirements.md)** - System requirements and design principles
+1. **[System Architecture](docs/arch/01-architecture.md)** - Overall design and system architecture
+1. **[State and Context Management](docs/arch/02-state-and-context.md)** State and Context management
+1. **[Tool Calling](docs/arch/03-tool-call.md)** - Invoke tools for actual tasks
+1. **[Communication and Message](docs/arch/04-communication.md)** - Message format for composite content and streaming
 
 ## 🤝 Contributing
 
