@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+    <url>
+         <loc>https://dustland.github.io/agentx/</loc>
+         <lastmod>2025-06-17</lastmod>
+    </url>
+    <url>
+         <loc>https://dustland.github.io/agentx/quickstart/</loc>
+         <lastmod>2025-06-17</lastmod>
+    </url>
+    <url>
+         <loc>https://dustland.github.io/agentx/api/</loc>
+         <lastmod>2025-06-17</lastmod>
+    </url>
+    <url>
+         <loc>https://dustland.github.io/agentx/arch/00-requirements/</loc>
+         <lastmod>2025-06-17</lastmod>
+    </url>
+    <url>
+         <loc>https://dustland.github.io/agentx/arch/01-architecture/</loc>
+         <lastmod>2025-06-17</lastmod>
+    </url>
+    <url>
+         <loc>https://dustland.github.io/agentx/arch/02-state-and-context/</loc>
+         <lastmod>2025-06-17</lastmod>
+    </url>
+    <url>
+         <loc>https://dustland.github.io/agentx/arch/03-tool-call/</loc>
+         <lastmod>2025-06-17</lastmod>
+    </url>
+    <url>
+         <loc>https://dustland.github.io/agentx/arch/04-communication/</loc>
+         <lastmod>2025-06-17</lastmod>
+    </url>
+</urlset>
