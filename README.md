@@ -6,7 +6,7 @@
 <p align="center">
   <b>An open-source framework for building autonomous AI agent teams.</b>
   <br />
-  <a href="https://docs.agentx.dev"><strong>Explore the docs »</strong></a>
+  <a href="https://dustland.github.io/agentx"><strong>Explore the docs »</strong></a>
   <br />
   <br />
   <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/python-3.11+-blue.svg" /></a>
