@@ -53,10 +53,10 @@ nav:
   - Home: "index.md"
   - Quickstart: "quickstart.md"
   - Design:
-      - "Architecture": "docs/01-architecture.md"
-      - "State and Context": "docs/02-state-and-context.md"
-      - "Tool Calls": "docs/03-tool-call.md"
-      - "Communication": "docs/04-communication.md"
+      - "Architecture": "arch/01-architecture.md"
+      - "State and Context": "arch/02-state-and-context.md"
+      - "Tool Calls": "arch/03-tool-call.md"
+      - "Communication": "arch/04-communication.md"
   - API Reference: "api/index.md"
 
 plugins:

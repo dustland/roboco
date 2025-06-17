@@ -13,5 +13,5 @@ These are the primary entry points for interacting with AgentX.
 
 ::: agentx.core.agent.Agent
 ::: agentx.core.orchestrator.Orchestrator
-::: agentx.core.task.TaskExecutor
+::: agentx.core.task.Task
 ::: agentx.core.tool.ToolRegistry
