@@ -1,8 +1,11 @@
 """
-Clean orchestrator implementation - pure routing logic only.
+Central orchestrator for managing agent interactions and tool execution.
 
-The orchestrator only makes routing decisions (complete, handoff, continue).
-Task creation and execution is handled by the Task class.
+The orchestrator is the central nervous system that:
+- Makes routing decisions (complete, handoff, continue)
+- Dispatches tool calls to ToolExecutor for secure execution
+- Manages agent collaboration and handoffs
+- Maintains task workflow coordination
 """
 
 import asyncio
@@ -12,13 +15,17 @@ from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional, List, AsyncGenerator
 
 from .team import Team
 from .agent import Agent
 from .brain import Brain, LLMMessage
 from .config import LLMConfig
 from ..utils.logger import get_logger
+
+# Import ToolExecutor for secure tool dispatch
+from ..tool.executor import ToolExecutor, ToolResult
+from ..tool.registry import get_tool_registry
 
 logger = get_logger(__name__)
 
@@ -40,33 +47,57 @@ class RoutingDecision:
 
 class Orchestrator:
     """
-    Pure routing orchestrator - only makes decisions about what happens next.
-    Does NOT create or execute tasks - that's the Task class's responsibility.
+    Central orchestrator for agent coordination and secure tool execution.
+    
+    This class handles:
+    - Routing decisions between agents (core orchestration)
+    - Dispatching tool calls to ToolExecutor for security
+    - Managing team collaboration workflows
+    - Intelligent handoff detection and execution
     """
     
-    def __init__(self, team: Team, max_rounds: int = None, timeout: int = None):
+    def __init__(self, team: Team = None, max_rounds: int = None, timeout: int = None):
         """Initialize orchestrator with team and limits."""
         self.team = team
         self.max_rounds = max_rounds or 50
         self.timeout = timeout or 3600  # 1 hour default
         
-        # Initialize orchestrator's brain for intelligent decisions
-        orchestrator_llm_config = LLMConfig(
-            model="deepseek-chat",
-            temperature=0.0,  # Low temperature for consistent decisions
-            max_tokens=200,   # Short responses for routing decisions
-            timeout=10        # Quick decisions
-        )
-        self.brain = Brain(orchestrator_llm_config)
+        # Initialize ToolExecutor for secure tool dispatch
+        self.tool_executor = ToolExecutor()
+        self.tool_registry = get_tool_registry()
         
-        logger.info(f"🎭 Orchestrator initialized for team '{team.name}' with {len(team.agents)} agents")
+        # Initialize orchestrator's brain for intelligent routing decisions
+        if team:
+            orchestrator_llm_config = LLMConfig(
+                model="deepseek/deepseek-chat",
+                temperature=0.0,  # Low temperature for consistent decisions
+                max_tokens=200,   # Short responses for routing decisions
+                timeout=10        # Quick decisions
+            )
+            self.brain = Brain(orchestrator_llm_config)
+            logger.info(f"🎭 Orchestrator initialized for team '{team.name}' with {len(team.agents)} agents")
+        else:
+            # Single-agent mode or global orchestrator
+            self.brain = None
+            logger.info("🎭 Orchestrator initialized for tool execution")
+
+    # ============================================================================
+    # CORE ORCHESTRATION - Agent routing and collaboration
+    # ============================================================================
 
     async def decide_next_step(self, current_agent: str, response: str, task_context: Dict[str, Any]) -> RoutingDecision:
         """
         Core routing logic - decide what happens next.
         
-        This is the ONLY job of the orchestrator: routing decisions.
+        This is the primary orchestration responsibility.
         """
+        if not self.team:
+            # Single agent mode - always complete
+            return RoutingDecision(
+                action=RoutingAction.COMPLETE,
+                reason="Single agent task completed"
+            )
+        
         # Check if task should be completed
         if await self._should_complete_task(current_agent, response, task_context):
             return RoutingDecision(
@@ -88,9 +119,128 @@ class Orchestrator:
             action=RoutingAction.CONTINUE,
             reason="No handoff needed, continue with current agent"
         )
-    
+
+    async def route_to_agent(
+        self, 
+        agent_name: str, 
+        messages: List[Dict[str, Any]], 
+        system_prompt: Optional[str] = None
+    ) -> str:
+        """
+        Route messages to a specific agent for processing.
+        
+        The orchestrator delegates to the agent but provides itself for tool execution.
+        """
+        if not self.team or agent_name not in self.team.agents:
+            raise ValueError(f"Agent '{agent_name}' not found in team")
+        
+        agent = self.team.agents[agent_name]
+        
+        # Agent handles conversation flow, orchestrator handles tool execution
+        return await agent.generate_response(
+            messages=messages,
+            system_prompt=system_prompt,
+            orchestrator=self  # Agent delegates tool execution to orchestrator
+        )
+
+    async def stream_from_agent(
+        self, 
+        agent_name: str, 
+        messages: List[Dict[str, Any]], 
+        system_prompt: Optional[str] = None
+    ) -> AsyncGenerator[str, None]:
+        """
+        Stream response from a specific agent.
+        
+        The orchestrator delegates to the agent but provides itself for tool execution.
+        """
+        if not self.team or agent_name not in self.team.agents:
+            raise ValueError(f"Agent '{agent_name}' not found in team")
+        
+        agent = self.team.agents[agent_name]
+        
+        # Agent handles conversation flow, orchestrator handles tool execution
+        async for chunk in agent.stream_response(
+            messages=messages,
+            system_prompt=system_prompt,
+            orchestrator=self  # Agent delegates tool execution to orchestrator
+        ):
+            yield chunk
+
+    # ============================================================================
+    # TOOL EXECUTION DISPATCH - Security and centralized control
+    # ============================================================================
+
+    async def execute_tool_calls(
+        self, 
+        tool_calls: List[Any], 
+        agent_name: str = "default"
+    ) -> List[Dict[str, Any]]:
+        """
+        Dispatch tool calls to ToolExecutor for secure execution.
+        
+        This provides centralized security control over all tool execution.
+        """
+        logger.debug(f"🔧 Orchestrator dispatching {len(tool_calls)} tool calls for agent '{agent_name}'")
+        return await self.tool_executor.execute_tool_calls(tool_calls, agent_name)
+
+    async def execute_single_tool(
+        self, 
+        tool_name: str, 
+        agent_name: str = "default",
+        **kwargs
+    ) -> ToolResult:
+        """
+        Dispatch single tool execution to ToolExecutor.
+        
+        Args:
+            tool_name: Name of the tool to execute
+            agent_name: Name of the agent requesting execution
+            **kwargs: Tool arguments
+            
+        Returns:
+            ToolResult with execution outcome
+        """
+        logger.debug(f"🔧 Orchestrator dispatching tool '{tool_name}' for agent '{agent_name}'")
+        return await self.tool_executor.execute_tool(tool_name, agent_name, **kwargs)
+
+    def get_available_tools(self, agent_name: str = "default") -> List[str]:
+        """Get list of tools available to an agent."""
+        all_tools = self.tool_registry.list_tools()
+        
+        # Filter by agent permissions
+        security_policy = self.tool_executor.security_policy
+        allowed_tools = security_policy.TOOL_PERMISSIONS.get(
+            agent_name, 
+            security_policy.TOOL_PERMISSIONS["default"]
+        )
+        
+        return [tool for tool in all_tools if tool in allowed_tools]
+
+    def get_tool_schemas_for_agent(self, agent_name: str = "default") -> List[Dict[str, Any]]:
+        """Get tool schemas available to a specific agent."""
+        from ..tool.schemas import get_tool_schemas
+        available_tools = self.get_available_tools(agent_name)
+        return get_tool_schemas(available_tools)
+
+    def get_execution_stats(self) -> Dict[str, Any]:
+        """Get tool execution statistics."""
+        return self.tool_executor.get_execution_stats()
+
+    def clear_execution_history(self):
+        """Clear tool execution history."""
+        self.tool_executor.clear_history()
+        logger.info("🧹 Tool execution history cleared")
+
+    # ============================================================================
+    # PRIVATE ROUTING LOGIC - Team coordination and handoff intelligence
+    # ============================================================================
+
     async def _should_complete_task(self, current_agent: str, response: str, task_context: Dict[str, Any]) -> bool:
         """Use LLM intelligence to decide if the task should be completed."""
+        if not self.team:
+            return True
+            
         # Single agent teams complete after first response
         if len(self.team.agents) == 1:
             return True
@@ -103,9 +253,12 @@ class Orchestrator:
         
         # Use LLM to intelligently detect completion
         return await self._llm_detect_completion(current_agent, response, task_context)
-    
+
     def _decide_handoff_target(self, current_agent: str, response: str, task_context: Dict[str, Any]) -> Optional[str]:
         """Decide if we should handoff and to whom."""
+        if not self.team:
+            return None
+            
         # First check explicit handoff rules
         rule_target = self._check_handoff_rules(current_agent, response)
         if rule_target:
@@ -113,7 +266,7 @@ class Orchestrator:
         
         # Then use natural intelligence based on agent descriptions
         return self._natural_handoff_decision(current_agent, response, task_context)
-    
+
     def _check_handoff_rules(self, current_agent: str, response: str) -> Optional[str]:
         """Check if handoff rules provide specific guidance."""
         if not hasattr(self.team, 'config') or not hasattr(self.team.config, 'handoffs'):
@@ -135,15 +288,9 @@ class Orchestrator:
                 return rule.to_agent
         
         return None
-    
+
     def _natural_handoff_decision(self, current_agent: str, response: str, task_context: Dict[str, Any]) -> Optional[str]:
-        """
-        Use natural intelligence to decide handoff based on agent descriptions.
-        
-        This uses the orchestrator's training knowledge about common workflows,
-        not hardcoded rules.
-        """
-        # Get current agent info
+        """Use natural intelligence to decide handoff based on agent descriptions."""
         current_agent_obj = self.team.agents.get(current_agent)
         if not current_agent_obj:
             return None
@@ -176,7 +323,6 @@ class Orchestrator:
         
         # Reviewer can hand back to writer or move forward
         if 'review' in current_desc:
-            # Look for writer first (for revisions)
             for name, agent in other_agents.items():
                 desc = agent.config.description.lower()
                 if 'writ' in desc:
@@ -197,9 +343,14 @@ class Orchestrator:
                     return name
         
         return None
-    
+
     async def _llm_detect_completion(self, current_agent: str, response: str, task_context: Dict[str, Any]) -> bool:
         """Use LLM intelligence to detect if the task should be completed."""
+        if not self.brain:
+            # Fallback without LLM
+            round_count = task_context.get('round_count', 0)
+            return round_count >= 6
+            
         try:
             # Get task context
             initial_prompt = task_context.get('initial_prompt', 'Unknown task')
@@ -263,7 +414,20 @@ Respond with exactly one word: COMPLETE or CONTINUE"""
         except Exception as e:
             logger.error(f"LLM completion detection failed: {e}")
             # Fallback: complete after reasonable rounds to prevent infinite loops
+            round_count = task_context.get('round_count', 0)
             if round_count >= 6:
                 logger.info(f"🔄 Fallback: Completing after {round_count} rounds")
                 return True
             return False
+
+
+# Global orchestrator instance for single-agent tool execution
+_global_orchestrator = None
+
+
+def get_orchestrator() -> Orchestrator:
+    """Get the global orchestrator instance for single-agent tool execution."""
+    global _global_orchestrator
+    if _global_orchestrator is None:
+        _global_orchestrator = Orchestrator()  # No team = tool execution only
+    return _global_orchestrator

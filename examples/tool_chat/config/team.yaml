@@ -1,0 +1,14 @@
+name: "ToolChatTeam"
+description: "A single agent that uses search and custom weather tools to answer questions"
+output_dir: "workspace"
+
+agents:
+  - name: assistant
+    description: "AI assistant that uses tools to gather information and provide comprehensive answers"
+    class: agentx.core.agent.Agent
+    prompt_template: "prompts/assistant.md"
+    llm_config:
+      model: deepseek/deepseek-chat
+      temperature: 0.3
+      max_tokens: 2048
+# No handoffs needed - single agent

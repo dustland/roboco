@@ -4,9 +4,12 @@ CLI commands for tool management and discovery.
 
 import click
 from ..core.tool import print_available_tools, validate_agent_tools, suggest_tools_for_agent
-from ..tools.web_tools import WebTool
-from ..tools.search_tools import SearchTool
+from ..builtin_tools.web_tools import WebTool
+from ..builtin_tools.search_tools import SearchTool
 from ..core.tool import CodeExecutionTool, register_tool
+from ..utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 @click.group()

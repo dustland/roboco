@@ -2,10 +2,13 @@ from pydantic import BaseModel, Field
 from typing import List, Dict, Any, Optional, AsyncGenerator
 from datetime import datetime
 from enum import Enum
+import json
+import asyncio
 
 from .brain import Brain, LLMMessage, LLMResponse
 from .config import AgentConfig, LLMConfig
 from .message import TaskStep, TextPart, ToolCallPart, ToolResultPart
+from .tool import get_tool_schemas, Tool, get_tool_registry
 from ..utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -33,12 +36,18 @@ class AgentState(BaseModel):
 
 class Agent:
     """
-    Represents an active agent that can process tasks and generate responses.
+    Represents an autonomous agent that manages its own conversation flow.
     
-    This is the main execution class that combines:
+    Key Principles:
+    - Each agent is autonomous and manages its own conversation flow
+    - Agents communicate with other agents through public interfaces only
+    - The brain is private to the agent - no external access
+    - Tool execution is handled by orchestrator for security and control
+    
+    This combines:
     - AgentConfig (configuration data)
-    - Brain (LLM interaction)
-    - Agent-specific logic and state management
+    - Brain (private LLM interaction)
+    - Conversation management (delegates tool execution to orchestrator)
     """
     
     def __init__(self, config: AgentConfig):
@@ -52,7 +61,7 @@ class Agent:
         self.name = config.name
         self.description = config.description
         
-        # Initialize Brain with agent's LLM config or default
+        # Initialize Brain (PRIVATE to this agent)
         llm_config = config.llm_config or LLMConfig()
         self.brain = Brain(llm_config)
         
@@ -95,220 +104,303 @@ class Agent:
         ]
         return builtin_tools
     
+    def get_tools_json(self) -> List[Dict[str, Any]]:
+        """Get the JSON schemas for the tools available to this agent."""
+        if not self.tools:
+            return []
+        return get_tool_schemas(self.tools)
+
+    # ============================================================================
+    # PUBLIC AGENT INTERFACE - Same as Brain interface for consistency
+    # ============================================================================
+
     async def generate_response(
         self,
-        task_prompt: str,
-        context: Dict[str, Any],
-        conversation_history: List[TaskStep],
-        system_prompt: Optional[str] = None
-    ) -> LLMResponse:
+        messages: List[Dict[str, Any]],
+        system_prompt: Optional[str] = None,
+        orchestrator = None,
+        max_tool_rounds: int = 10
+    ) -> str:
         """
-        Generate a response to input messages.
+        Generate a complete response with tool execution handled by orchestrator.
+        
+        This matches Brain's interface but includes tool execution loop.
         
         Args:
-            task_prompt: The main task prompt
-            context: Additional context for the agent
-            conversation_history: Previous conversation steps
-            system_prompt: Override system prompt (optional)
+            messages: Conversation messages in LLM format
+            system_prompt: Optional system prompt override
+            orchestrator: Orchestrator instance for tool execution
+            max_tool_rounds: Maximum tool execution rounds
             
         Returns:
-            LLM response with content and metadata
+            Complete response after all tool executions
         """
         self.state.is_active = True
-        self.state.current_step_id = context.get('step_id')
-        
         try:
-            # Prepare messages for LLM
-            messages = self._prepare_messages(
-                task_prompt=task_prompt,
-                conversation_history=conversation_history,
-                context=context
-            )
-            
-            # Use provided system prompt or agent's default
-            if not system_prompt:
-                system_prompt = self._build_system_prompt(context)
-            
-            # Generate response using Brain
-            response = await self.brain.generate_response(
-                messages=messages,
-                system_prompt=system_prompt,
-                available_tools=self.tools
-            )
-            
-            # Update agent state
-            self.state.last_response = response.content
-            self.state.last_response_timestamp = datetime.now()
-            self.state.tokens_used += getattr(response, 'tokens_used', 0)
-            
-            logger.debug(f"Agent '{self.name}' generated response: {len(response.content)} chars")
-            return response
-            
-        except Exception as e:
-            self.state.errors_encountered += 1
-            logger.error(f"Agent '{self.name}' error: {e}")
-            raise
+            return await self._conversation_loop(messages, system_prompt, orchestrator, max_tool_rounds)
         finally:
             self.state.is_active = False
-    
+
     async def stream_response(
         self,
-        task_prompt: str,
-        context: Dict[str, Any],
-        conversation_history: List[TaskStep],
-        system_prompt: Optional[str] = None
+        messages: List[Dict[str, Any]],
+        system_prompt: Optional[str] = None,
+        orchestrator = None,
+        max_tool_rounds: int = 10
     ) -> AsyncGenerator[str, None]:
         """
-        Generate a streaming response to input messages.
+        Stream response with tool execution handled by orchestrator.
+        
+        This matches Brain's interface but includes tool execution loop.
         
         Args:
-            task_prompt: The main task prompt
-            context: Additional context for the agent
-            conversation_history: Previous conversation steps
-            system_prompt: Override system prompt (optional)
+            messages: Conversation messages in LLM format
+            system_prompt: Optional system prompt override
+            orchestrator: Orchestrator instance for tool execution
+            max_tool_rounds: Maximum tool execution rounds
             
         Yields:
-            Response chunks as they are generated
+            Response chunks and tool execution status updates
         """
         self.state.is_active = True
-        self.state.current_step_id = context.get('step_id')
-        
         try:
-            # Prepare messages for LLM
-            messages = self._prepare_messages(
-                task_prompt=task_prompt,
-                conversation_history=conversation_history,
-                context=context
-            )
-            
-            # Use provided system prompt or agent's default
-            if not system_prompt:
-                system_prompt = self._build_system_prompt(context)
-            
-            # Stream response using Brain
-            response_chunks = []
-            async for chunk in self.brain.stream_response(
-                messages=messages,
-                system_prompt=system_prompt
-            ):
-                response_chunks.append(chunk)
+            async for chunk in self._streaming_loop(messages, system_prompt, orchestrator, max_tool_rounds):
                 yield chunk
-            
-            # Update agent state with complete response
-            complete_response = "".join(response_chunks)
-            self.state.last_response = complete_response
-            self.state.last_response_timestamp = datetime.now()
-            
-            logger.debug(f"Agent '{self.name}' streamed response: {len(complete_response)} chars")
-            
-        except Exception as e:
-            self.state.errors_encountered += 1
-            logger.error(f"Agent '{self.name}' streaming error: {e}")
-            raise
         finally:
             self.state.is_active = False
-    
-    def _prepare_messages(
+
+    # ============================================================================
+    # CONVERSATION MANAGEMENT - Works with orchestrator for tool execution
+    # ============================================================================
+
+    async def _conversation_loop(
         self,
-        task_prompt: str,
-        conversation_history: List[TaskStep],
-        context: Dict[str, Any]
-    ) -> List[LLMMessage]:
-        """Prepare messages for LLM based on conversation history."""
-        messages = []
+        messages: List[Dict[str, Any]],
+        system_prompt: Optional[str],
+        orchestrator,
+        max_tool_rounds: int = 10
+    ) -> str:
+        """
+        Conversation loop that works with orchestrator for tool execution.
         
-        # Add initial task prompt
-        messages.append(LLMMessage(
-            role="user",
-            content=task_prompt,
-            timestamp=datetime.now()
-        ))
+        Agent generates responses, orchestrator executes tools for security.
+        """
+        conversation = messages.copy()
         
-        # Add conversation history
-        for step in conversation_history:
-            for part in step.parts:
-                if isinstance(part, TextPart):
-                    # Determine role based on agent
-                    role = "assistant" if step.agent_name == self.name else "user"
-                    messages.append(LLMMessage(
-                        role=role,
-                        content=part.text,
-                        timestamp=step.timestamp
-                    ))
+        for round_num in range(max_tool_rounds):
+            # Get response from brain
+            llm_response = await self.brain.generate_response(
+                messages=conversation,
+                system_prompt=system_prompt,
+                tools=self.get_tools_json()
+            )
+            
+            # Check if brain wants to call tools
+            if llm_response.tool_calls:
+                logger.debug(f"Agent '{self.name}' requesting {len(llm_response.tool_calls)} tool calls in round {round_num + 1}")
+                
+                # Add assistant's message with tool calls
+                conversation.append({
+                    "role": "assistant",
+                    "content": llm_response.content,
+                    "tool_calls": [
+                        {
+                            "id": tc.id,
+                            "type": tc.type,
+                            "function": {
+                                "name": tc.function.name,
+                                "arguments": tc.function.arguments
+                            }
+                        } for tc in llm_response.tool_calls
+                    ]
+                })
+                
+                # Orchestrator executes tools for security
+                if orchestrator:
+                    tool_messages = await orchestrator.execute_tool_calls(llm_response.tool_calls)
+                    conversation.extend(tool_messages)
+                else:
+                    # No orchestrator - add error messages
+                    for tc in llm_response.tool_calls:
+                        conversation.append({
+                            "role": "tool",
+                            "tool_call_id": tc.id,
+                            "name": tc.function.name,
+                            "content": json.dumps({"success": False, "error": "No orchestrator available for tool execution"})
+                        })
+                
+                # Continue to next round
+                continue
+            else:
+                # No tool calls, return final response
+                return llm_response.content or ""
         
-        return messages
-    
-    def _build_system_prompt(self, context: Dict[str, Any]) -> str:
-        """Build system prompt from agent configuration and context."""
-        # Start with base prompt template
-        base_prompt = getattr(self.config, 'prompt_template', '') or "You are a helpful AI assistant."
+        # Max rounds exceeded
+        logger.warning(f"Agent '{self.name}' exceeded maximum tool execution rounds ({max_tool_rounds})")
+        return llm_response.content or "I apologize, but I've reached the maximum number of tool execution attempts."
+
+    async def _streaming_loop(
+        self,
+        messages: List[Dict[str, Any]],
+        system_prompt: Optional[str],
+        orchestrator,
+        max_tool_rounds: int = 10
+    ) -> AsyncGenerator[str, None]:
+        """
+        Streaming conversation loop that works with orchestrator for tool execution.
+        """
+        conversation = messages.copy()
         
-        # Add agent description
-        if self.description:
-            base_prompt += f"\n\nAgent Description: {self.description}"
+        for round_num in range(max_tool_rounds):
+            # Get response from brain (non-streaming to check for tool calls)
+            llm_response = await self.brain.generate_response(
+                messages=conversation,
+                system_prompt=system_prompt,
+                tools=self.get_tools_json()
+            )
+            
+            # Check if brain wants to call tools
+            if llm_response.tool_calls:
+                tool_names = [tc.function.name for tc in llm_response.tool_calls]
+                yield f"🔧 Executing tools: {', '.join(tool_names)}...\n"
+                
+                # Add assistant's message with tool calls
+                conversation.append({
+                    "role": "assistant",
+                    "content": llm_response.content,
+                    "tool_calls": [
+                        {
+                            "id": tc.id,
+                            "type": tc.type,
+                            "function": {
+                                "name": tc.function.name,
+                                "arguments": tc.function.arguments
+                            }
+                        } for tc in llm_response.tool_calls
+                    ]
+                })
+                
+                # Orchestrator executes tools for security
+                if orchestrator:
+                    tool_messages = await orchestrator.execute_tool_calls(llm_response.tool_calls)
+                    conversation.extend(tool_messages)
+                else:
+                    # No orchestrator - add error messages
+                    for tc in llm_response.tool_calls:
+                        conversation.append({
+                            "role": "tool",
+                            "tool_call_id": tc.id,
+                            "name": tc.function.name,
+                            "content": json.dumps({"success": False, "error": "No orchestrator available for tool execution"})
+                        })
+                
+                yield "✅ Tools executed. Continuing...\n"
+                
+                # Continue to next round
+                continue
+            else:
+                # No tool calls - stream the final response
+                if llm_response.content:
+                    # Make a streaming call for the final response
+                    async for chunk in self.brain.stream_response(
+                        messages=conversation,
+                        system_prompt=system_prompt
+                    ):
+                        yield chunk
+                return
         
-        # Add available tools information
-        if self.tools:
-            tools_info = f"\n\nAvailable Tools: {', '.join(self.tools)}"
-            base_prompt += tools_info
+        # Max rounds exceeded
+        yield "I apologize, but I've reached the maximum number of tool execution attempts."
+
+    def build_system_prompt(self, context: Dict[str, Any] = None) -> str:
+        """Build the system prompt for the agent, including dynamic context and tool definitions."""
+        base_prompt = self.config.prompt_template
+        
+        if not context:
+            return base_prompt
         
         # Add context information
-        if context.get('available_tools'):
-            tools_context = f"\n\nTool Schemas: {context['available_tools']}"
-            base_prompt += tools_context
+        current_datetime = datetime.now().strftime("%A, %B %d, YYYY at %I:%M %p")
+        context_prompt = f"""
+Here is some context for the current task:
+- Current date and time: {current_datetime}
+- Task ID: {context.get('task_id', 'N/A')}
+- Round: {context.get('round_count', 0)}
+- Workspace: {context.get('workspace_dir', 'N/A')}
+"""
         
-        if context.get('handoff_targets'):
-            handoff_info = f"\n\nHandoff Targets: {', '.join(context['handoff_targets'])}"
-            base_prompt += handoff_info
+        # Add tool information with explicit instructions
+        tools_prompt = ""
+        if self.tools:
+            available_tools = [tool for tool in self.tools if tool in [t['function']['name'] for t in self.get_tools_json()]]
+            if available_tools:
+                tools_prompt = f"""
+
+IMPORTANT: You have access to the following tools. Use them when needed to complete tasks:
+
+Available Tools: {', '.join(available_tools)}
+
+When you need to use a tool:
+1. Think about which tool would help accomplish the task
+2. Call the tool with the appropriate parameters
+3. Wait for the result before continuing
+4. Use the tool results to inform your response
+
+Tool Usage Guidelines:
+- Use tools proactively when they can help solve the user's request
+- For file operations, use the file management tools
+- For saving important content, use store_artifact
+- For research or web searches, use the search tools
+- Always check tool results and handle errors gracefully
+"""
         
-        return base_prompt
+        return f"{base_prompt}{context_prompt}{tools_prompt}"
+
+    # ============================================================================
+    # UTILITY METHODS
+    # ============================================================================
     
     def get_capabilities(self) -> Dict[str, Any]:
-        """Get agent capabilities and current state."""
+        """Get agent capabilities summary."""
         return {
             "name": self.name,
             "description": self.description,
             "tools": self.tools,
             "memory_enabled": self.memory_enabled,
             "max_iterations": self.max_iterations,
-            "state": self.state.dict(),
-            "llm_model": self.brain.config.model
+            "state": self.state.dict()
         }
     
     def reset_state(self):
-        """Reset agent state for new task."""
+        """Reset agent state."""
         self.state = AgentState(agent_name=self.name)
-        logger.debug(f"Agent '{self.name}' state reset")
     
     def add_tool(self, tool):
-        """Add a tool to the agent's toolset.
-        
-        Args:
-            tool: Tool function or tool name to add
-        """
-        if callable(tool):
-            # If it's a function, add it to the tools list
-            tool_name = getattr(tool, '__name__', str(tool))
-            self.tools.append(tool)
-            logger.debug(f"Added tool function '{tool_name}' to agent '{self.name}'")
-        elif isinstance(tool, str):
-            # If it's a string, add it to the tools list
+        """Add a tool to the agent's capabilities."""
+        if isinstance(tool, str):
             if tool not in self.tools:
                 self.tools.append(tool)
-                logger.debug(f"Added tool '{tool}' to agent '{self.name}'")
+        elif isinstance(tool, Tool):
+            # Register the tool and add its methods
+            from .tool import register_tool
+            register_tool(tool)
+            methods = tool.get_callable_methods()
+            for method_name in methods:
+                if method_name not in self.tools:
+                    self.tools.append(method_name)
+        else:
+            raise ValueError(f"Invalid tool type: {type(tool)}")
     
     def remove_tool(self, tool_name: str):
         """Remove a tool from the agent's capabilities."""
         if tool_name in self.tools:
             self.tools.remove(tool_name)
-            logger.info(f"Tool '{tool_name}' removed from agent '{self.name}'")
     
     def update_config(self, **kwargs):
-        """Update agent configuration dynamically."""
+        """Update agent configuration."""
         for key, value in kwargs.items():
             if hasattr(self.config, key):
                 setattr(self.config, key, value)
-                logger.debug(f"Agent '{self.name}' config updated: {key} = {value}")
     
     def __str__(self) -> str:
         return f"Agent(name='{self.name}', tools={len(self.tools)}, active={self.state.is_active})"
@@ -316,11 +408,16 @@ class Agent:
     def __repr__(self) -> str:
         return self.__str__()
 
+
 def create_assistant_agent(name: str, system_message: str = "") -> Agent:
-    """
-    Backwards compatibility function to create a basic assistant agent.
-    """
-    return Agent(
+    """Create a simple assistant agent with default configuration."""
+    from .config import AgentConfig, LLMConfig
+    
+    config = AgentConfig(
         name=name,
-        system_message=system_message or "You are a helpful assistant."
-    ) 
+        description="AI Assistant",
+        prompt_template=system_message or "You are a helpful AI assistant.",
+        llm_config=LLMConfig()
+    )
+    
+    return Agent(config) 

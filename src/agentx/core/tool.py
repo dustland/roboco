@@ -4,13 +4,9 @@ Tool component for function calling and code execution.
 
 import asyncio
 import inspect
-import json
-import logging
 import time
-from typing import Dict, List, Optional, Any, Callable, Union, get_type_hints, get_origin, get_args
-from dataclasses import dataclass, field
-from abc import ABC, abstractmethod
-from functools import wraps
+from typing import Dict, List, Optional, Any, Callable, get_type_hints
+from dataclasses import dataclass
 
 from pydantic import BaseModel, Field, create_model
 
@@ -177,81 +173,6 @@ class Tool:
         
         return schemas
 
-
-class CodeExecutionTool(Tool):
-    """Tool for executing code securely."""
-    
-    def __init__(self):
-        super().__init__("code_execution")
-        self.executor = None
-        self._init_executor()
-    
-    def _init_executor(self):
-        """Initialize code executor."""
-        try:
-            from autogen.coding import LocalCommandLineCodeExecutor
-            import tempfile
-            
-            self.executor = LocalCommandLineCodeExecutor(
-                timeout=60,
-                work_dir=tempfile.mkdtemp()
-            )
-        except ImportError:
-            logger.warning("autogen not available, code execution disabled")
-            self.executor = None
-    
-    @tool(
-        description="Execute Python code securely in a sandboxed environment",
-        return_description="ToolResult with execution output, success status, and execution time"
-    )
-    async def execute_code(self, code: str, language: str = "python") -> ToolResult:
-        """
-        Execute code and return result.
-        
-        Args:
-            code: The Python code to execute (required)
-            language: Programming language, defaults to 'python'. Supported: python, bash, shell
-            
-        Returns:
-            ToolResult containing execution output and metadata
-        """
-        if not self.executor:
-            return ToolResult(
-                success=False,
-                result=None,
-                error="Code executor not available"
-            )
-        
-        start_time = time.time()
-        
-        try:
-            result = self.executor.execute_code_blocks([{
-                "code": code,
-                "language": language
-            }])
-            
-            execution_time = time.time() - start_time
-            
-            return ToolResult(
-                success=True,
-                result=result,
-                execution_time=execution_time,
-                metadata={"language": language}
-            )
-            
-        except Exception as e:
-            execution_time = time.time() - start_time
-            logger.error(f"Code execution failed: {e}")
-            
-            return ToolResult(
-                success=False,
-                result=None,
-                error=str(e),
-                execution_time=execution_time,
-                metadata={"language": language, "error_type": type(e).__name__}
-            )
-
-
 class ToolRegistry:
     """
     Global tool registry that manages all available tools and creates schemas.
@@ -261,12 +182,13 @@ class ToolRegistry:
     """
     
     _instance = None
+    _tools: Dict[str, tuple[Tool, Callable, Optional[BaseModel]]]
     
     def __new__(cls):
         if cls._instance is None:
             cls._instance = super(ToolRegistry, cls).__new__(cls)
             # Initialize state here to ensure it's done only once.
-            cls._instance._tools: Dict[str, tuple[Tool, Callable, Optional[BaseModel]]] = {}
+            cls._instance._tools = {}
         return cls._instance
 
     def clear(self):

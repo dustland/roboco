@@ -24,7 +24,7 @@ from typing import Dict, Any, Optional, List
 
 from .team import Team
 from .agent import Agent
-from .message import TaskStep, TextPart
+from .message import TaskStep, TextPart, ToolCallPart, ToolResultPart
 from .brain import LLMMessage
 from ..event.api import publish_event
 from .event import (
@@ -32,6 +32,8 @@ from .event import (
     AgentStartEvent, AgentCompleteEvent, AgentHandoffEvent
 )
 from ..utils.logger import get_logger
+from ..storage.workspace import WorkspaceStorage
+from .tool import execute_tool, ToolResult
 
 logger = get_logger(__name__)
 
@@ -298,66 +300,85 @@ class Task:
             }
     
     async def _execute_agent_turn(self) -> str:
-        """Execute a single agent turn and return the response."""
-        agent = self.team.get_agent(self.current_agent)
-        if not agent:
-            raise ValueError(f"Agent not found: {self.current_agent}")
-        
-        # Prepare context
+        """
+        Execute a full agent turn using orchestrator's agent routing.
+        """
         context = self._prepare_agent_context()
         
-        # Call agent
-        response = await agent.generate_response(
-            task_prompt=self.initial_prompt,
-            context=context,
-            conversation_history=self.history,
-            system_prompt=self.team.render_agent_prompt(self.current_agent, context)
-        )
+        # Convert task history to conversation format
+        conversation_messages = self._convert_history_to_messages()
         
-        # Add to history
-        step = TaskStep(
-            step_id=self._generate_step_id(),
+        # Build system prompt for agent
+        agent = self.team.get_agent(self.current_agent)
+        system_prompt = agent.build_system_prompt(context)
+        
+        # Use orchestrator to route to agent - orchestrator handles tool execution
+        final_response = await self._orchestrator.route_to_agent(
             agent_name=self.current_agent,
-            parts=[TextPart(text=response.content)],
-            timestamp=datetime.now()
+            messages=conversation_messages,
+            system_prompt=system_prompt
         )
-        self.add_step(step)
         
-        return response.content
-    
+        # Add final response to task history
+        self.add_step(TaskStep(
+            agent_name=self.current_agent, 
+            parts=[TextPart(text=final_response)]
+        ))
+        
+        return final_response
+
     async def _stream_agent_turn(self):
-        """Execute a single agent turn with streaming."""
-        agent = self.team.get_agent(self.current_agent)
-        if not agent:
-            raise ValueError(f"Agent not found: {self.current_agent}")
-        
-        # Prepare context
+        """
+        Execute a full agent turn with streaming using orchestrator's agent routing.
+        """
         context = self._prepare_agent_context()
         
-        # Stream agent response
-        full_response = ""
-        async for chunk in agent.stream_response(
-            task_prompt=self.initial_prompt,
-            context=context,
-            conversation_history=self.history,
-            system_prompt=self.team.render_agent_prompt(self.current_agent, context)
-        ):
-            full_response += chunk
-            yield {
-                "type": "content",
-                "content": chunk,
-                "agent": self.current_agent
-            }
+        # Convert task history to conversation format
+        conversation_messages = self._convert_history_to_messages()
         
-        # Add to history
-        step = TaskStep(
-            step_id=self._generate_step_id(),
+        # Build system prompt for agent
+        agent = self.team.get_agent(self.current_agent)
+        system_prompt = agent.build_system_prompt(context)
+        
+        # Use orchestrator to stream from agent - orchestrator handles tool execution
+        response_chunks = []
+        async for chunk in self._orchestrator.stream_from_agent(
             agent_name=self.current_agent,
-            parts=[TextPart(text=full_response)],
-            timestamp=datetime.now()
-        )
-        self.add_step(step)
-    
+            messages=conversation_messages,
+            system_prompt=system_prompt
+        ):
+            yield {"type": "content", "content": chunk}
+            response_chunks.append(chunk)
+        
+        # Add final response to task history
+        final_response = "".join(response_chunks)
+        if final_response:
+            self.add_step(TaskStep(
+                agent_name=self.current_agent, 
+                parts=[TextPart(text=final_response)]
+            ))
+
+    async def _execute_single_tool(self, tool_call: Any) -> ToolResultPart:
+        """Helper to execute one tool call and return a ToolResultPart."""
+        tool_name = tool_call.function.name
+        try:
+            tool_args = json.loads(tool_call.function.arguments)
+            tool_result: ToolResult = await execute_tool(name=tool_name, **tool_args)
+            return ToolResultPart(
+                tool_call_id=tool_call.id,
+                tool_name=tool_name,
+                result=tool_result.result,
+                is_error=not tool_result.success
+            )
+        except Exception as e:
+            logger.error(f"Error executing tool '{tool_name}': {e}")
+            return ToolResultPart(
+                tool_call_id=tool_call.id,
+                tool_name=tool_name,
+                result=f"Error executing tool: {e}",
+                is_error=True
+            )
+
     def _prepare_agent_context(self) -> Dict[str, Any]:
         """Prepare context for agent execution."""
         return {
@@ -371,12 +392,54 @@ class Task:
         """Get current task context for routing decisions."""
         return {
             "task_id": self.task_id,
+            "initial_prompt": self.initial_prompt,
             "round_count": self.round_count,
             "total_steps": len(self.history),
             "is_complete": self.is_complete,
             "current_agent": self.current_agent,
             "available_agents": list(self.team.agents.keys())
         }
+    
+    def _convert_history_to_messages(self) -> List[Dict[str, Any]]:
+        """Convert task history to conversation message format for orchestrator."""
+        messages = []
+        
+        for step in self.history:
+            if step.agent_name == "user":
+                # User messages
+                for part in step.parts:
+                    if isinstance(part, TextPart):
+                        messages.append({
+                            "role": "user",
+                            "content": part.text
+                        })
+            elif step.agent_name == "system":
+                # Tool results
+                for part in step.parts:
+                    if isinstance(part, ToolResultPart):
+                        messages.append({
+                            "role": "tool",
+                            "tool_call_id": part.tool_call_id,
+                            "name": part.tool_name,
+                            "content": json.dumps({
+                                "success": not part.is_error,
+                                "result": part.result
+                            })
+                        })
+            else:
+                # Agent messages
+                for part in step.parts:
+                    if isinstance(part, TextPart):
+                        messages.append({
+                            "role": "assistant",
+                            "content": part.text
+                        })
+                    elif isinstance(part, ToolCallPart):
+                        # This would be part of an assistant message with tool calls
+                        # We'll handle this in a more sophisticated way if needed
+                        pass
+        
+        return messages
     
     def _generate_task_id(self) -> str:
         """Generate a unique task ID."""
@@ -470,7 +533,7 @@ class Task:
         """Register task-specific tools with this task's workspace."""
         try:
             from ..storage.factory import StorageFactory
-            from ..tools.storage_tools import create_storage_tools
+            from ..builtin_tools.storage_tools import create_storage_tools
             from ..core.tool import register_tool
             
             # Create workspace storage for this task
@@ -486,7 +549,7 @@ class Task:
             register_tool(artifact_tool)
             
             # Also register other built-in tools (context, planning, etc.)
-            from ..tools import register_builtin_tools
+            from ..builtin_tools import register_builtin_tools
             register_builtin_tools(workspace_path=str(self.workspace_dir))
             
             logger.info(f"Registered task-specific storage tools for workspace: {self.workspace_dir}")
@@ -567,6 +630,21 @@ class Task:
                     
         except Exception as e:
             logger.warning(f"Failed to save conversation history: {e}")
+
+    def setup_storage_tools(self):
+        """Setup storage tools for the task."""
+        if not self.workspace_storage:
+            return
+        
+        try:
+            from ..builtin_tools.storage_tools import create_storage_tools
+            storage_tools = create_storage_tools(self.workspace_storage)
+            for tool in storage_tools:
+                register_tool(tool)
+            
+            logger.debug(f"Registered {len(storage_tools)} storage tools")
+        except ImportError as e:
+            logger.warning(f"Failed to import storage tools: {e}")
 
 
 # Factory function for creating tasks

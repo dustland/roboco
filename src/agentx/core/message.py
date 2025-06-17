@@ -57,7 +57,10 @@ class ToolCallPart(BaseModel):
 class ToolResultPart(BaseModel):
     """Tool execution result part."""
     type: Literal["tool_result"] = "tool_result"
-    tool_result: ToolResult
+    tool_call_id: str
+    tool_name: str
+    result: Any
+    is_error: bool = False
 
 class ArtifactPart(BaseModel):
     """Artifact reference part."""
@@ -110,26 +113,14 @@ class GuardrailPart(BaseModel):
     checks: List[GuardrailCheck]
     overall_status: str  # "passed", "failed", "warning"
 
+ConversationPart = Union[TextPart, ToolCallPart, ToolResultPart]
+
 class TaskStep(BaseModel):
-    """The fundamental unit of history representing a complete turn."""
-    step_id: str = Field(default_factory=lambda: f"step_{generate_short_id()}")
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
-    agent_name: str  # The agent or system component that generated this step
-    task_id: Optional[str] = None  # Reference to plan.json task
-    parent_step_id: Optional[str] = None  # For hierarchical execution
-    execution_mode: str = "autonomous"  # autonomous, step, hitl, etc.
-    memory_context: Dict[str, Any] = Field(default_factory=dict)  # Memory references and context
-    parts: List[Union[
-        TextPart, 
-        ToolCallPart, 
-        ToolResultPart, 
-        ArtifactPart, 
-        ImagePart, 
-        AudioPart, 
-        MemoryPart, 
-        GuardrailPart
-    ]]
-    metadata: Dict[str, Any] = Field(default_factory=dict)  # Extensible metadata
+    """A single step in a task's conversation history."""
+    step_id: str = Field(default_factory=lambda: f"step_{datetime.now().timestamp()}")
+    agent_name: str
+    parts: List[ConversationPart]
+    timestamp: datetime = Field(default_factory=datetime.now)
 
 # --- Streaming Models ---
 
