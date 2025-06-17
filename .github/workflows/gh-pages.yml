@@ -24,7 +24,7 @@ jobs:
       - name: Install dependencies
         run: |
           pip install uv
-          uv sync --system --all-extras
+          uv pip install --system .[docs]
 
       - name: Build documentation
         run: mkdocs build
