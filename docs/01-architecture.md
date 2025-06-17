@@ -48,12 +48,11 @@ graph TD
     API --> TE
 
     TE --> ORCH
+    TE --> AGENTS
     AGENTS --> BRAIN
     BRAIN --> LLM
 
-    TE --> AGENTS
-    TE --> TOOL_EXEC
-
+    ORCH --> TOOL_EXEC
     TOOL_EXEC --> TOOLS
     TOOL_EXEC --> MCP
     MCP --> API_EXT
@@ -61,11 +60,11 @@ graph TD
     TE --> PLAT
 
     %% Styling for rounded corners
-    classDef default fill:#f9f9f9,stroke:#333,stroke-width:2px,rx:10,ry:10
-    classDef client fill:#e3f2fd,stroke:#1976d2,stroke-width:2px,rx:10,ry:10
-    classDef core fill:#e8f5e8,stroke:#388e3c,stroke-width:2px,rx:10,ry:10
-    classDef external fill:#fff3e0,stroke:#f57c00,stroke-width:2px,rx:10,ry:10
-    classDef platform fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px,rx:10,ry:10
+    classDef default stroke:#333,stroke-width:2px,rx:10,ry:10
+    classDef client stroke:#1976d2,stroke-width:2px,rx:10,ry:10
+    classDef core stroke:#388e3c,stroke-width:2px,rx:10,ry:10
+    classDef external stroke:#f57c00,stroke-width:2px,rx:10,ry:10
+    classDef platform stroke:#7b1fa2,stroke-width:2px,rx:10,ry:10
 
     %% Apply styles to specific nodes
     class CLI,API client
@@ -87,8 +86,8 @@ In AgentX, a **Team** of collaborating agents is the primary mechanism for execu
 
 ### 4.1 Key Roles
 
-- **Task Executor**: Owns the end-to-end lifecycle of a single task. It provisions the workspace, hydrates the context, and runs the main loop: it consults the `Orchestrator` for a decision, invokes the chosen `Agent`, executes any tool calls via the `Tool Executor`, and persists state.
-- **Orchestrator**: The policy brain. After each agent turn, it analyzes the conversation and returns the next decision: `continue`, `handoff`, or `complete`. By centralizing this logic, it provides a single control plane for routing, guardrails, and quota management.
+- **Task Executor**: Owns the end-to-end lifecycle of a single task. It provisions the workspace, hydrates the context, and runs the main execution loop. In each turn, it invokes the **`Orchestrator`** to execute a single collaborative turn. It is responsible for persisting state between turns.
+- **Orchestrator**: The central workflow engine for a single turn. It is invoked by the `Task Executor`. Its job is to: 1) select the appropriate agent, 2) invoke the agent, 3) receive the agent's response, 4) validate and dispatch any tool-call requests to the `Tool Executor`, 5) return the tool results to the agent for a final response, and 6) return a completed turn result to the `Task Executor`.
 - **Agent**: Encapsulates a specialised role (e.g., _researcher_, _writer_). It receives context, reasons with its private **Brain** (LLM interface), and returns a response, which may include tool-call requests. Agents are lightweight and composable as they never execute tools or route messages directly.
 
 ### 4.2 Execution Modes
@@ -109,16 +108,16 @@ sequenceDiagram
 
     C->>TX: execute_task(prompt)
     loop Autonomous Loop
-        TX->>OR: request_next_agent()
-        OR-->>TX: agent_to_run
-        TX->>AG: invoke(agent_to_run)
-        AG-->>TX: tool_calls
+        TX->>OR: execute_turn()
+        OR->>AG: invoke()
+        AG-->>OR: response (with tool_calls)
         opt Tool calls needed
-            TX->>TE: execute_tools(tool_calls)
-            TE-->>TX: tool_results
-            TX->>AG: provide_tool_results(tool_results)
-            AG-->>TX: final_response
+            OR->>TE: execute_tools(tool_calls)
+            TE-->>OR: tool_results
+            OR->>AG: invoke_with_results(results)
+            AG-->>OR: final_response
         end
+        OR-->>TX: turn_result
     end
     TX-->>C: final_result
 ```
@@ -140,16 +139,16 @@ sequenceDiagram
 
     loop Interactive Steps
         C->>TX: task.step()
-        TX->>OR: request_next_agent()
-        OR-->>TX: agent_to_run
-        TX->>AG: invoke(agent_to_run)
-        AG-->>TX: tool_calls
+        TX->>OR: execute_turn()
+        OR->>AG: invoke()
+        AG-->>OR: response (with tool_calls)
         opt Tool calls needed
-            TX->>TE: execute_tools(tool_calls)
-            TE-->>TX: tool_results
-            TX->>AG: provide_tool_results(tool_results)
-            AG-->>TX: final_response
+            OR->>TE: execute_tools(tool_calls)
+            TE-->>OR: tool_results
+            OR->>AG: invoke_with_results(results)
+            AG-->>OR: final_response
         end
+        OR-->>TX: step_result
         TX-->>C: step_result
     end
 ```
@@ -175,31 +174,39 @@ When an agent is invoked to generate a response, it enters an internal loop with
 
 1.  **Initial Reasoning**: The `Brain` first generates a response based on the hydrated prompt and conversation history.
 2.  **Tool Identification**: The `Brain` analyzes its own draft response to determine if it contains implicit or explicit requests to call one or more tools. This self-correction step allows the agent to recognize when it needs more information or needs to perform an action.
-3.  **Tool Execution Request**: If tools are required, the agent yields control back to the `Task Executor`, passing along the structured tool-call requests. The `Task Executor` is responsible for invoking the `Tool Executor` to securely run the tools.
-4.  **Refinement with Results**: The `Task Executor` provides the tool results back to the agent. The agent's `Brain` then re-evaluates its initial reasoning in light of the new information and generates a final, more grounded response for that turn.
+3.  **Tool Execution Request**: If tools are required, the agent yields control back to the **`Orchestrator`**, passing along the structured tool-call requests. The **`Orchestrator`** is responsible for invoking the `Tool Executor` to securely run the tools.
+4.  **Refinement with Results**: The **`Orchestrator`** provides the tool results back to the agent. The agent's `Brain` then re-evaluates its initial reasoning in light of the new information and generates a final, more grounded response for that turn.
 
 This loop ensures that agents can autonomously gather necessary information or perform actions before committing to a final answer, leading to more accurate and reliable outcomes.
 
 ```mermaid
 sequenceDiagram
+    participant TA as TaskExecutor (caller)
     participant AG as Agent
     participant BR as Brain (LLM)
-    participant TX as Task Executor (caller)
+    participant OR as Orchestrator
+    participant TO as ToolExecutor
 
-    TX->>AG: invoke(context, tool_schemas)
+    TA->>AG: generate_response(prompt)
     AG->>BR: generate_response(prompt)
     BR-->>AG: response_with_tool_calls
 
     alt Tool Calls Needed
-        AG-->>TX: return tool_calls
-        TX->>AG: invoke_with_tool_results(results)
+        AG->>OR: invoke_tool_calls
+        OR-->>AG: validation_failed(errors)
         AG->>BR: refine_response(results)
+        BR-->>AG: return refined_tool_call
+        AG->>OR: invoke(tool_call)
+        OR->>TO: invoke(tool_call)
+        TO-->>OR: return tool_results
+        OR-->>AG: return tool_results
+        AG->>BR: append(tool_results)
         BR-->>AG: final_response
     else No Tools Needed
         BR-->>AG: final_response
     end
 
-    AG-->>TX: return final_response
+    AG-->>TA: return final_response
 ```
 
 ### 5.3 End-to-End Streaming
