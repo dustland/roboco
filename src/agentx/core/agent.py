@@ -6,7 +6,7 @@ import json
 import asyncio
 
 from .brain import Brain, LLMMessage, LLMResponse
-from .config import AgentConfig, LLMConfig
+from .config import AgentConfig, BrainConfig
 from .message import TaskStep, TextPart, ToolCallPart, ToolResultPart
 from .tool import get_tool_schemas, Tool, get_tool_registry
 from ..utils.logger import get_logger
@@ -62,47 +62,20 @@ class Agent:
         self.description = config.description
         
         # Initialize Brain (PRIVATE to this agent)
-        llm_config = config.llm_config or LLMConfig()
-        self.brain = Brain(llm_config)
+        brain_config = config.brain_config or BrainConfig()
+        self.brain = Brain(brain_config)
         
         # Agent state
         self.state = AgentState(agent_name=config.name)
         
-        # Agent capabilities - start with built-in tools, then add configured tools
-        self.tools = self._get_builtin_tools()
-        self.tools.extend(config.tools)
+        # Agent capabilities - start with all registered tools, then add configured tools
+        from agentx.tool import list_tools
+        self.tools = list_tools()
+        self.tools.extend([t for t in config.tools if t not in self.tools])
         self.memory_enabled = getattr(config, 'memory_enabled', True)
         self.max_iterations = getattr(config, 'max_iterations', 10)
         
         logger.info(f"🤖 Agent '{self.name}' initialized with {len(self.tools)} tools")
-    
-    def _get_builtin_tools(self) -> List[str]:
-        """Get list of built-in tools that should be available to all agents."""
-        builtin_tools = [
-            # Storage tools (registered per-task)
-            "read_file", 
-            "write_file",
-            "append_file",
-            "file_exists",
-            "create_directory",
-            "delete_file",
-            "list_directory",
-            
-            # Artifact tools (registered per-task)
-            "store_artifact",
-            "get_artifact",
-            "list_artifacts",
-            "get_artifact_versions",
-            "delete_artifact",
-            
-            # Framework tools (registered globally)
-            "get_context",
-            "set_context",
-            "create_plan",
-            "update_task_status",
-            "get_plan_status"
-        ]
-        return builtin_tools
     
     def get_tools_json(self) -> List[Dict[str, Any]]:
         """Get the JSON schemas for the tools available to this agent."""
@@ -411,13 +384,13 @@ Tool Usage Guidelines:
 
 def create_assistant_agent(name: str, system_message: str = "") -> Agent:
     """Create a simple assistant agent with default configuration."""
-    from .config import AgentConfig, LLMConfig
+    from .config import AgentConfig, BrainConfig
     
     config = AgentConfig(
         name=name,
         description="AI Assistant",
         prompt_template=system_message or "You are a helpful AI assistant.",
-        llm_config=LLMConfig()
+        brain_config=BrainConfig()
     )
     
     return Agent(config) 

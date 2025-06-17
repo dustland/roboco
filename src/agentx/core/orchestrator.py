@@ -20,7 +20,7 @@ from typing import Dict, Any, Optional, List, AsyncGenerator
 from .team import Team
 from .agent import Agent
 from .brain import Brain, LLMMessage
-from .config import LLMConfig
+from .config import BrainConfig
 from ..utils.logger import get_logger
 
 # Import ToolExecutor for secure tool dispatch
@@ -68,13 +68,13 @@ class Orchestrator:
         
         # Initialize orchestrator's brain for intelligent routing decisions
         if team:
-            orchestrator_llm_config = LLMConfig(
+            orchestrator_brain_config = BrainConfig(
                 model="deepseek/deepseek-chat",
                 temperature=0.0,  # Low temperature for consistent decisions
                 max_tokens=200,   # Short responses for routing decisions
                 timeout=10        # Quick decisions
             )
-            self.brain = Brain(orchestrator_llm_config)
+            self.brain = Brain(orchestrator_brain_config)
             logger.info(f"🎭 Orchestrator initialized for team '{team.name}' with {len(team.agents)} agents")
         else:
             # Single-agent mode or global orchestrator

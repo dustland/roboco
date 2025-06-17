@@ -1,569 +1,380 @@
-# 01: System Architecture
+# AgentX System Architecture
 
-This document specifies the high-level, static architecture of the AgentX framework. It is guided by the principles defined in `requirements.md`.
+## Executive Summary
 
-## 1. Architectural Vision
+AgentX is an open-source backbone for building secure, observable, and fully autonomous multi-agent systems. A lightweight micro-kernel orchestrates specialised agents, turning a single user request into a coordinated workflow that spans tool execution, memory retrieval, and artifact management—all within isolated, version-controlled workspaces. Every decision, message, and side effect is captured as a structured event, providing complete auditability and real-time insight into system behaviour.
 
-AgentX is a **multi-agent conversation framework** designed as a decoupled, headless system. The core components provide the logic for orchestration, reasoning, and execution, while clients (CLI, web UI) interact with the framework via well-defined APIs.
+## 1. Architectural Vision & Principles
 
-The framework supports flexible deployment models:
+### 1.1 Core Vision
 
-- **Single-use CLI mode**: Each task runs as a separate process
-- **Long-running service mode**: Persistent service managing multiple concurrent tasks
+AgentX enables organisations to decompose complex goals into collaborative Teams of agents, each focusing on a well-defined role. A central Orchestrator governs the conversation, selects the next agent to speak, executes tools on the agents' behalf, and enforces security boundaries. The result is a flexible framework that elevates individual agent capabilities into a cohesive, self-optimising system that can learn, adapt, and scale with minimal human intervention.
 
-## 2. Core Component Overview
+### 1.2 Architectural Principles
+
+The architecture rests on the following foundational principles:
+
+- **Separation of Concerns** – Each subsystem has a single, well-defined responsibility, which reduces coupling and simplifies maintenance.
+- **Centralised Orchestration** – A single Orchestrator governs coordination, security, and resource allocation, providing a uniform control plane.
+- **Agent Autonomy** – Agents manage their own reasoning loops and private Brains, delegating only cross-cutting concerns upward.
+- **Event-Driven Coordination** – Asynchronous, structured events enable scalable, loosely-coupled communication among subsystems.
+- **Configuration-Driven Behaviour** – Teams, agents, and workflows are defined declaratively, allowing rapid iteration without code changes.
+- **Security by Design** – All external interactions pass through audited, policy-enforced channels; least-privilege boundaries are maintained throughout.
+- **Workspace Isolation** – Every task executes in its own version-controlled workspace, ensuring reproducibility and clean separation of artifacts.
+
+## 2. System Architecture Overview
 
 ```mermaid
-graph TD
-    subgraph "External Client"
-        CLI[CLI / Web UI]
+flowchart TD
+    %% Top-level layers
+    subgraph Client Layer
+        CLI[CLI Interface]
+        API[REST / WebSocket API]
+        UI[Dashboard]
     end
 
-    subgraph "AgentX Framework"
-        Task[Task Manager]
-        Orchestrator[Orchestrator]
-        Team[Team Configuration]
-        Agent[Agent Pool]
-        Brain[Agent Brain]
-        Tools[Tool Executor]
-        Storage[Workspace Storage]
-        Memory[Memory Manager]
-        Config[Configuration System]
-        Events[Event System]
-        Observability[Observability Web App]
+    subgraph AgentX Core
+        direction TB
+        TASK[Task Executor]
+        ORCH[Orchestrator]
+        TEAM[Team of Agents]
     end
 
-    subgraph "External Systems"
+    subgraph Platform Services
+        direction TB
+        TOOLS[Tool Executor]
+        CONFIG[Configuration System]
+        EVENTS[Event Bus]
+        STORAGE[Workspace Manager]
+        MEMORY[Memory System]
+        OBSV[Observability]
+        BUILTIN_TOOLS[Builtin Tools]
+    end
+
+    subgraph External Systems
+        direction TB
         LLM[LLM Providers]
-        Vector[Vector Database]
-        Git[Git Repository]
+        VDB[Vector Database]
+        GIT[Git Repository]
+        APIS[External APIs]
+        MCP[MCP Tools]
     end
 
-    CLI --> Task
-    Task --> Orchestrator
-    Orchestrator --> Agent
-    Agent --> Brain
-    Brain --> LLM
-    Orchestrator --> Tools
-    Task --> Storage
-    Storage --> Git
-    Agent --> Memory
-    Memory --> Vector
-    Team --> Config
-    Task --> Events
-    Events --> Observability
+    %% Primary flows
+    CLI --> TASK
+    API --> TASK
+    UI --> OBSV
+
+    TASK --> ORCH
+    ORCH --> TASK
+    TASK --> TEAM
+
+    TEAM --> LLM
+
+    TASK --> TOOLS
+    TOOLS --> BUILTIN_TOOLS
+    TOOLS --> MCP
+    TOOLS --> APIS
+
+    STORAGE --> GIT
+    MEMORY --> VDB
+
+    EVENTS --> OBSV
+    ORCH --> EVENTS
+    ORCH --> CONFIG
 ```
 
-## 3. Component Architecture
+## 3. Subsystem Architecture
 
-### 3.1. Task
+### 3.1 Team Collaboration
 
-**Purpose**: Primary interface for AgentX task execution and workflow coordination.
+This section focus on how to orchestrate multiple agents to get the task execution done.
 
-**Key Responsibilities**:
+#### 3.1.1 Task Executor
 
-- Manages complete task lifecycle from initialization to completion
-- Provides both one-shot execution (`execute_task()`) and step-by-step execution (`step()`)
-- Coordinates multi-agent workflows through orchestrator
-- Maintains task history and state persistence
-- Handles streaming and non-streaming execution modes
-- Manages workspace setup and artifact storage
+The **Task Executor** is the entry point for every user request. It prepares an isolated workspace, persists task state, and interfaces with the Orchestrator to determine which agent should act next. After receiving the decision, it delivers context to the chosen agent, captures tool requests, invokes the Tool Execution Engine, and loops until completion.
 
-**API Surface**:
+**Responsibility**: Single-task lifecycle orchestration
 
-```python
-# One-shot execution
-task = create_task(config_path)
-await task.execute_task(prompt)
+**Scope**:
 
-# Step-by-step execution
-task = create_task(config_path)
-task.start_task(prompt)
-while not task.is_complete:
-    await task.step()
+- Workspace setup and teardown
+- Persistent task state management
+- Conversation loop with agents
+- Secure invocation of Tool Execution Engine
+
+**Interfaces**:
+
+- `Orchestrator`: Request next-speaker decisions
+- `Agent`: Deliver context and collect responses
+- `ToolExecutionEngine`: Execute requested tools
+- `WorkspaceManager`: Persist history and artifacts
+
+**Boundaries**: Runs in task-scoped workspace; never bypasses Orchestrator for routing decisions.
+
+#### 3.1.2 Orchestrator
+
+Sitting at the heart of the runtime, the Orchestrator is responsible for all decision-making during execution. It routes messages to agents, dispatches tool calls through the secure Tool Engine, and enforces system-wide policies such as quotas and guardrails. By funnelling every cross-agent interaction through a single component, the architecture achieves both strong security guarantees and a unified place to observe and optimise collaboration patterns.
+
+**Responsibility**: Central coordination and security enforcement
+
+**Scope**:
+
+- Agent workflow routing and handoff decisions
+- Centralized tool execution with security validation
+- Resource management and quota enforcement
+- Cross-agent collaboration patterns
+
+**Interfaces**:
+
+- `AgentRouter`: Route requests to appropriate agents
+- `ToolDispatcher`: Execute tools with security controls
+- `WorkflowEngine`: Manage multi-agent collaboration patterns
+
+**Boundaries**: Does not contain agent logic; focuses purely on coordination and security
+
+#### 3.1.2 Agents
+
+**Responsibility**: Represent a specific role in the collaboration, responsible to answer question or create output with selected tools.
+
+**Scope**:
+
+- LLM provider integration and failover
+- Prompt template rendering and optimization
+- Response streaming and processing
+- Provider-specific optimizations
+
+**Interfaces**:
+
+- `LLMProvider`: Abstract interface for multiple LLM backends
+- `PromptRenderer`: Jinja2-based template rendering with context
+- `ResponseProcessor`: Handle streaming and structured responses
+
+**Boundaries**: Pure LLM interface; no tool execution, state management, or coordination logic
+
+### 3.3 Platform Services
+
+Platform Services provide common capabilities that sit outside the tight execution loop yet remain essential to every task. They are deployed as shared, multi-tenant components and accessed via well-defined APIs, allowing the core runtime to stay lightweight while still benefiting from robust storage, configuration, and monitoring facilities.
+
+#### 3.3.1 Configuration System
+
+The Configuration System is the single source of truth for teams, agents, tools, and runtime policies. It loads declarative YAML files, validates them against versioned schemas, and exposes the resulting objects to the Task Executor and Orchestrator at startup or on hot-reload.
+
+**Responsibility**: Declarative system behavior definition and validation
+
+**Scope**:
+
+- Team and agent configuration loading
+- Configuration validation and schema enforcement
+- Runtime configuration updates
+- Template and asset management
+
+**Interfaces**:
+
+- `ConfigLoader`: Load and validate YAML configurations
+- `SchemaValidator`: Enforce configuration schemas
+- `TemplateManager`: Manage prompt templates and assets
+
+**Boundaries**: Configuration management only; does not execute or modify behavior
+
+#### 3.3.2 Event Bus
+
+All significant actions in the framework emit structured events that flow through the Event Bus. This design decouples producers from consumers, enabling real-time monitoring, auditing, and external integrations without burdening the hot code-path.
+
+**Responsibility**: Asynchronous event distribution and processing
+
+**Scope**:
+
+- Event publication and subscription
+- Event routing and filtering
+- Event persistence for replay and analysis
+- Integration hooks for external systems
+
+**Interfaces**:
+
+- `EventPublisher`: Publish structured events
+- `EventSubscriber`: Subscribe to event streams
+- `EventStore`: Persist events for analysis and replay
+
+**Boundaries**: Event distribution only; does not interpret or act on events
+
+#### 3.3.3 Workspace Services
+
+Workspace Services offer version-controlled, task-scoped storage. Every file write, artifact update, or history entry is committed here, guaranteeing reproducibility and a complete audit trail for each task.
+
+**Responsibility**: Isolated workspace and artifact management
+
+**Scope**:
+
+- Task-isolated workspace creation
+- Git-based artifact versioning
+- File system abstraction
+- Workspace cleanup and archival
+
+**Interfaces**:
+
+- `WorkspaceFactory`: Create isolated workspaces
+- `ArtifactManager`: Version and manage generated artifacts
+- `StorageBackend`: Abstract storage operations
+
+**Boundaries**: Storage operations only; does not interpret or process stored content
+
+#### 3.3.4 Memory System
+
+The Memory System captures conversational context and long-term knowledge so that agents can retrieve relevant facts without exceeding token limits. It supports both short-term buffers and vector-based semantic search, with pluggable back-ends for different scale requirements.
+
+**Responsibility**: Short-term and long-term memory management
+
+**Scope**:
+
+- Conversation context management
+- Semantic search across historical data
+- Memory consolidation and optimization
+- Cross-task learning and knowledge retention
+
+**Interfaces**:
+
+- `MemoryBackend`: Pluggable memory storage implementations
+- `SemanticSearch`: Vector-based information retrieval
+- `ContextManager`: Optimize context for token limits
+
+**Boundaries**: Memory operations only; does not make decisions about what to remember or forget
+
+### 3.4 Builtin Tools
+
+Builtin Tools extend AgentX with first-class capabilities—such as file I/O, web retrieval, and code execution—without requiring users to write custom plugins. They are registered automatically at startup and are available to any agent subject to security policy.
+
+## 4. Team Collaboration Model
+
+In AgentX, the concept of a **Team** is central to orchestrating complex, multi-step tasks. A Team is a collection of specialized agents, each with a distinct role, working together under the coordination of the Orchestrator to achieve a shared objective. This section describes how Teams, Tasks, the Orchestrator, and Agents interact to deliver robust, flexible, and auditable workflows.
+
+### Relationship Between Task, Orchestrator, Team, and Agents
+
+A **Task** represents a single unit of work initiated by a user or system. When a task is started, the system loads the corresponding Team configuration, which defines the agents, their roles, and available tools.
+
+The **Orchestrator** acts as the central coordinator. It is responsible for:
+
+- Managing the lifecycle of the task,
+- Dynamically selecting the next agent to act based on the current context and agent states,
+- Routing messages and tool calls,
+- Ensuring isolation and security boundaries between agents.
+
+**Agents** are autonomous components, each responsible for a specific aspect of the task (e.g., research, writing, review). Agents do not communicate directly with each other; all interactions are mediated by the Orchestrator, which provides the necessary context and manages handoffs.
+
+The **Team** is the organizational structure that binds these agents together for the duration of a task. Team configuration (typically in `team.yaml`) specifies the agents, their roles, and any team-level settings such as memory, tools, and collaboration policies.
+
+#### Diagram: Team Collaboration Overview
+
+```mermaid
+flowchart TD
+    User[User or API] -->|Start Task| TaskExecutor
+    TaskExecutor -->|Load Team| Orchestrator
+    Orchestrator -->|Select Agent| AgentA[Agent: Researcher]
+    Orchestrator -->|Select Agent| AgentB[Agent: Writer]
+    Orchestrator -->|Select Agent| AgentC[Agent: Reviewer]
+    AgentA -.->|Tool Calls| Orchestrator
+    AgentB -.->|Tool Calls| Orchestrator
+    AgentC -.->|Tool Calls| Orchestrator
+    Orchestrator -->|Manage Handoffs| AgentA
+    Orchestrator -->|Manage Handoffs| AgentB
+    Orchestrator -->|Manage Handoffs| AgentC
+    Orchestrator -->|Emit Events| Observability
+    Observability -.->|Dashboards, Logs| User
 ```
 
-**Internal Architecture**:
+### Dynamic Agent Selection
 
-- Uses internal `Orchestrator` for routing decisions
-- Maintains conversation history as `List[TaskStep]`
-- Manages workspace directory with Git-based artifact storage
-- Publishes events for observability
+Unlike systems with hardcoded agent handoff rules, AgentX empowers the Orchestrator to dynamically select the next agent based on the evolving context of the task. This enables flexible, adaptive workflows that can respond to the actual progress and needs of the task, rather than following a rigid sequence.
 
-### 3.2. Team
+- The Orchestrator analyzes the current state, agent outputs, and team configuration to determine which agent should act next.
+- This approach supports both simple and complex workflows, including iterative refinement, parallel work, and consensus-building, without requiring explicit handoff rules in the configuration.
 
-**Purpose**: Pure agent container and configuration manager.
+### Team Configuration
 
-**Key Responsibilities**:
+Teams are defined declaratively, typically in a `team.yaml` file. This configuration specifies:
 
-- Load and validate team configuration from YAML files
-- Initialize agent instances from configuration
-- Provide access to agents, tools, and collaboration patterns
-- Render agent prompts with Jinja2 templates and context
-- Validate handoff rules between agents
-- Manage team-level guardrail policies
+- The list of agents and their roles,
+- Available tools and memory settings,
+- Any team-level policies or parameters.
 
-**Configuration Structure**:
+For a detailed guide on team configuration and advanced collaboration patterns, see the [Collaboration Model Document](./02-collaboration-model.md).
 
-```yaml
-name: "Research Team"
-agents:
-  - name: researcher
-    description: "Research specialist"
-    prompt_template: "prompts/researcher.md"
-    tools: [web_search, store_artifact]
-    llm_config:
-      model: "deepseek/deepseek-chat"
-handoffs:
-  - from_agent: researcher
-    to_agent: writer
+## 5. Task Execution Flow
+
+A task begins when a user (or external system) submits an initial prompt. The Task Executor creates an isolated workspace, loads the Team configuration, and hands control to the **Orchestrator**.
+
+1. **Initialize Task** – Task Executor sets up workspace/state and emits a `task_start` event.
+2. **Load Team** – Orchestrator instantiates agents defined in `team.yaml`.
+3. **Select First Agent** – Orchestrator chooses the starting agent (often based on role or explicit `entry_agent`).
+4. **Agent Monologue & Tool Calls** – The selected agent reasons over the prompt, optionally requesting tool calls. Tool calls are executed by the Tool Execution Engine via the Orchestrator.
+5. **Dynamic Handoff** – After each agent response, the Orchestrator decides whether to complete the task, continue with the same agent, or hand off to another agent.
+6. **Completion** – When the stop condition is met, the Orchestrator marks the task complete and emits a `task_complete` event; artifacts and history are committed to the workspace.
+
+```mermaid
+sequenceDiagram
+    participant U as User/API
+    participant TX as Task Executor
+    participant OR as Orchestrator
+    participant AG as Agent
+    participant TE as Tool Engine
+    participant OBS as Observability
+    U->>TX: start_task(prompt)
+    TX->>OR: request_next_agent()
+    OR-->>TX: agent_name
+    TX->>AG: context
+    AG-->>TX: response + tool_calls?
+    TX->>TE: execute(tool_calls)
+    TE-->>TX: tool_results
+    TX->>OR: agent_response
+    OR-->>TX: next_decision
+    TX-->>U: final_response (on completion)
+    TX-->>OBS: events
 ```
 
-**Does NOT Handle**: Task execution (delegated to Orchestrator)
+Additional event and data structures are detailed in the [Data & Events Document](./03-data-and-events.md).
 
-### 3.3. Orchestrator
+## 6. Agent Execution Model
 
-**Purpose**: Central nervous system for agent coordination and secure tool execution.
+An agent processes an incoming message through an inner loop we call the **monologue**. During this loop, the agent interacts with its private Brain (LLM), may request tool executions, and ultimately produces a final response or signals a handoff.
 
-**Key Responsibilities**:
+1. **Receive Context** – Agent receives full conversation history, relevant artifacts, and any tool schemas.
+2. **Brain Reasoning** – Agent's Brain generates a draft response; if tool calls are needed, they are returned as part of the response.
+3. **Tool Execution** – The Orchestrator validates and executes the requested tools, returning structured results to the agent.
+4. **Refine & Respond** – Agent incorporates tool results (if any) and produces its final response for this turn.
+5. **Handoff Signal** – The response is returned to the Orchestrator, which decides on next steps.
 
-- **Core Orchestration**: Make routing decisions (complete, handoff, continue)
-- **Agent Collaboration**: Facilitate agent-to-agent handoffs and workflows
-- **Centralized Tool Execution**: Execute ALL tools for security and control
-- **Intelligent Routing**: Use LLM-based decision making for complex handoffs
-- **Security Control**: Single point of tool validation, audit, and resource limits
-
-**Architecture Pattern**:
-
-```python
-# Routing decisions
-async def decide_next_step(current_agent, response, context) -> RoutingDecision
-
-# Agent delegation with tool security
-async def route_to_agent(agent_name, messages) -> str
-
-# Centralized tool dispatch
-async def execute_tool_calls(tool_calls, agent_name) -> List[ToolResult]
+```mermaid
+sequenceDiagram
+    participant OR as Orchestrator
+    participant AG as Agent
+    participant BR as Brain (LLM)
+    participant TE as Tool Engine
+    OR->>AG: context + tool_schemas
+    AG->>BR: generate_response()
+    BR-->>AG: content + tool_calls
+    AG-->>OR: tool_calls
+    OR->>TE: execute()
+    TE-->>OR: results
+    OR-->>AG: tool_results
+    AG->>BR: refine_with_results()
+    BR-->>AG: final_content
+    AG-->>OR: final_content
 ```
 
-**Security Benefits**:
+Advanced agent design patterns and guardrail strategies are covered in the [Agent Design Patterns Document](./agent-design-patterns.md).
 
-- Single entry point for all tool execution
-- Centralized security policies and audit trails
-- Resource limits and monitoring
-- Complete tool usage logging
+## 7. Subsystem Collaboration Patterns
 
-### 3.4. Agent
-
-**Purpose**: Autonomous conversation management with delegated tool execution.
-
-**Key Principles**:
-
-- Each agent is autonomous and manages its own conversation flow
-- Agents communicate through public interfaces only
-- Brain is private to each agent (no external access)
-- Tool execution delegated to orchestrator for security
-
-**Public Interface** (matches Brain for consistency):
-
-```python
-async def generate_response(messages, system_prompt=None, orchestrator=None) -> str
-async def stream_response(messages, system_prompt=None, orchestrator=None) -> AsyncGenerator[str, None]
-```
-
-**Internal Architecture**:
-
-- `_conversation_loop()`: Manages conversation rounds with tool calls
-- `build_system_prompt()`: Creates context-aware system prompts
-- Maintains `AgentState` for execution tracking
-- Delegates all tool execution to orchestrator
-
-**Agent Configuration**:
-
-```python
-@dataclass
-class AgentConfig:
-    name: str
-    description: str
-    prompt_template: str
-    tools: List[str]
-    llm_config: LLMConfig
-    memory_enabled: bool = True
-    max_iterations: int = 10
-```
-
-### 3.5. Brain
-
-**Purpose**: Pure LLM interface (private to each agent).
-
-**Key Responsibilities**:
-
-- Generate LLM responses with potential tool calls
-- Stream LLM responses token-by-token
-- Format messages for LLM providers (OpenAI, Anthropic, etc.)
-- Handle provider-specific authentication and rate limiting
-- Process Jinja2 prompt templates with context
-
-**Does NOT**:
-
-- Execute tools (delegated to orchestrator)
-- Manage conversation flow (handled by agent)
-- Make routing decisions (handled by orchestrator)
-- Store conversation state (handled by agent/task)
-
-**LLM Configuration**:
-
-```python
-@dataclass
-class LLMConfig:
-    model: str = "deepseek/deepseek-chat"
-    temperature: float = 0.7
-    max_tokens: int = 4000
-    timeout: int = 30
-```
-
-### 3.6. Tool System
-
-**Purpose**: Secure, extensible tool execution framework.
-
-**Architecture Components**:
-
-#### Tool Registry
-
-- **Purpose**: Tool definitions and discovery only
-- **Responsibilities**: Register tools, provide schemas, tool lookup
-- **Does NOT**: Execute tools (security separation)
-
-#### Tool Executor
-
-- **Purpose**: Secure execution with performance monitoring
-- **Responsibilities**:
-  - Execute tool calls with security validation
-  - Resource limits and timeout enforcement
-  - Performance monitoring and audit logging
-  - Error handling and retry mechanisms
-
-#### Tool Base Classes
-
-```python
-class Tool:
-    """Base class for all tools."""
-
-class ToolFunction:
-    """Decorator for function-based tools."""
-
-@register_tool
-def web_search(query: str) -> str:
-    """Search the web for information."""
-```
-
-**Built-in Tool Categories**:
-
-- **Storage Tools**: File operations (read_file, write_file, etc.)
-- **Artifact Tools**: Versioned artifact management
-- **Search Tools**: Web search and information retrieval
-- **Memory Tools**: Agent memory and context management
-- **Planning Tools**: Task planning and status tracking
-- **Context Tools**: Task context and metadata access
-
-### 3.7. Storage System
-
-**Purpose**: Git-based workspace and artifact management.
-
-**Key Components**:
-
-#### Workspace Storage
-
-- **Factory Pattern**: `StorageFactory.create_workspace_storage()`
-- **Git Integration**: Automatic repository initialization for versioning
-- **Async Operations**: Non-blocking storage with ThreadPoolExecutor
-- **Fallback Support**: Graceful degradation when Git unavailable
-
-#### Artifact Management
-
-- **Version Control**: Each artifact version stored as Git commit
-- **Diff Support**: Compare any two artifact versions
-- **Metadata Tracking**: Creation time, agent info, descriptions
-- **File Type Detection**: Automatic extension based on content
-
-**Workspace Structure**:
+### 7.1 Task Execution Flow
 
 ```
-workspace/
-├── team.yaml           # Team configuration
-├── plan.json          # Structured execution plan
-├── history.jsonl      # Append-only task steps
-└── artifacts/         # Git-managed generated files
-    ├── .git/         # Git repository
-    ├── document.md   # Generated documents
-    └── code.py       # Generated code
+Client Request → Task Executor → Orchestrator → Team (Agents) → LLM Providers
+                     ↓              ↓
+                Workspace ←── Tool Execution Engine
+                     ↓              ↓
+                Event Bus ←── All Components ──→ Observability
 ```
 
-### 3.8. Memory System
+## 8. The Future of AgentX
 
-**Purpose**: Sophisticated memory management for enhanced agent performance.
-
-**Key Capabilities**:
-
-- **Short-term Memory**: Recent conversation context within token limits
-- **Long-term Memory**: Persistent storage and retrieval via vector search
-- **Semantic Search**: Vector-based search across conversations and artifacts
-- **Memory Consolidation**: Automatic summarization and indexing
-- **Cross-Task Memory**: Learning from previous task executions
-
-**Factory Pattern**:
-
-```python
-memory_manager = MemoryFactory.create_memory_backend(
-    backend_type="mem0",  # or "simple", "vector"
-    config=memory_config
-)
-```
-
-### 3.9. Configuration System
-
-**Purpose**: Centralized configuration management for all components.
-
-**Key Components**:
-
-#### Team Loader
-
-- Load team configurations from YAML files
-- Validate team structure and agent definitions
-- Initialize agent instances from configuration
-
-#### Agent Loader
-
-- Load individual agent configurations
-- Handle prompt template resolution
-- Validate tool assignments and LLM configs
-
-#### Configuration Models
-
-```python
-@dataclass
-class TeamConfig:
-    name: str
-    agents: List[AgentConfig]
-    tools: List[ToolConfig]
-    handoffs: List[HandoffRule]
-    execution: ExecutionConfig
-```
-
-### 3.10. Event System
-
-**Purpose**: Comprehensive event-driven architecture for observability.
-
-**Key Components**:
-
-#### Event Bus
-
-- Publish/subscribe event system
-- Asynchronous event processing
-- Event filtering and routing
-
-#### Event Types
-
-- **Task Events**: TaskStartEvent, TaskCompleteEvent, ErrorEvent
-- **Agent Events**: AgentStartEvent, AgentCompleteEvent, AgentHandoffEvent
-- **Tool Events**: ToolExecutionEvent, ToolResultEvent
-- **Memory Events**: MemoryRetrievalEvent, MemoryStorageEvent
-
-#### Event Middleware
-
-- Event validation and transformation
-- Event persistence and replay
-- Event-based metrics collection
-
-### 3.11. Observability System
-
-**Purpose**: Real-time monitoring and debugging web interface.
-
-**Key Features**:
-
-- **Dashboard**: Real-time task execution status
-- **Task History**: Complete task execution timelines
-- **Agent Activity**: Individual agent performance metrics
-- **Tool Usage**: Tool execution statistics and errors
-- **Configuration Viewer**: Team and agent configuration inspection
-- **Artifact Browser**: Generated artifact exploration
-
-**Web Interface**:
-
-- Flask-based web application
-- Real-time updates via WebSocket
-- Interactive task debugging
-- Performance metrics visualization
-
-### 3.12. Search System
-
-**Purpose**: External information retrieval capabilities.
-
-**Key Components**:
-
-#### Search Manager
-
-- Unified interface for multiple search backends
-- Query optimization and result aggregation
-- Caching and rate limiting
-
-#### Search Backends
-
-- **SerpAPI Backend**: Web search via SerpAPI
-- **Custom Backends**: Extensible for additional providers
-
-## 4. Data Flow Architecture
-
-### 4.1. Single Agent Request Flow
-
-```
-1. External Request → Task.execute_task()
-2. Task → Orchestrator.route_to_agent()
-3. Orchestrator → Agent.generate_response()
-4. Agent → Brain.generate_response() (with tools)
-5. Brain → LLM Provider (returns response + tool calls)
-6. Agent → Orchestrator.execute_tool_calls() (security)
-7. Orchestrator → ToolExecutor.execute_tool_calls()
-8. ToolExecutor → Tool implementations
-9. ToolExecutor → Return results to Orchestrator
-10. Orchestrator → Return results to Agent
-11. Agent → Brain.generate_response() (with tool results)
-12. Brain → LLM Provider (returns final response)
-13. Agent → Return complete response to Orchestrator
-14. Orchestrator → Return to Task
-15. Task → Persist history and artifacts
-```
-
-### 4.2. Multi-Agent Collaboration Flow
-
-```
-1. Task → Orchestrator.route_to_agent(agent_a)
-2. Agent_A → [Conversation loop with tool execution]
-3. Agent_A → Return response to Orchestrator
-4. Task → Orchestrator.decide_next_step()
-5. Orchestrator → Routing decision (handoff to agent_b)
-6. Task → Orchestrator.route_to_agent(agent_b)
-7. Agent_B → [Conversation loop with tool execution]
-8. Agent_B → Return response to Orchestrator
-9. Task → Orchestrator.decide_next_step()
-10. Orchestrator → Routing decision (complete)
-11. Task → Complete and persist final state
-```
-
-## 5. Security Architecture
-
-### 5.1. Centralized Tool Control
-
-- **Single Entry Point**: All tools executed through `orchestrator.execute_tool_calls()`
-- **Security Validation**: Tool permissions checked before execution
-- **Resource Limits**: Prevent abuse through centralized monitoring
-- **Audit Trail**: Complete logging of all tool usage
-- **Policy Enforcement**: Consistent security policies across agents
-
-### 5.2. Agent Isolation
-
-- **Private Brains**: No external access to agent LLM interactions
-- **Public Interfaces**: Agents communicate only through defined APIs
-- **Capability Control**: Tools assigned per agent configuration
-- **State Isolation**: Each agent manages independent state
-
-## 6. Deployment Models
-
-### 6.1. CLI Mode (Single-use)
-
-- Each task creates new `Task` instance
-- Dedicated workspace directory per task
-- Process terminates after completion
-- Suitable for batch processing and automation
-
-### 6.2. Service Mode (Long-running)
-
-- Persistent service managing multiple concurrent tasks
-- REST/WebSocket APIs for client interaction
-- Shared tool executor and orchestrator instances
-- Suitable for interactive applications and web UIs
-
-## 7. Extension Points
-
-### 7.1. Custom Tools
-
-```python
-from agentx import register_tool
-
-@register_tool
-def custom_tool(param: str) -> str:
-    """Custom tool implementation."""
-    return f"Result: {param}"
-```
-
-### 7.2. Custom Memory Backends
-
-```python
-class CustomMemoryBackend(MemoryBackend):
-    async def store(self, key: str, data: Any) -> None:
-        # Custom storage implementation
-
-    async def retrieve(self, query: str) -> List[Any]:
-        # Custom retrieval implementation
-```
-
-### 7.3. Custom LLM Providers
-
-```python
-class CustomBrain(Brain):
-    async def generate_response(self, messages, **kwargs) -> LLMResponse:
-        # Custom LLM provider integration
-```
-
-## 8. Configuration Examples
-
-### 8.1. Simple Team Configuration
-
-```yaml
-name: "Content Creation Team"
-description: "AI team for research and writing"
-
-agents:
-  - name: researcher
-    description: "Research specialist"
-    prompt_template: "prompts/researcher.md"
-    tools: [web_search, store_artifact, read_file]
-    llm_config:
-      model: "deepseek/deepseek-chat"
-      temperature: 0.7
-
-  - name: writer
-    description: "Content writer"
-    prompt_template: "prompts/writer.md"
-    tools: [store_artifact, read_file, write_file]
-    llm_config:
-      model: "deepseek/deepseek-chat"
-      temperature: 0.8
-
-handoffs:
-  - from_agent: researcher
-    to_agent: writer
-    condition: "research_complete"
-
-execution:
-  max_rounds: 20
-  initial_agent: researcher
-```
-
-### 8.2. Tool Configuration
-
-```yaml
-tools:
-  - name: web_search
-    type: builtin
-    description: "Search the web for information"
-
-  - name: custom_api
-    type: custom
-    module: "my_tools.api_tool"
-    config:
-      api_key: "${API_KEY}"
-      base_url: "https://api.example.com"
-```
-
-This architecture provides a robust, secure, and extensible foundation for building sophisticated multi-agent AI applications while maintaining clear separation of concerns and strong security boundaries.
+AgentX will continue to evolve along three pillars: performance, interoperability, and safety. Upcoming priorities include native support for streaming multimodal models, tighter integration with external knowledge graphs to improve grounding, and progressive guardrail policies that adapt to organisational compliance requirements. We also plan to introduce a plug-and-play planning module so that teams can experiment with alternative orchestration strategies without modifying core code. Finally, deeper observability hooks—spanning trace-level token accounting through to high-level outcome metrics—will help users fine-tune cost, latency, and quality trade-offs.

@@ -37,8 +37,8 @@ class GuardrailType(str, Enum):
     RATE_LIMITING = "rate_limiting"
     CONTENT_SAFETY = "content_safety"
 
-class LLMConfig(BaseModel):
-    """LLM configuration with DeepSeek as default provider."""
+class BrainConfig(BaseModel):
+    """Brain configuration with DeepSeek as default provider."""
     provider: str = "deepseek"  # Default provider (Req #17)
     model: str = "deepseek-chat"  # Default model (Req #17)
     temperature: float = 0.7
@@ -109,7 +109,7 @@ class AgentConfig(BaseModel):
     name: str
     description: str
     prompt_template: str  # Path to Jinja2 template file
-    llm_config: Optional[LLMConfig] = None  # Override default LLM
+    brain_config: Optional[BrainConfig] = None  # Override default Brain
     tools: List[str] = Field(default_factory=list)  # Tool names available to this agent
     memory_config: Optional[MemoryConfig] = None
     guardrail_policies: List[str] = Field(default_factory=list)
@@ -131,13 +131,13 @@ class TaskConfig(BaseModel):
 
 class OrchestratorConfig(BaseModel):
     """Configuration for the orchestrator's Brain and behavior."""
-    llm_config: Optional[LLMConfig] = None  # Orchestrator's LLM config for routing decisions
+    brain_config: Optional[BrainConfig] = None  # Orchestrator's Brain config for routing decisions
     max_rounds: int = 50
     timeout: int = 3600
     
-    def get_default_llm_config(self) -> LLMConfig:
-        """Get default LLM config for orchestrator if none specified."""
-        return LLMConfig(
+    def get_default_brain_config(self) -> BrainConfig:
+        """Get default Brain config for orchestrator if none specified."""
+        return BrainConfig(
             temperature=0.0,  # Low temperature for consistent routing decisions
             max_tokens=100,   # Short responses for handoff analysis
             timeout=10        # Quick analysis

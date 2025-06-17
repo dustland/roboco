@@ -15,7 +15,7 @@ from pydantic import BaseModel, Field
 import litellm
 
 from ..utils.logger import get_logger
-from .config import LLMConfig
+from .config import BrainConfig
 
 logger = get_logger(__name__)
 
@@ -53,12 +53,12 @@ class Brain:
     3. Parse and return responses
     """
     
-    def __init__(self, config: LLMConfig):
+    def __init__(self, config: BrainConfig):
         """
-        Initialize Brain with LLM configuration.
+        Initialize Brain with Brain configuration.
         
         Args:
-            config: LLM configuration including provider, model, etc.
+            config: Brain configuration including provider, model, etc.
         """
         self.config = config
         self.initialized = False
