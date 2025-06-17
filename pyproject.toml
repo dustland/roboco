@@ -3,7 +3,7 @@ requires = ["setuptools>=42", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "agentx"
+name = "agentx-py"
 version = "0.8.0"
 description = "AgentX - An Opinionated Multi-Agent Framework"
 authors = [{ name = "Dustland Team", email = "hi@dustland.ai" }]
@@ -84,10 +84,12 @@ test = "agentx.run:test"
 
 [tool.setuptools]
 package-dir = { "" = "src" }
-package-data = { "agentx" = ["py.typed"] }
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+agentx = ["py.typed", "**/*.jinja2", "**/*.png"]
 
 [tool.black]
 line-length = 88
@@ -148,6 +150,3 @@ python_functions = "test_*"
 
 [tool.uv.workspace]
 members = ["examples/superwriter"]
-
-[dependency-groups]
-dev = ["pytest>=8.3.5", "pytest-asyncio>=1.0.0", "pytest-cov>=6.0.0"]

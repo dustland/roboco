@@ -24,7 +24,10 @@ jobs:
       - name: Install dependencies
         run: |
           pip install uv
-          uv pip install .[docs]
+          uv sync --system --all-extras
+
+      - name: Build documentation
+        run: mkdocs build
 
       - name: Deploy docs
         run: mkdocs gh-deploy --force --clean
