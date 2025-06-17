@@ -4,9 +4,9 @@
 
 AgentX is an open-source backbone for building secure, observable, and fully autonomous multi-agent systems. A lightweight micro-kernel orchestrates specialised agents, turning a single user request into a coordinated workflow that spans tool execution, memory retrieval, and artifact management—all within isolated, version-controlled workspaces. Every decision, message, and side effect is captured as a structured event, providing complete auditability and real-time insight into system behaviour.
 
-## 2. Architectural Vision & Principles
+## 2. Vision & Principles
 
-### 2.1 Core Vision
+### 2.1 Project Vision
 
 AgentX enables organisations to decompose complex goals into collaborative **Teams** of agents, each focusing on a well-defined role. A central **Orchestrator** governs the conversation, selects the next agent to speak, and executes tools on the agents' behalf, while a **Task Executor** drives the lifecycle of the task itself. The result is a flexible framework that elevates individual agent capabilities into a cohesive, self-optimising system that can learn, adapt, and scale with minimal human intervention.
 
@@ -154,11 +154,11 @@ sequenceDiagram
     end
 ```
 
-## 4. Agent Internals
+## 5. Agent Internals
 
 While the `Task Executor` manages the high-level conversation flow between agents, each `Agent` is responsible for its own internal reasoning process. This process involves hydrating a prompt template with runtime context, executing a "monologue" with its private Brain, and optionally streaming its response back to the client.
 
-#### 4.1 Prompt Templating
+### 5.1 Prompt Templating
 
 An agent's core behavior and persona are defined by its system prompt, which is typically loaded from a Jinja2 template file. Before the `Task Executor` invokes an agent, it injects dynamic context into this template. This ensures the agent is fully aware of the current state of the task. Common context variables include:
 
@@ -169,7 +169,7 @@ An agent's core behavior and persona are defined by its system prompt, which is 
 
 This just-in-time templating allows agents to be both powerful and reusable, adapting their behavior to the specific needs of each task.
 
-#### 4.2 Internal Monologue and Tool-Calling Loop
+### 5.2 Internal Monologue and Tool-Calling Loop
 
 When an agent is invoked to generate a response, it enters an internal loop with its `Brain` to produce the most informed output possible.
 
@@ -202,7 +202,7 @@ sequenceDiagram
     AG-->>TX: return final_response
 ```
 
-#### 4.3 End-to-End Streaming
+### 5.3 End-to-End Streaming
 
 To provide maximum transparency and a highly responsive user experience, AgentX is designed for **end-to-end streaming**. This is more than just streaming the final answer; it means that every significant piece of text generated during the task lifecycle is yielded back to the client in real-time.
 
@@ -214,11 +214,11 @@ This is achieved by making streaming the default behavior at every layer of the 
 
 This architecture allows a developer or user to watch the entire multi-agent collaboration unfold in real-time, offering unparalleled insight for debugging, monitoring, and human-in-the-loop interaction. It transforms the "black box" of agent reasoning into a transparent, observable process.
 
-## 5. State and Context Management
+## 6. State and Context Management
 
 AgentX is designed around the core principle that agents should operate on a rich, durable, and easily accessible context. This is achieved through two tightly integrated components: the **Workspace** and the **Memory System**.
 
-### 5.1 The Workspace: A Durable Foundation
+### 6.1 Workspace: A Durable Foundation
 
 The **Workspace** is the stateful heart of every task. It is a version-controlled directory that provides the foundation for iterative development, task resumption, and human-in-the-loop collaboration. By persisting every message, artifact, and state change to the workspace, AgentX guarantees full auditability and allows tasks to be paused, inspected, modified, and resumed at any point.
 
@@ -230,9 +230,9 @@ Every workspace contains:
 
 This robust state management is what enables developers to treat tasks not as ephemeral processes, but as durable, long-running workflows that can be debugged, refined, and improved over time.
 
-### 5.2 The Memory System: Intelligent Context Retrieval
+### 6.2 Memory: Intelligent Context Retrieval
 
-The **Memory System** acts as the intelligent, unified gateway for retrieving contextual data from the Workspace. It is more than a simple wrapper around a vector database; it is the sole entry point for agents to perform intelligent data fetching, ensuring they have the most relevant information without exceeding token limits.
+The **Memory** acts as the intelligent, unified gateway for retrieving contextual data from the Workspace. It is more than a simple wrapper around a vector database; it is the sole entry point for agents to perform intelligent data fetching, ensuring they have the most relevant information without exceeding token limits.
 
 Its responsibilities are twofold:
 
@@ -241,7 +241,7 @@ Its responsibilities are twofold:
 
 By abstracting away the complexities of data storage and retrieval, the Memory System allows agents to remain focused on reasoning, while ensuring their prompts are always grounded with high-quality, relevant context from the Workspace.
 
-### 5.3 Example Scenario: Context-Aware Writing
+### 6.3 Example Scenario: Context-Aware Writing
 
 To illustrate how these components work together, consider a `Writer` agent tasked with drafting a report. A `Researcher` agent has already run, populating the `Workspace` with dozens of source documents.
 
@@ -253,30 +253,39 @@ To illustrate how these components work together, consider a `Writer` agent task
 
 This scenario demonstrates how the combination of a durable `Workspace` and an intelligent `Memory System` enables agents to perform complex, stateful tasks that would be impossible with a simple conversational context window.
 
-## 6. Platform Services
+## 7. Platform Services
 
 Platform Services provide common capabilities that sit outside the tight execution loop yet remain essential to every task. They are deployed as shared, multi-tenant components and accessed via well-defined APIs, allowing the core runtime to stay lightweight while still benefiting from robust storage, configuration, and monitoring facilities.
 
-#### 6.1 Configuration System
+### 7.1 Configuration System
 
 The Configuration System is the single source of truth for teams, agents, tools, and runtime policies. It loads declarative YAML files, validates them against versioned schemas, and exposes the resulting objects to the Task Executor and Orchestrator at startup or on hot-reload.
 
-#### 6.2 Event Bus
+### 7.2 Event Bus
 
 All significant actions in the framework emit structured events that flow through the Event Bus. This design decouples producers from consumers, enabling real-time monitoring, auditing, and external integrations without burdening the hot code-path.
 
-#### 6.3 Memory System
+### 7.3 Memory System Infrastructure
 
-The Memory System acts as the intelligent, unified gateway for all contextual data. It is more than a simple wrapper around a vector database; it is the sole entry point for agents to perform intelligent data fetching, ensuring they have the most relevant information without exceeding token limits.
+While Section 6 described the Memory System from a business logic perspective, this section focuses on its infrastructure implementation. The Memory System uses a pluggable backend architecture that abstracts away the complexities of different memory storage implementations.
 
-Its responsibilities are twofold:
+**Implementation Architecture**:
 
-1.  **Context Ingestion**: It automatically captures and indexes conversational history, agent-generated artifacts, and other designated data sources into a long-term, searchable store.
-2.  **Intelligent Retrieval**: It provides a simple query interface for agents to retrieve contextually relevant information. The system handles the complexity of searching across different data types (conversations, documents, etc.) and uses semantic ranking to return only the most salient facts.
+- **Memory Backend Interface**: A standardized interface that allows different memory providers (mem0, vector databases, etc.) to be plugged in seamlessly
+- **mem0 Integration**: The default backend leverages mem0 for intelligent memory management, providing automatic memory extraction, storage, and retrieval
+- **Vector Database Support**: Direct integration with vector databases for semantic search capabilities
+- **Memory Factory Pattern**: A factory that instantiates the appropriate memory backend based on configuration
 
-By abstracting away the complexities of data storage and retrieval, the Memory System allows agents to remain focused on reasoning, while ensuring their prompts are always grounded with high-quality, relevant context.
+**Key Infrastructure Features**:
 
-#### 6.4 Observability
+- **Automatic Indexing**: Background processes that continuously index new content from workspaces
+- **Scalable Storage**: Support for both local and distributed memory storage backends
+- **Memory Lifecycle Management**: Automatic cleanup, archival, and optimization of stored memories
+- **Provider Abstraction**: Clean separation between the memory interface and underlying storage technology
+
+This infrastructure design ensures that the Memory System can scale from development environments using local storage to production deployments using enterprise-grade vector databases, all without changing the business logic layer.
+
+### 7.4 Observability
 
 The Observability service provides real-time insight into the inner workings of the AgentX framework. It subscribes to the `Event Bus` to receive a live stream of all system events—from task creation to agent handoffs to tool executions. This data is then exposed through a built-in web dashboard, allowing developers to:
 
@@ -286,20 +295,22 @@ The Observability service provides real-time insight into the inner workings of 
 
 By making the system transparent by default, the Observability service dramatically reduces the time required to build, test, and refine sophisticated agent-based workflows.
 
-## 7. Builtin Tools
+## 8. Builtin Tools
 
 Builtin Tools extend AgentX with first-class capabilities without requiring users to write custom plugins. They are registered automatically at startup and are available to any agent subject to security policy. These tools are designed to be general-purpose and cover the most common needs of autonomous agents.
 
 Key builtin tools include:
 
-- **File System Tools**: A comprehensive set of tools for interacting with the task workspace, including `read_file`, `write_file`, `list_directory`, and `delete_file`. These are essential for agents that need to read data, generate code, or manage artifacts.
-- **Web Tools**: Tools like `fetch_url` and `scrape_text` allow agents to retrieve information from the web, forming the foundation for research and data-gathering tasks.
-- **Memory Tools**: The `store_memory` and `search_memory` tools provide a direct interface to the Memory System, allowing agents to explicitly commit information to long-term storage or perform semantic searches over past conversations.
-- **Human-in-the-Loop Tools**: A special `request_human_input` tool allows an agent to pause the task and explicitly ask for user feedback or direction, which is critical for interactive workflows and safety guardrails.
+- **Storage Tools**: Clean file operations that use the storage layer, providing secure workspace-scoped file management with proper isolation and version control. Includes `read_file`, `write_file`, `list_directory`, `delete_file`, and other essential file operations.
+- **Web Tools**: Advanced web capabilities including `web_search`, `extract_content` for web scraping, and `automate_browser` for AI-driven browser automation using natural language instructions.
+- **Memory Tools**: Direct interface to the Memory system for storing and retrieving contextual information across task sessions.
+- **Context Tools**: Tools for managing and updating task context variables, allowing agents to maintain and share state information.
+- **Planning Tools**: Sophisticated task planning and execution tracking tools that help agents break down complex tasks into manageable phases.
+- **Search Tools**: Web search capabilities using multiple search engines (Google, Bing, DuckDuckGo) with configurable parameters.
 
 By providing these foundational capabilities, AgentX ensures that developers can build powerful and effective agent teams from day one.
 
-## 7. Extensibility
+## 9. Extensibility
 
 AgentX is designed as a production-ready backbone, which means it must be extensible at every layer.
 
@@ -307,6 +318,6 @@ AgentX is designed as a production-ready backbone, which means it must be extens
 - **Custom Tools**: Developers can add their own tools by decorating Python functions. These are registered alongside builtin tools and exposed to agents in the same way.
 - **MCP Tools & API Integration**: For complex integrations, the framework supports Multi-Container Platform (MCP) tools, which run in secure sandboxes, allowing safe interaction with enterprise APIs and SaaS platforms.
 
-## 8. The Future of AgentX
+## 10. The Future of AgentX
 
 AgentX will continue to evolve along three pillars: performance, interoperability, and safety. Upcoming priorities include native support for streaming multimodal models, tighter integration with external knowledge graphs to improve grounding, and progressive guardrail policies that adapt to organisational compliance requirements. We also plan to introduce a plug-and-play planning module so that teams can experiment with alternative orchestration strategies without modifying core code. Finally, deeper observability hooks—spanning trace-level token accounting through to high-level outcome metrics—will help users fine-tune cost, latency, and quality trade-offs.

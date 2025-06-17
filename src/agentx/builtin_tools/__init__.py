@@ -2,14 +2,12 @@
 Built-in tools for AgentX framework.
 
 This module provides essential tools that are commonly needed across different agent types:
-- Basic file operations
 - Storage and artifact management
 - Context and planning tools
 - Search and web tools
 - Memory operations
 """
 
-from .basic_tools import *
 from .storage_tools import *
 from .context_tools import *
 from .planning_tools import *
@@ -27,10 +25,6 @@ def register_builtin_tools(workspace_path: str = None):
     from ..tool.registry import get_tool_registry
     
     registry = get_tool_registry()
-    
-    # Register basic tools
-    from .basic_tools import BasicFileTool
-    registry.register_tool(BasicFileTool())
     
     # Register storage tools if workspace provided
     if workspace_path:
@@ -62,7 +56,6 @@ def register_builtin_tools(workspace_path: str = None):
 
 # Export tool classes for direct use if needed
 __all__ = [
-    "BasicFileTool",
     "ContextTool", 
     "PlanningTool",
     "MemoryTool",
