@@ -6,8 +6,8 @@ This section provides a detailed reference for AgentX's public API.
 
 These are the primary entry points for interacting with AgentX.
 
-::: agentx.core.task.execute_task
-::: agentx.core.task.start_task
+::: agentx.execute_task
+::: agentx.start_task
 
 ## Core Classes
 

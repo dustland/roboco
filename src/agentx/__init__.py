@@ -11,7 +11,7 @@ A flexible framework for building AI agent teams with:
 from .core.agent import Agent, create_assistant_agent
 from .core.brain import Brain
 from .core.team import Team
-from .core.task import Task, create_task
+from .core.task import Task, create_task, execute_task, start_task
 from .core.orchestrator import Orchestrator, get_orchestrator
 from .config.team_loader import load_team_config
 from .config.agent_loader import load_agent_config
@@ -46,6 +46,8 @@ __all__ = [
     "Orchestrator",
     "create_assistant_agent",
     "create_task",
+    "execute_task",
+    "start_task",
     "get_orchestrator",
     
     # Configuration

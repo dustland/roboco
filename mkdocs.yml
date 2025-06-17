@@ -1,13 +1,14 @@
 site_name: AgentX
 site_description: "AgentX - The open-source backbone for building secure, observable, and fully autonomous multi-agent systems."
-site_author: AgentX Team
-site_url: "" # Will be populated by GitHub Actions
+site_author: Dustland Team
+site_url: "https://dustland.github.io/agentx"
 
-repo_url: "https://github.com/your-org/agentx" # Please update this
-repo_name: "your-org/agentx" # Please update this
+repo_url: "https://github.com/dustland/agentx"
+repo_name: "dustland/agentx"
 
 theme:
   name: material
+  custom_dir: docs/partials
   palette:
     - scheme: default
       primary: indigo
@@ -25,6 +26,7 @@ theme:
     - navigation.tabs
     - navigation.sections
     - navigation.top
+    - navigation.instant
     - search.suggest
     - search.highlight
     - content.tabs.link

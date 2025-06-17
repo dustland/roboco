@@ -662,3 +662,21 @@ def create_task(team_config_path: str, task_id: str = None, workspace_dir: Path 
     """
     team = Team.from_config(team_config_path)
     return Task(team, task_id, workspace_dir)
+
+async def execute_task(prompt: str, config_path: str = None, stream: bool = False):
+    """
+    A convenience function to create and run a task in one call.
+
+    This is a "fire-and-forget" method for autonomous runs.
+    """
+    task = create_task(prompt, config_path)
+    async for update in task.run(stream=stream):
+        yield update
+
+async def start_task(prompt: str, config_path: str = None):
+    """
+    A convenience function to create and start a task for interactive sessions.
+    """
+    task = create_task(prompt, config_path)
+    await task.start()
+    return task

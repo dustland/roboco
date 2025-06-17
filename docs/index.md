@@ -1,8 +1,3 @@
----
-template: home.html
-title: AgentX - Autonomous AI Agent Teams
----
-
 <div align="center" style="text-align: center; padding: 2rem 0;">
   <img src="assets/logo.png" alt="AgentX Logo" width="150" style="margin: 0 auto;">
   <h1 style="font-size: 3rem; margin-top: 1rem; margin-bottom: 0.5rem;">AgentX</h1>
