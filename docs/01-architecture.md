@@ -86,9 +86,9 @@ In AgentX, a **Team** of collaborating agents is the primary mechanism for execu
 
 ### 4.1 Key Roles
 
-- **Task Executor**: Owns the end-to-end lifecycle of a single task. It provisions the workspace, hydrates the context, and runs the main execution loop. In each turn, it invokes the **`Orchestrator`** to execute a single collaborative turn. It is responsible for persisting state between turns.
-- **Orchestrator**: The central workflow engine for a single turn. It is invoked by the `Task Executor`. Its job is to: 1) select the appropriate agent, 2) invoke the agent, 3) receive the agent's response, 4) validate and dispatch any tool-call requests to the `Tool Executor`, 5) return the tool results to the agent for a final response, and 6) return a completed turn result to the `Task Executor`.
-- **Agent**: Encapsulates a specialised role (e.g., _researcher_, _writer_). It receives context, reasons with its private **Brain** (LLM interface), and returns a response, which may include tool-call requests. Agents are lightweight and composable as they never execute tools or route messages directly.
+- **Task Executor**: Owns the end-to-end lifecycle of a single task. It acts as the primary workflow engine, responsible for provisioning the workspace, managing the overall task state, and deciding which agent to invoke in each turn of the conversation.
+- **Orchestrator**: Acts as a dedicated, centralized service for tool management. It does **not** route between agents. Instead, it is invoked _by_ an agent when it needs to run a tool. The Orchestrator's sole responsibilities are to validate tool-call requests against their schemas, dispatch them to the secure `ToolExecutor`, and return the results to the calling agent.
+- **Agent**: Encapsulates a specialised role (e.g., _researcher_, _writer_). It receives control from the `Task Executor`, reasons with its private **Brain**, and can invoke the `Orchestrator` if it needs to execute a tool.
 
 ### 4.2 Execution Modes
 
@@ -102,22 +102,18 @@ This "fire-and-forget" mode is ideal for production. A client submits a task and
 sequenceDiagram
     participant C as Client
     participant TX as Task Executor
-    participant OR as Orchestrator
     participant AG as Agent
+    participant OR as Orchestrator
     participant TE as Tool Executor
 
     C->>TX: execute_task(prompt)
     loop Autonomous Loop
-        TX->>OR: execute_turn()
-        OR->>AG: invoke()
-        AG-->>OR: response (with tool_calls)
-        opt Tool calls needed
-            OR->>TE: execute_tools(tool_calls)
-            TE-->>OR: tool_results
-            OR->>AG: invoke_with_results(results)
-            AG-->>OR: final_response
-        end
-        OR-->>TX: turn_result
+        TX->>AG: invoke_agent
+        AG-->>OR: request_tool_execution
+        OR-->>TE: dispatch_tool
+        TE-->>OR: return_result
+        OR-->>AG: provide_result
+        AG-->>TX: return_turn_response
     end
     TX-->>C: final_result
 ```
@@ -130,8 +126,8 @@ For debugging or human-in-the-loop workflows, a client can call `start_task` to 
 sequenceDiagram
     participant C as Client
     participant TX as Task Executor
-    participant OR as Orchestrator
     participant AG as Agent
+    participant OR as Orchestrator
     participant TE as Tool Executor
 
     C->>TX: start_task(prompt)
@@ -139,16 +135,12 @@ sequenceDiagram
 
     loop Interactive Steps
         C->>TX: task.step()
-        TX->>OR: execute_turn()
-        OR->>AG: invoke()
-        AG-->>OR: response (with tool_calls)
-        opt Tool calls needed
-            OR->>TE: execute_tools(tool_calls)
-            TE-->>OR: tool_results
-            OR->>AG: invoke_with_results(results)
-            AG-->>OR: final_response
-        end
-        OR-->>TX: step_result
+        TX->>AG: invoke_agent
+        AG-->>OR: request_tool_execution
+        OR-->>TE: dispatch_tool
+        TE-->>OR: return_result
+        OR-->>AG: provide_result
+        AG-->>TX: return_turn_response
         TX-->>C: step_result
     end
 ```
@@ -170,43 +162,49 @@ This just-in-time templating allows agents to be both powerful and reusable, ada
 
 ### 5.2 Internal Monologue and Tool-Calling Loop
 
-When an agent is invoked to generate a response, it enters an internal loop with its `Brain` to produce the most informed output possible.
+When an agent is invoked by the `Task Executor`, it enters a sophisticated internal loop to produce the most informed output possible. This loop includes a crucial self-correction mechanism for tool usage.
 
-1.  **Initial Reasoning**: The `Brain` first generates a response based on the hydrated prompt and conversation history.
-2.  **Tool Identification**: The `Brain` analyzes its own draft response to determine if it contains implicit or explicit requests to call one or more tools. This self-correction step allows the agent to recognize when it needs more information or needs to perform an action.
-3.  **Tool Execution Request**: If tools are required, the agent yields control back to the **`Orchestrator`**, passing along the structured tool-call requests. The **`Orchestrator`** is responsible for invoking the `Tool Executor` to securely run the tools.
-4.  **Refinement with Results**: The **`Orchestrator`** provides the tool results back to the agent. The agent's `Brain` then re-evaluates its initial reasoning in light of the new information and generates a final, more grounded response for that turn.
+1.  **Initial Reasoning**: The `Agent` passes the prompt to its `Brain` (LLM), which generates an initial response that may include one or more desired tool calls.
+2.  **Request Execution**: The `Agent` requests execution for these tool calls from the `Orchestrator`.
+3.  **Validation and Self-Correction**: The `Orchestrator` validates the calls against the registered tool schemas.
+    - If a call is invalid, the `Orchestrator` immediately returns a structured validation error. The `Agent` then passes this error back to the `Brain`, which attempts to generate a corrected tool call. This loop continues until the call is valid.
+4.  **Secure Dispatch**: Once a tool call is valid, the `Orchestrator` dispatches it to the `ToolExecutor`, which runs the tool in a secure sandbox.
+5.  **Result Integration**: The results are returned up the chain to the `Agent`, which gives them to the `Brain`. The `Brain` uses this new information to generate its final, grounded response for the turn.
+6.  **Final Response**: The `Agent` returns its final response to the `Task Executor`, completing its turn.
 
-This loop ensures that agents can autonomously gather necessary information or perform actions before committing to a final answer, leading to more accurate and reliable outcomes.
+This entire process ensures that agents can autonomously use tools, correct their own mistakes, and ground their reasoning in real-world information before finalizing their output.
 
 ```mermaid
 sequenceDiagram
-    participant TA as TaskExecutor (caller)
-    participant AG as Agent
-    participant BR as Brain (LLM)
-    participant OR as Orchestrator
-    participant TO as ToolExecutor
+    participant TaskExecutor
+    participant Agent
+    participant Brain
+    participant Orchestrator
+    participant ToolExecutor
 
-    TA->>AG: generate_response(prompt)
-    AG->>BR: generate_response(prompt)
-    BR-->>AG: response_with_tool_calls
+    TaskExecutor->>Agent: invoke
+    Agent->>Brain: generate response
+    Brain-->>Agent: draft response (with tool call)
 
-    alt Tool Calls Needed
-        AG->>OR: invoke_tool_calls
-        OR-->>AG: validation_failed(errors)
-        AG->>BR: refine_response(results)
-        BR-->>AG: return refined_tool_call
-        AG->>OR: invoke(tool_call)
-        OR->>TO: invoke(tool_call)
-        TO-->>OR: return tool_results
-        OR-->>AG: return tool_results
-        AG->>BR: append(tool_results)
-        BR-->>AG: final_response
-    else No Tools Needed
-        BR-->>AG: final_response
+    loop Tool Self-Correction
+        Agent->>Orchestrator: request execution
+        alt Invalid Tool Call
+            Orchestrator-->>Agent: validation error
+            Agent->>Brain: correct tool call
+            Brain-->>Agent: corrected tool call
+        else Valid Tool Call
+            Orchestrator->>ToolExecutor: dispatch tool
+            ToolExecutor-->>Orchestrator: tool result
+            Orchestrator-->>Agent: return result
+
+            Agent->>Brain: generate final response
+            Brain-->>Agent: final response
+            break
+        end
     end
 
-    AG-->>TA: return final_response
+    Agent-->>TaskExecutor: return final response
+end
 ```
 
 ### 5.3 End-to-End Streaming
