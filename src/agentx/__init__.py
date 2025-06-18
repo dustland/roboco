@@ -14,7 +14,7 @@ from .core.team import Team
 from .core.task import TaskExecutor, create_task, execute_task, start_task
 from .core.orchestrator import Orchestrator, get_orchestrator
 from .config.team_loader import load_team_config
-from .config.agent_loader import load_agent_config
+from .config.agent_loader import load_single_agent_config, load_agents_config
 
 # Tool framework
 from .tool.registry import register_tool, get_tool_registry
@@ -27,7 +27,7 @@ from .builtin_tools import *
 
 # Storage and memory
 from .storage.factory import StorageFactory
-from .memory.factory import MemoryFactory
+from .memory.factory import create_memory_backend, create_default_memory_backend
 
 # Search capabilities
 from .search.search_manager import SearchManager
@@ -42,7 +42,7 @@ __all__ = [
     "Agent",
     "Brain", 
     "Team",
-    "Task",
+    "TaskExecutor",
     "Orchestrator",
     "create_assistant_agent",
     "create_task",
@@ -52,7 +52,8 @@ __all__ = [
     
     # Configuration
     "load_team_config",
-    "load_agent_config",
+    "load_single_agent_config",
+    "load_agents_config",
     
     # Tool framework
     "Tool",
@@ -65,7 +66,8 @@ __all__ = [
     
     # Factories
     "StorageFactory",
-    "MemoryFactory",
+    "create_memory_backend",
+    "create_default_memory_backend",
     "SearchManager",
     
     # Utilities

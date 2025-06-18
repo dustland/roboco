@@ -1,26 +1,18 @@
 """
-Central orchestrator for managing agent interactions and tool execution.
+Central orchestrator for coordination and tool execution.
 
-The orchestrator is the central nervous system that:
-- Makes routing decisions (complete, handoff, continue)
-- Dispatches tool calls to ToolExecutor for secure execution
-- Manages agent collaboration and handoffs
-- Maintains task workflow coordination
+The orchestrator is the centralized service that provides:
+- Intelligent agent routing decisions based on task context and previous responses
+- Secure tool execution with validation and dispatch
+- Structured error feedback for self-correction
+- Tool permissions and security policy management
 """
 
-import asyncio
+from typing import Dict, Any, Optional, List
 import json
-import time
-from dataclasses import dataclass
-from datetime import datetime
-from enum import Enum
-from pathlib import Path
-from typing import Dict, Any, Optional, List, AsyncGenerator
 
 from .team import Team
-from .agent import Agent
-from .brain import Brain, BrainMessage
-from .config import BrainConfig
+from .brain import Brain
 from ..utils.logger import get_logger
 
 # Import ToolExecutor for secure tool dispatch
@@ -30,142 +22,280 @@ from ..tool.registry import get_tool_registry
 logger = get_logger(__name__)
 
 
-class RoutingAction(Enum):
-    """Possible routing actions."""
-    COMPLETE = "complete"
-    HANDOFF = "handoff" 
-    CONTINUE = "continue"
-
-
-@dataclass
-class RoutingDecision:
-    """Represents a routing decision made by the orchestrator."""
-    action: RoutingAction
-    next_agent: Optional[str] = None
-    reason: str = ""
-
-
 class Orchestrator:
     """
-    Central orchestrator for agent coordination and secure tool execution.
+    Central orchestrator for coordination and tool execution.
     
     This class handles:
-    - Routing decisions between agents (core orchestration)
+    - Making intelligent agent routing decisions based on context and responses
+    - Validating tool calls against schemas
     - Dispatching tool calls to ToolExecutor for security
-    - Managing team collaboration workflows
-    - Intelligent handoff detection and execution
+    - Managing tool permissions and access control
+    - Providing structured error feedback for agent self-correction
     """
     
-    def __init__(self, team: Team = None, max_rounds: int = None, timeout: int = None):
-        """Initialize orchestrator with team and limits."""
+    def __init__(self, team: Team = None):
+        """Initialize orchestrator for coordination and tool execution."""
         self.team = team
-        self.max_rounds = max_rounds or 50
-        self.timeout = timeout or 3600  # 1 hour default
         
         # Initialize ToolExecutor for secure tool dispatch
         self.tool_executor = ToolExecutor()
         self.tool_registry = get_tool_registry()
         
-        # Initialize orchestrator's brain for intelligent routing decisions
+        # Initialize Brain for routing decisions if team is provided
+        self.routing_brain = None
+        if team and team.config.orchestrator:
+            brain_config = team.config.orchestrator.brain_config or team.config.orchestrator.get_default_brain_config()
+            self.routing_brain = Brain(brain_config)
+        
         if team:
-            orchestrator_brain_config = BrainConfig(
-                model="deepseek/deepseek-chat",
-                temperature=0.0,  # Low temperature for consistent decisions
-                max_tokens=200,   # Short responses for routing decisions
-                timeout=10        # Quick decisions
-            )
-            self.brain = Brain(orchestrator_brain_config)
-            logger.info(f"🎭 Orchestrator initialized for team '{team.name}' with {len(team.agents)} agents")
+            logger.info(f"🎭 Orchestrator initialized for coordination and tool execution with team '{team.name}'")
         else:
             # Single-agent mode or global orchestrator
-            self.brain = None
-            logger.info("🎭 Orchestrator initialized for tool execution")
+            logger.info("🎭 Orchestrator initialized for tool execution only")
 
     # ============================================================================
-    # CORE ORCHESTRATION - Agent routing and collaboration
+    # AGENT ROUTING - Intelligent coordination decisions
     # ============================================================================
 
-    async def decide_next_step(self, current_agent: str, response: str, task_context: Dict[str, Any]) -> RoutingDecision:
-        """
-        Core routing logic - decide what happens next.
-        
-        This is the primary orchestration responsibility.
-        """
-        if not self.team:
-            # Single agent mode - always complete
-            return RoutingDecision(
-                action=RoutingAction.COMPLETE,
-                reason="Single agent task completed"
-            )
-        
-        # Check if task should be completed
-        if await self._should_complete_task(current_agent, response, task_context):
-            return RoutingDecision(
-                action=RoutingAction.COMPLETE,
-                reason="Task completion criteria met"
-            )
-        
-        # Check if we should handoff to another agent
-        next_agent = self._decide_handoff_target(current_agent, response, task_context)
-        if next_agent:
-            return RoutingDecision(
-                action=RoutingAction.HANDOFF,
-                next_agent=next_agent,
-                reason=f"Intelligent routing suggests handoff to {next_agent}"
-            )
-        
-        # Default: continue with current agent
-        return RoutingDecision(
-            action=RoutingAction.CONTINUE,
-            reason="No handoff needed, continue with current agent"
-        )
-
-    async def route_to_agent(
+    async def get_next_agent(
         self, 
-        agent_name: str, 
-        messages: List[Dict[str, Any]], 
-        system_prompt: Optional[str] = None
+        context: Dict[str, Any], 
+        last_response: str = None
     ) -> str:
         """
-        Route messages to a specific agent for processing.
+        Determine which agent should execute next based on task context and previous response.
         
-        The orchestrator delegates to the agent but provides itself for tool execution.
+        Args:
+            context: Current task context including history, current agent, available agents
+            last_response: The last agent's response (optional for initial selection)
+            
+        Returns:
+            Name of the agent that should execute next
         """
-        if not self.team or agent_name not in self.team.agents:
-            raise ValueError(f"Agent '{agent_name}' not found in team")
+        if not self.team or len(self.team.agents) <= 1:
+            # Single agent or no team - return the only/current agent
+            if self.team and self.team.agents:
+                return list(self.team.agents.keys())[0]
+            return context.get("current_agent", "default")
         
-        agent = self.team.agents[agent_name]
+        routing_decision = await self.decide_next_step(context, last_response)
         
-        # Agent handles conversation flow, orchestrator handles tool execution
-        return await agent.generate_response(
-            messages=messages,
-            system_prompt=system_prompt,
-            orchestrator=self  # Agent delegates tool execution to orchestrator
-        )
+        if routing_decision["action"] == "HANDOFF":
+            return routing_decision["next_agent"]
+        elif routing_decision["action"] == "CONTINUE":
+            return context.get("current_agent")
+        else:  # COMPLETE
+            # Task is complete, return current agent for final cleanup
+            return context.get("current_agent")
 
-    async def stream_from_agent(
+    async def decide_next_step(
         self, 
-        agent_name: str, 
-        messages: List[Dict[str, Any]], 
-        system_prompt: Optional[str] = None
-    ) -> AsyncGenerator[str, None]:
+        context: Dict[str, Any], 
+        last_response: str = None
+    ) -> Dict[str, Any]:
         """
-        Stream response from a specific agent.
+        Make an intelligent routing decision based on task context and agent response.
         
-        The orchestrator delegates to the agent but provides itself for tool execution.
+        Args:
+            context: Current task context including history, agents, progress
+            last_response: The last agent's response to analyze
+            
+        Returns:
+            Dict with action ("CONTINUE", "HANDOFF", "COMPLETE"), next_agent, and reason
         """
-        if not self.team or agent_name not in self.team.agents:
-            raise ValueError(f"Agent '{agent_name}' not found in team")
+        if not self.team:
+            return {"action": "COMPLETE", "reason": "No team configured"}
         
-        agent = self.team.agents[agent_name]
+        # Single agent teams always complete after response
+        if len(self.team.agents) == 1:
+            return {"action": "COMPLETE", "reason": "Single agent task completed"}
         
-        # Agent handles conversation flow, orchestrator handles tool execution
-        async for chunk in agent.stream_response(
-            messages=messages,
-            system_prompt=system_prompt,
-            orchestrator=self  # Agent delegates tool execution to orchestrator
-        ):
-            yield chunk
+        # Check basic completion conditions first
+        if context.get("round_count", 0) >= context.get("max_rounds", 50):
+            return {"action": "COMPLETE", "reason": "Maximum rounds reached"}
+        
+        # Use Brain for intelligent routing if available
+        if self.routing_brain and last_response:
+            return await self._intelligent_routing_decision(context, last_response)
+        else:
+            # Fall back to simple heuristic routing
+            return self._heuristic_routing_decision(context, last_response)
+
+    async def _intelligent_routing_decision(
+        self, 
+        context: Dict[str, Any], 
+        last_response: str
+    ) -> Dict[str, Any]:
+        """Use LLM to make intelligent routing decisions."""
+        try:
+            # Build routing prompt
+            routing_prompt = self._build_routing_prompt(context, last_response)
+            
+            messages = [
+                {"role": "user", "content": routing_prompt}
+            ]
+            
+            # Get routing decision from Brain
+            brain_response = await self.routing_brain.generate_response(
+                messages=messages,
+                system_prompt=self._get_routing_system_prompt()
+            )
+            
+            # Parse the structured response
+            try:
+                decision = json.loads(brain_response.content)
+                
+                # Validate the decision structure
+                if not isinstance(decision, dict) or "action" not in decision:
+                    raise ValueError("Invalid decision format")
+                
+                # Ensure next_agent is provided for handoff
+                if decision["action"] == "HANDOFF" and "next_agent" not in decision:
+                    raise ValueError("Handoff decision missing next_agent")
+                
+                return decision
+                
+            except (json.JSONDecodeError, ValueError) as e:
+                logger.warning(f"Failed to parse routing decision: {e}, falling back to heuristic")
+                return self._heuristic_routing_decision(context, last_response)
+                
+        except Exception as e:
+            logger.error(f"Error in intelligent routing: {e}, falling back to heuristic")
+            return self._heuristic_routing_decision(context, last_response)
+
+    def _heuristic_routing_decision(
+        self, 
+        context: Dict[str, Any], 
+        last_response: str = None
+    ) -> Dict[str, Any]:
+        """Fall back to simple heuristic routing logic."""
+        if not last_response:
+            return {"action": "CONTINUE", "reason": "No response to analyze"}
+        
+        # Check for completion signals in response
+        completion_signals = [
+            "task complete", "task is complete", "finished", "done",
+            "final answer", "conclusion", "summary"
+        ]
+        
+        response_lower = last_response.lower()
+        if any(signal in response_lower for signal in completion_signals):
+            return {"action": "COMPLETE", "reason": "Completion signal detected in response"}
+        
+        # Simple handoff logic based on agent roles and descriptions
+        current_agent = context.get("current_agent")
+        if current_agent and current_agent in self.team.agents:
+            next_agent = self._decide_handoff_target(current_agent, last_response)
+            if next_agent:
+                return {
+                    "action": "HANDOFF", 
+                    "next_agent": next_agent,
+                    "reason": f"Handoff to {next_agent} based on task flow"
+                }
+        
+        # Default: continue with current agent
+        return {"action": "CONTINUE", "reason": "Continue with current agent"}
+
+    def _decide_handoff_target(self, current_agent: str, response: str) -> Optional[str]:
+        """Decide handoff target based on current agent and response content."""
+        current_agent_obj = self.team.agents.get(current_agent)
+        if not current_agent_obj:
+            return None
+            
+        current_desc = current_agent_obj.config.description.lower()
+        
+        # Get other available agents
+        other_agents = {name: agent for name, agent in self.team.agents.items() 
+                       if name != current_agent}
+        
+        if not other_agents:
+            return None
+        
+        # Simple handoff logic based on agent descriptions
+        # Writer typically hands off to reviewer
+        if 'writ' in current_desc:
+            for name, agent in other_agents.items():
+                desc = agent.config.description.lower()
+                if any(word in desc for word in ['review', 'quality', 'edit', 'check']):
+                    return name
+        
+        # Researcher typically hands off to writer
+        if 'research' in current_desc:
+            for name, agent in other_agents.items():
+                desc = agent.config.description.lower()
+                if 'writ' in desc:
+                    return name
+        
+        # Reviewer can hand back to writer or move forward
+        if 'review' in current_desc:
+            for name, agent in other_agents.items():
+                desc = agent.config.description.lower()
+                if 'writ' in desc:
+                    return name
+        
+        return None
+
+    def _build_routing_prompt(self, context: Dict[str, Any], last_response: str) -> str:
+        """Build the prompt for intelligent routing decisions."""
+        current_agent = context.get("current_agent", "unknown")
+        available_agents = context.get("available_agents", [])
+        round_count = context.get("round_count", 0)
+        initial_prompt = context.get("initial_prompt", "")
+        
+        # Get agent descriptions
+        agent_descriptions = {}
+        if self.team:
+            for name, agent in self.team.agents.items():
+                agent_descriptions[name] = agent.config.description
+        
+        prompt = f"""Analyze the current task context and last agent response to determine the next routing decision.
+
+TASK CONTEXT:
+- Initial task: {initial_prompt}
+- Current round: {round_count}
+- Current agent: {current_agent}
+- Available agents: {', '.join(available_agents)}
+
+AGENT DESCRIPTIONS:
+{json.dumps(agent_descriptions, indent=2)}
+
+LAST AGENT RESPONSE:
+{last_response}
+
+Based on this information, determine the next action. Consider:
+1. Is the task complete based on the response?
+2. Should we continue with the current agent?
+3. Should we hand off to a different agent, and if so, which one?
+
+Respond with a JSON object in this exact format:
+{{
+    "action": "CONTINUE|HANDOFF|COMPLETE",
+    "next_agent": "agent_name_if_handoff",
+    "reason": "explanation of the decision"
+}}
+
+For HANDOFF actions, next_agent must be one of the available agents.
+For CONTINUE or COMPLETE actions, next_agent should be omitted or null."""
+        
+        return prompt
+
+    def _get_routing_system_prompt(self) -> str:
+        """Get the system prompt for routing decisions."""
+        return """You are an intelligent task orchestrator responsible for routing decisions in a multi-agent system.
+
+Your role is to analyze the current task context and agent responses to make optimal routing decisions:
+- CONTINUE: Keep the current agent working if they should continue their current task
+- HANDOFF: Transfer control to another agent when their expertise is needed
+- COMPLETE: End the task when the objective has been achieved
+
+Always respond with valid JSON in the exact format requested. Base decisions on:
+1. Task completion indicators in the response
+2. Whether the current agent has completed their specialized role
+3. Which agent's expertise is needed next
+4. Overall task progress and efficiency
+
+Be decisive and provide clear reasoning for each decision."""
 
     # ============================================================================
     # TOOL EXECUTION DISPATCH - Security and centralized control
@@ -231,194 +361,6 @@ class Orchestrator:
         """Clear tool execution history."""
         self.tool_executor.clear_history()
         logger.info("🧹 Tool execution history cleared")
-
-    # ============================================================================
-    # PRIVATE ROUTING LOGIC - Team coordination and handoff intelligence
-    # ============================================================================
-
-    async def _should_complete_task(self, current_agent: str, response: str, task_context: Dict[str, Any]) -> bool:
-        """Use LLM intelligence to decide if the task should be completed."""
-        if not self.team:
-            return True
-            
-        # Single agent teams complete after first response
-        if len(self.team.agents) == 1:
-            return True
-        
-        round_count = task_context.get('round_count', 0)
-        
-        # Hard limits to prevent infinite loops
-        if round_count >= self.max_rounds:
-            return True
-        
-        # Use LLM to intelligently detect completion
-        return await self._llm_detect_completion(current_agent, response, task_context)
-
-    def _decide_handoff_target(self, current_agent: str, response: str, task_context: Dict[str, Any]) -> Optional[str]:
-        """Decide if we should handoff and to whom."""
-        if not self.team:
-            return None
-            
-        # First check explicit handoff rules
-        rule_target = self._check_handoff_rules(current_agent, response)
-        if rule_target:
-            return rule_target
-        
-        # Then use natural intelligence based on agent descriptions
-        return self._natural_handoff_decision(current_agent, response, task_context)
-
-    def _check_handoff_rules(self, current_agent: str, response: str) -> Optional[str]:
-        """Check if handoff rules provide specific guidance."""
-        if not hasattr(self.team, 'config') or not hasattr(self.team.config, 'handoffs'):
-            return None
-            
-        possible_handoffs = [
-            rule for rule in self.team.config.handoffs 
-            if rule.from_agent == current_agent
-        ]
-        
-        if not possible_handoffs:
-            return None
-            
-        # For now, return the first valid handoff rule
-        # In the future, we could use LLM to evaluate conditions
-        for rule in possible_handoffs:
-            if rule.to_agent in self.team.agents:
-                logger.info(f"🎯 Rule-based handoff: {current_agent} → {rule.to_agent}")
-                return rule.to_agent
-        
-        return None
-
-    def _natural_handoff_decision(self, current_agent: str, response: str, task_context: Dict[str, Any]) -> Optional[str]:
-        """Use natural intelligence to decide handoff based on agent descriptions."""
-        current_agent_obj = self.team.agents.get(current_agent)
-        if not current_agent_obj:
-            return None
-            
-        current_desc = current_agent_obj.config.description.lower()
-        
-        # Get other available agents
-        other_agents = {name: agent for name, agent in self.team.agents.items() 
-                       if name != current_agent}
-        
-        if not other_agents:
-            return None
-        
-        # Use natural reasoning based on descriptions
-        # Writer typically hands off to reviewer
-        if 'writ' in current_desc:
-            for name, agent in other_agents.items():
-                desc = agent.config.description.lower()
-                if any(word in desc for word in ['review', 'quality', 'edit', 'check']):
-                    logger.info(f"🧠 Natural handoff: writer → reviewer ({name})")
-                    return name
-        
-        # Researcher typically hands off to writer
-        if 'research' in current_desc:
-            for name, agent in other_agents.items():
-                desc = agent.config.description.lower()
-                if 'writ' in desc:
-                    logger.info(f"🧠 Natural handoff: researcher → writer ({name})")
-                    return name
-        
-        # Reviewer can hand back to writer or move forward
-        if 'review' in current_desc:
-            for name, agent in other_agents.items():
-                desc = agent.config.description.lower()
-                if 'writ' in desc:
-                    logger.info(f"🧠 Natural handoff: reviewer → writer ({name})")
-                    return name
-        
-        # Consultant typically hands off to researcher or writer
-        if 'consult' in current_desc:
-            for name, agent in other_agents.items():
-                desc = agent.config.description.lower()
-                if 'research' in desc:
-                    logger.info(f"🧠 Natural handoff: consultant → researcher ({name})")
-                    return name
-            for name, agent in other_agents.items():
-                desc = agent.config.description.lower()
-                if 'writ' in desc:
-                    logger.info(f"🧠 Natural handoff: consultant → writer ({name})")
-                    return name
-        
-        return None
-
-    async def _llm_detect_completion(self, current_agent: str, response: str, task_context: Dict[str, Any]) -> bool:
-        """Use LLM intelligence to detect if the task should be completed."""
-        if not self.brain:
-            # Fallback without LLM
-            round_count = task_context.get('round_count', 0)
-            return round_count >= 6
-            
-        try:
-            # Get task context
-            initial_prompt = task_context.get('initial_prompt', 'Unknown task')
-            round_count = task_context.get('round_count', 0)
-            
-            # Get agent descriptions for context
-            agent_descriptions = {
-                name: agent.config.description 
-                for name, agent in self.team.agents.items()
-            }
-            
-            # Create completion detection prompt
-            system_prompt = f"""You are an intelligent task orchestrator. Your job is to determine if a multi-agent collaboration task should be completed.
-
-TASK: {initial_prompt}
-
-AGENTS AVAILABLE:
-{chr(10).join([f"- {name}: {desc}" for name, desc in agent_descriptions.items()])}
-
-CURRENT SITUATION:
-- Current agent: {current_agent}
-- Round: {round_count}
-- Latest response: {response[:500]}...
-
-Analyze if this task should be COMPLETED or CONTINUED:
-
-COMPLETE if:
-- The task objective has been fully achieved
-- All necessary work has been done (writing, reviewing, approving, etc.)
-- The output is ready for delivery/publication
-- The collaboration has reached a natural conclusion
-- Quality standards have been met and approved
-
-CONTINUE if:
-- More work is needed
-- The task is incomplete
-- Additional collaboration would improve the result
-- No clear completion signal has been given
-
-Respond with exactly one word: COMPLETE or CONTINUE"""
-
-            messages = [
-                BrainMessage(role="user", content="Should this task be completed or continued?")
-            ]
-            
-            response_obj = await self.brain.generate_response(
-                messages=messages,
-                system_prompt=system_prompt
-            )
-            
-            decision = response_obj.content.strip().upper()
-            should_complete = decision == "COMPLETE"
-            
-            if should_complete:
-                logger.info(f"🧠 LLM decision: Task should be completed (reason: {decision})")
-            else:
-                logger.debug(f"🧠 LLM decision: Task should continue (reason: {decision})")
-            
-            return should_complete
-            
-        except Exception as e:
-            logger.error(f"LLM completion detection failed: {e}")
-            # Fallback: complete after reasonable rounds to prevent infinite loops
-            round_count = task_context.get('round_count', 0)
-            if round_count >= 6:
-                logger.info(f"🔄 Fallback: Completing after {round_count} rounds")
-                return True
-            return False
 
 
 # Global orchestrator instance for single-agent tool execution

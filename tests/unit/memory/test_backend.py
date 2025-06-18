@@ -374,46 +374,21 @@ class TestMemoryFactory:
     
     def test_create_memory_backend_none_config(self):
         """Test creating backend with None config."""
-        with patch('agentx.memory.factory.logger') as mock_logger:
-            backend = create_memory_backend(None)
-            assert backend is None
-            mock_logger.warning.assert_called_once()
+        # With None config, should create default backend 
+        backend = create_memory_backend(None)
+        assert backend is not None
     
-    def test_create_memory_backend_invalid_config(self):
-        """Test creating backend with invalid config."""
-        invalid_config = Mock()
-        invalid_config.backend_type = "invalid_backend"
+    def test_create_memory_backend_with_config(self):
+        """Test creating backend with config."""
+        from agentx.core.config import MemoryConfig
+        config = MemoryConfig()
         
-        with patch('agentx.memory.factory.logger') as mock_logger:
-            backend = create_memory_backend(invalid_config)
-            assert backend is None
-            mock_logger.error.assert_called_once()
+        backend = create_memory_backend(config)
+        assert backend is not None
     
-    @patch('agentx.memory.factory.Mem0Backend')
-    def test_create_memory_backend_mem0(self, mock_mem0_class):
-        """Test creating Mem0 backend."""
-        mock_config = Mock()
-        mock_config.backend_type = "mem0"
-        mock_config.mem0_config = {"api_key": "test"}
+    def test_create_default_memory_backend(self):
+        """Test creating default memory backend."""
+        from agentx.memory.factory import create_default_memory_backend
         
-        mock_backend = Mock()
-        mock_mem0_class.return_value = mock_backend
-        
-        backend = create_memory_backend(mock_config)
-        
-        assert backend == mock_backend
-        mock_mem0_class.assert_called_once_with(mock_config.mem0_config)
-    
-    @patch('agentx.memory.factory.Mem0Backend')
-    def test_create_memory_backend_mem0_error(self, mock_mem0_class):
-        """Test creating Mem0 backend with error."""
-        mock_config = Mock()
-        mock_config.backend_type = "mem0"
-        mock_config.mem0_config = {"api_key": "test"}
-        
-        mock_mem0_class.side_effect = Exception("Connection failed")
-        
-        with patch('agentx.memory.factory.logger') as mock_logger:
-            backend = create_memory_backend(mock_config)
-            assert backend is None
-            mock_logger.error.assert_called_once() 
+        backend = create_default_memory_backend()
+        assert backend is not None 

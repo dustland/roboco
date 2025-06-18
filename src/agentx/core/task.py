@@ -49,16 +49,16 @@ class TaskExecutor:
         self.task_id = task_id or self._generate_task_id()
         self.workspace_dir = workspace_dir or Path("./workspace") / self.task_id
         
-        # Create internal orchestrator for routing decisions
-        from .orchestrator import Orchestrator, RoutingAction
+        # Create internal orchestrator for coordination and tool execution
+        from .orchestrator import Orchestrator
         self._orchestrator = Orchestrator(team)
-        self._RoutingAction = RoutingAction
         
         # Task state
         self.initial_prompt: Optional[str] = None
         self.history: List[TaskStep] = []
         self.current_agent: Optional[str] = None
         self.round_count = 0
+        self.max_rounds = 50  # TaskExecutor manages round limits
         self.is_complete = False
         self.is_paused = False
         self.created_at = datetime.now()
@@ -71,7 +71,7 @@ class TaskExecutor:
         # Register task-specific tools with this workspace
         self._register_task_tools()
         
-        logger.info(f"🎯 Task {self.task_id} initialized")
+        logger.info(f"🎯 TaskExecutor {self.task_id} initialized")
     
     def start_task(self, prompt: str, initial_agent: str = None) -> None:
         """Start task for step-by-step execution."""
@@ -107,40 +107,42 @@ class TaskExecutor:
         self.is_paused = False
         self.is_complete = False
         
-        # Set initial agent
+        # Set initial agent using orchestrator consultation
         if initial_agent:
             self.current_agent = initial_agent
         elif hasattr(self.team.config.execution, 'initial_agent') and self.team.config.execution.initial_agent:
             self.current_agent = self.team.config.execution.initial_agent
         else:
+            # Let orchestrator choose initial agent
+            context = self._get_task_context()
+            context["current_agent"] = list(self.team.agents.keys())[0]  # Fallback for context
+            # Note: We'll use synchronous initial selection for now, could be made async in future
             self.current_agent = list(self.team.agents.keys())[0]
         
         asyncio.create_task(self._save_state_async())
 
     async def _execute(self) -> None:
         """Execute the task without streaming."""
-        while not self.is_complete and self.round_count < self._orchestrator.max_rounds:
+        while not self.is_complete and self.round_count < self.max_rounds:
             if self.is_paused:
                 break
                 
             self.round_count += 1
             response = await self._execute_agent_turn()
             
-            routing_decision = await self._orchestrator.decide_next_step(
-                current_agent=self.current_agent,
-                response=response,
-                task_context=self._get_task_context()
-            )
+            # Orchestrator makes routing decisions
+            context = self._get_task_context()
+            routing_decision = await self._orchestrator.decide_next_step(context, response)
             
-            if routing_decision.action == self._RoutingAction.COMPLETE:
+            if routing_decision["action"] == "COMPLETE":
                 self.complete_task()
                 break
-            elif routing_decision.action == self._RoutingAction.HANDOFF:
-                self.set_current_agent(routing_decision.next_agent)
+            elif routing_decision["action"] == "HANDOFF":
+                self.set_current_agent(routing_decision["next_agent"])
     
     async def _stream_execute(self):
         """Execute the task with streaming."""
-        while not self.is_complete and self.round_count < self._orchestrator.max_rounds:
+        while not self.is_complete and self.round_count < self.max_rounds:
             if self.is_paused:
                 break
                 
@@ -152,33 +154,30 @@ class TaskExecutor:
                 response_chunks.append(chunk)
                 yield chunk
             
-            # Get routing decision
+            # Orchestrator makes routing decisions
             full_response = "".join(chunk.get("content", "") for chunk in response_chunks if chunk.get("type") == "content")
-            routing_decision = await self._orchestrator.decide_next_step(
-                current_agent=self.current_agent,
-                response=full_response,
-                task_context=self._get_task_context()
-            )
+            context = self._get_task_context()
+            routing_decision = await self._orchestrator.decide_next_step(context, full_response)
             
             # Yield routing decision
             yield {
                 "type": "routing_decision",
-                "action": routing_decision.action.value,
+                "action": routing_decision["action"],
                 "current_agent": self.current_agent,
-                "next_agent": routing_decision.next_agent,
-                "reason": routing_decision.reason
+                "next_agent": routing_decision.get("next_agent"),
+                "reason": routing_decision.get("reason", "")
             }
             
-            if routing_decision.action == self._RoutingAction.COMPLETE:
+            if routing_decision["action"] == "COMPLETE":
                 self.complete_task()
                 break
-            elif routing_decision.action == self._RoutingAction.HANDOFF:
+            elif routing_decision["action"] == "HANDOFF":
                 old_agent = self.current_agent
-                self.set_current_agent(routing_decision.next_agent)
+                self.set_current_agent(routing_decision["next_agent"])
                 yield {
                     "type": "handoff",
                     "from_agent": old_agent,
-                    "to_agent": routing_decision.next_agent
+                    "to_agent": routing_decision["next_agent"]
                 }
 
     async def _step(self, user_input: str = None) -> Dict[str, Any]:
@@ -186,7 +185,7 @@ class TaskExecutor:
         if self.is_complete:
             return {"status": "complete", "message": "Task already complete"}
         
-        if self.round_count >= self._orchestrator.max_rounds:
+        if self.round_count >= self.max_rounds:
             self.complete_task()
             return {"status": "complete", "message": "Max rounds reached"}
         
@@ -205,30 +204,27 @@ class TaskExecutor:
         # Execute current agent turn
         response = await self._execute_agent_turn()
         
-        # Get routing decision
-        routing_decision = await self._orchestrator.decide_next_step(
-            current_agent=self.current_agent,
-            response=response,
-            task_context=self._get_task_context()
-        )
+        # Orchestrator makes routing decisions
+        context = self._get_task_context()
+        routing_decision = await self._orchestrator.decide_next_step(context, response)
         
         result = {
             "status": "continue",
             "agent": self.current_agent,
             "response": response,
-            "routing_action": routing_decision.action.value,
-            "next_agent": routing_decision.next_agent,
-            "reason": routing_decision.reason,
+            "routing_action": routing_decision["action"],
+            "next_agent": routing_decision.get("next_agent"),
+            "reason": routing_decision.get("reason", ""),
             "round": self.round_count
         }
         
-        if routing_decision.action == self._RoutingAction.COMPLETE:
+        if routing_decision["action"] == "COMPLETE":
             self.complete_task()
             result["status"] = "complete"
-        elif routing_decision.action == self._RoutingAction.HANDOFF:
+        elif routing_decision["action"] == "HANDOFF":
             old_agent = self.current_agent
-            self.set_current_agent(routing_decision.next_agent)
-            result["handoff"] = {"from": old_agent, "to": routing_decision.next_agent}
+            self.set_current_agent(routing_decision["next_agent"])
+            result["handoff"] = {"from": old_agent, "to": routing_decision["next_agent"]}
         
         return result
     
@@ -238,7 +234,7 @@ class TaskExecutor:
             yield {"status": "complete", "message": "Task already complete"}
             return
         
-        if self.round_count >= self._orchestrator.max_rounds:
+        if self.round_count >= self.max_rounds:
             self.complete_task()
             yield {"status": "complete", "message": "Max rounds reached"}
             return
@@ -261,52 +257,49 @@ class TaskExecutor:
             response_chunks.append(chunk)
             yield chunk
         
-        # Get routing decision
+        # Orchestrator makes routing decisions
         full_response = "".join(chunk.get("content", "") for chunk in response_chunks if chunk.get("type") == "content")
-        routing_decision = await self._orchestrator.decide_next_step(
-            current_agent=self.current_agent,
-            response=full_response,
-            task_context=self._get_task_context()
-        )
+        context = self._get_task_context()
+        routing_decision = await self._orchestrator.decide_next_step(context, full_response)
         
         # Yield routing decision
         yield {
             "type": "routing_decision",
-            "action": routing_decision.action.value,
+            "action": routing_decision["action"],
             "current_agent": self.current_agent,
-            "next_agent": routing_decision.next_agent,
-            "reason": routing_decision.reason
+            "next_agent": routing_decision.get("next_agent"),
+            "reason": routing_decision.get("reason", "")
         }
         
-        if routing_decision.action == self._RoutingAction.COMPLETE:
+        if routing_decision["action"] == "COMPLETE":
             self.complete_task()
-        elif routing_decision.action == self._RoutingAction.HANDOFF:
+        elif routing_decision["action"] == "HANDOFF":
             old_agent = self.current_agent
-            self.set_current_agent(routing_decision.next_agent)
+            self.set_current_agent(routing_decision["next_agent"])
             yield {
                 "type": "handoff",
                 "from_agent": old_agent,
-                "to_agent": routing_decision.next_agent
+                "to_agent": routing_decision["next_agent"]
             }
-    
+
     async def _execute_agent_turn(self) -> str:
         """
-        Execute a full agent turn using orchestrator's agent routing.
+        Execute a full agent turn - TaskExecutor directly invokes agent.
         """
         context = self._prepare_agent_context()
         
         # Convert task history to conversation format
         conversation_messages = self._convert_history_to_messages()
         
-        # Build system prompt for agent
+        # TaskExecutor directly invokes agent
         agent = self.team.get_agent(self.current_agent)
         system_prompt = agent.build_system_prompt(context)
         
-        # Use orchestrator to route to agent - orchestrator handles tool execution
-        final_response = await self._orchestrator.route_to_agent(
-            agent_name=self.current_agent,
+        # Agent will call orchestrator for tool execution
+        final_response = await agent.generate_response(
             messages=conversation_messages,
-            system_prompt=system_prompt
+            system_prompt=system_prompt,
+            orchestrator=self._orchestrator  # Provide orchestrator for tool execution
         )
         
         # Add final response to task history
@@ -319,23 +312,23 @@ class TaskExecutor:
 
     async def _stream_agent_turn(self):
         """
-        Execute a full agent turn with streaming using orchestrator's agent routing.
+        Execute a full agent turn with streaming - TaskExecutor directly invokes agent.
         """
         context = self._prepare_agent_context()
         
         # Convert task history to conversation format
         conversation_messages = self._convert_history_to_messages()
         
-        # Build system prompt for agent
+        # TaskExecutor directly invokes agent
         agent = self.team.get_agent(self.current_agent)
         system_prompt = agent.build_system_prompt(context)
         
-        # Use orchestrator to stream from agent - orchestrator handles tool execution
+        # Agent will call orchestrator for tool execution
         response_chunks = []
-        async for chunk in self._orchestrator.stream_from_agent(
-            agent_name=self.current_agent,
+        async for chunk in agent.stream_response(
             messages=conversation_messages,
-            system_prompt=system_prompt
+            system_prompt=system_prompt,
+            orchestrator=self._orchestrator  # Provide orchestrator for tool execution
         ):
             yield {"type": "content", "content": chunk}
             response_chunks.append(chunk)
@@ -347,6 +340,8 @@ class TaskExecutor:
                 agent_name=self.current_agent, 
                 parts=[TextPart(text=final_response)]
             ))
+
+
 
     async def _execute_single_tool(self, tool_call: Any) -> ToolResultPart:
         """Helper to execute one tool call and return a ToolResultPart."""
@@ -384,14 +379,17 @@ class TaskExecutor:
             "task_id": self.task_id,
             "initial_prompt": self.initial_prompt,
             "round_count": self.round_count,
+            "max_rounds": self.max_rounds,
             "total_steps": len(self.history),
             "is_complete": self.is_complete,
             "current_agent": self.current_agent,
-            "available_agents": list(self.team.agents.keys())
+            "available_agents": list(self.team.agents.keys()) if self.team else [],
+            "workspace_dir": str(self.workspace_dir),
+            "artifacts": self.artifacts
         }
     
     def _convert_history_to_messages(self) -> List[Dict[str, Any]]:
-        """Convert task history to conversation message format for orchestrator."""
+        """Convert task history to conversation message format for agents."""
         messages = []
         
         for step in self.history:
@@ -659,14 +657,14 @@ async def execute_task(prompt: str, config_path: str = None, stream: bool = Fals
 
     This is a "fire-and-forget" method for autonomous runs.
     """
-    task = create_task(prompt, config_path)
-    async for update in task.run(stream=stream):
+    task = create_task(config_path)
+    async for update in task.execute_task(prompt, stream=stream):
         yield update
 
-async def start_task(prompt: str, config_path: str = None):
+def start_task(prompt: str, config_path: str = None):
     """
     A convenience function to create and start a task for interactive sessions.
     """
-    task = create_task(prompt, config_path)
-    await task.start()
+    task = create_task(config_path)
+    task.start_task(prompt)
     return task

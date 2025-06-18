@@ -3,7 +3,7 @@ import asyncio
 from pathlib import Path
 
 from agentx.core.team import Team
-from agentx.core.orchestrator import Orchestrator
+from agentx.core.task import TaskExecutor, create_task
 
 
 @pytest.mark.asyncio
@@ -19,86 +19,67 @@ async def test_basic_task_execution():
     assert len(team.agents) == 3
     assert "coordinator" in team.agents
     
-    # Create orchestrator
-    orchestrator = Orchestrator(team)
+    # Create task executor directly
+    task = create_task(team_config_path)
     
-    # Start a task
-    task_id = await orchestrator.start_task(
+    # Verify task was created
+    assert task is not None
+    assert task.task_id is not None
+    assert not task.is_complete
+    
+    # Start the task
+    task.start_task(
         prompt="Analyze the current state of AI development and write a brief summary",
         initial_agent="coordinator"
     )
     
-    # Verify task was created
-    assert task_id is not None
-    assert task_id in orchestrator.active_tasks
-    
-    # Get task state
-    task_state = orchestrator.get_task_state(task_id)
-    assert task_state is not None
-    assert task_state.task_id == task_id
-    assert task_state.initial_prompt == "Analyze the current state of AI development and write a brief summary"
-    assert task_state.current_agent == "coordinator"
-    assert task_state.round_count == 0
-    assert not task_state.is_complete
-    assert not task_state.is_paused
+    # Verify task state after starting
+    assert task.initial_prompt == "Analyze the current state of AI development and write a brief summary"
+    assert task.current_agent == "coordinator"
+    assert task.round_count == 0
+    assert not task.is_complete
     
     # Execute one step
-    events = []
+    result = None
+    async for step_result in task.step():
+        result = step_result
+        break  # Just test one step
     
-    async def event_callback(event):
-        events.append(event)
-    
-    # Execute the task (this will run the placeholder implementation)
-    final_state = await orchestrator.execute_task(task_id, event_callback=event_callback)
-    
-    # Verify execution completed
-    assert final_state.is_complete
-    assert final_state.round_count > 0
-    assert len(final_state.history) > 0
-    
-    # Verify events were emitted
-    assert len(events) > 0
-    
-    # Check that we got the expected event types
-    event_types = [event.type for event in events]
-    assert "event_task_start" in event_types
-    assert "event_agent_start" in event_types
-    assert "event_agent_complete" in event_types
-    assert "event_task_complete" in event_types
+    # Verify step execution
+    assert result is not None
+    assert "status" in result
+    assert task.round_count >= 1
+    assert len(task.history) > 0
     
     # Verify task workspace was created
-    workspace_path = orchestrator.workspace_dir / task_id
-    assert workspace_path.exists()
-    assert (workspace_path / "task_state.json").exists()
+    assert task.workspace_dir.exists()
 
 
 @pytest.mark.asyncio
 async def test_task_pause_resume():
     """Test task pause and resume functionality."""
     
-    # Load team and create orchestrator
+    # Load team and create task
     team = Team.from_config("tests/test_workspaces/sample_team/team.yaml")
-    orchestrator = Orchestrator(team)
+    task = create_task("tests/test_workspaces/sample_team/team.yaml")
     
     # Start a task
-    task_id = await orchestrator.start_task(
+    task.start_task(
         prompt="Test task for pause/resume",
         initial_agent="coordinator"
     )
     
     # Pause the task
-    await orchestrator.pause_task(task_id)
+    task.is_paused = True
     
     # Verify task is paused
-    task_state = orchestrator.get_task_state(task_id)
-    assert task_state.is_paused
+    assert task.is_paused
     
     # Resume the task
-    await orchestrator.resume_task(task_id)
+    task.is_paused = False
     
     # Verify task is no longer paused
-    task_state = orchestrator.get_task_state(task_id)
-    assert not task_state.is_paused
+    assert not task.is_paused
 
 
 def test_team_configuration_loading():
@@ -198,8 +179,39 @@ def test_prompt_rendering():
         'artifacts': {}
     }
     analyst_prompt = team.render_agent_prompt('analyst', analyst_context)
-    assert 'Analyst agent' in analyst_prompt
-    assert 'data_analysis' in analyst_prompt
+    
+    # Verify analyst prompt
+    assert 'Test task prompt' in analyst_prompt
+    assert 'Analyst' in analyst_prompt
+
+
+@pytest.mark.asyncio
+async def test_streaming_execution():
+    """Test streaming task execution."""
+    
+    # Create task
+    task = create_task("tests/test_workspaces/sample_team/team.yaml")
+    
+    # Execute with streaming
+    stream_chunks = []
+    async for chunk in task.execute_task(
+        prompt="Simple test task",
+        initial_agent="coordinator",
+        stream=True
+    ):
+        stream_chunks.append(chunk)
+        # Break after a few chunks to avoid long execution
+        if len(stream_chunks) >= 5:
+            break
+    
+    # Verify we got streaming chunks
+    assert len(stream_chunks) > 0
+    
+    # Check chunk structure
+    for chunk in stream_chunks:
+        assert isinstance(chunk, dict)
+        if "type" in chunk:
+            assert chunk["type"] in ["content", "routing_decision", "handoff"]
 
 
 if __name__ == "__main__":

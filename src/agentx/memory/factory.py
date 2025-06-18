@@ -29,6 +29,7 @@ def create_memory_backend(config = None) -> MemoryBackend:
     """
     if config is None:
         # Create default Mem0 configuration
+        from ..core.config import MemoryConfig
         config = MemoryConfig()
     
     # For now, we only support Mem0 backend

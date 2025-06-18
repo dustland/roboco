@@ -84,11 +84,23 @@ The AgentX architecture is composed of four distinct layers:
 
 In AgentX, a **Team** of collaborating agents is the primary mechanism for executing complex tasks. The core runtime consists of three key components that work in concert to manage the task lifecycle.
 
+### 4.0 Execution Flow
+
+The AgentX execution flow follows a precise pattern where the TaskExecutor always consults the Orchestrator for routing decisions:
+
+1. **Initialization**: TaskExecutor sets up the workspace and initializes the task context
+2. **Routing Consultation**: TaskExecutor calls `Orchestrator.decide_next_step(context, last_response)` to determine the next action
+3. **Agent Execution**: Based on the routing decision, TaskExecutor directly invokes the selected agent via `agent.generate_response()` or `agent.stream_response()`
+4. **Result Processing**: TaskExecutor receives the agent's response and updates the task context
+5. **Cycle Repeat**: TaskExecutor returns to step 2, consulting the Orchestrator again with the new response until the task is marked complete
+
+This pattern ensures centralized routing intelligence while maintaining clear separation of concerns between task management, routing decisions, and agent execution.
+
 ### 4.1 Key Roles
 
-- **Task Executor**: Owns the end-to-end lifecycle of a single task. It acts as the primary workflow engine, responsible for provisioning the workspace, managing the overall task state, and deciding which agent to invoke in each turn of the conversation.
-- **Orchestrator**: Acts as a dedicated, centralized service for tool management. It does **not** route between agents. Instead, it is invoked _by_ an agent when it needs to run a tool. The Orchestrator's sole responsibilities are to validate tool-call requests against their schemas, dispatch them to the secure `ToolExecutor`, and return the results to the calling agent.
-- **Agent**: Encapsulates a specialised role (e.g., _researcher_, _writer_). It receives control from the `Task Executor`, reasons with its private **Brain**, and can invoke the `Orchestrator` if it needs to execute a tool.
+- **Task Executor**: Owns the end-to-end lifecycle of a single task. It acts as the primary workflow engine, responsible for provisioning the workspace, managing the overall task state, and orchestrating the execution flow. The TaskExecutor always consults the Orchestrator for routing decisions via `decide_next_step()`, then directly invokes the selected agent using `generate_response()` or `stream_response()`, and repeats this cycle until task completion.
+- **Orchestrator**: Acts as the centralized coordination service for both tool execution and agent routing. It provides two key functions: (1) makes intelligent routing decisions through `decide_next_step()` based on current task context and previous agent responses, determining which agent should act next or if the task is complete, and (2) validates tool-call requests against schemas and dispatches them to the secure `ToolExecutor`.
+- **Agent**: Encapsulates a specialised role (e.g., _researcher_, _writer_). It receives control from the `Task Executor` through direct invocation, reasons with its private **Brain**, and can invoke the `Orchestrator` if it needs to execute a tool.
 
 ### 4.2 Execution Modes
 
@@ -102,20 +114,28 @@ This "fire-and-forget" mode is ideal for production. A client submits a task and
 sequenceDiagram
     participant C as Client
     participant TX as Task Executor
-    participant AG as Agent
     participant OR as Orchestrator
+    participant AG as Agent
     participant TE as Tool Executor
 
     C->>TX: execute_task(prompt)
-    loop Autonomous Loop
-        TX->>AG: invoke_agent
-        AG-->>OR: request_tool_execution
-        OR-->>TE: dispatch_tool
-        TE-->>OR: return_result
-        OR-->>AG: provide_result
-        AG-->>TX: return_turn_response
+    loop Autonomous Agent Loop
+        TX->>OR: decide_next_step(context, last_response)
+        OR-->>TX: routing_decision
+        alt Continue with Agent
+            TX->>AG: generate_response/stream_response
+            AG-->>OR: request_tool_execution (if needed)
+            OR-->>TE: dispatch_tool
+            TE-->>OR: return_result
+            OR-->>AG: provide_result
+            AG-->>TX: agent_response
+        else Task Complete
+            break
+        end
     end
+
     TX-->>C: final_result
+
 ```
 
 **2. Interactive Execution (`start_task` & `step`)**
@@ -126,8 +146,8 @@ For debugging or human-in-the-loop workflows, a client can call `start_task` to 
 sequenceDiagram
     participant C as Client
     participant TX as Task Executor
-    participant AG as Agent
     participant OR as Orchestrator
+    participant AG as Agent
     participant TE as Tool Executor
 
     C->>TX: start_task(prompt)
@@ -135,19 +155,25 @@ sequenceDiagram
 
     loop Interactive Steps
         C->>TX: task.step()
-        TX->>AG: invoke_agent
-        AG-->>OR: request_tool_execution
-        OR-->>TE: dispatch_tool
-        TE-->>OR: return_result
-        OR-->>AG: provide_result
-        AG-->>TX: return_turn_response
-        TX-->>C: step_result
+        TX->>OR: decide_next_step(context, last_response)
+        OR-->>TX: routing_decision
+        alt Continue with Agent
+            TX->>AG: generate_response/stream_response
+            AG-->>OR: request_tool_execution (if needed)
+            OR-->>TE: dispatch_tool
+            TE-->>OR: return_result
+            OR-->>AG: provide_result
+            AG-->>TX: agent_response
+            TX-->>C: step_result
+        else Task Complete
+            TX-->>C: completion_result
+        end
     end
 ```
 
-## 5. Agent Internals
+## 5. Agent Execution Flow
 
-While the `Task Executor` manages the high-level conversation flow between agents, each `Agent` is responsible for its own internal reasoning process. This process involves hydrating a prompt template with runtime context, executing a "monologue" with its private Brain, and optionally streaming its response back to the client.
+The AgentX execution flow is built around a clear separation of concerns where the `Task Executor` coordinates with the `Orchestrator` for agent routing decisions, while each `Agent` focuses on its specialized reasoning process. This iterative consultation pattern ensures optimal agent selection based on dynamic task context.
 
 ### 5.1 Prompt Templating
 
@@ -160,19 +186,30 @@ An agent's core behavior and persona are defined by its system prompt, which is 
 
 This just-in-time templating allows agents to be both powerful and reusable, adapting their behavior to the specific needs of each task.
 
-### 5.2 Internal Monologue and Tool-Calling Loop
+### 5.2 Complete Execution Flow
 
-When an agent is invoked by the `Task Executor`, it enters a sophisticated internal loop to produce the most informed output possible. This loop includes a crucial self-correction mechanism for tool usage.
+The complete AgentX execution flow combines the coordination protocol with agent-specific reasoning in a continuous loop:
 
-1.  **Initial Reasoning**: The `Agent` passes the prompt to its `Brain` (LLM), which generates an initial response that may include one or more desired tool calls.
-2.  **Request Execution**: The `Agent` requests execution for these tool calls from the `Orchestrator`.
-3.  **Validation and Self-Correction**: The `Orchestrator` validates the calls against the registered tool schemas.
-    - If a call is invalid, the `Orchestrator` immediately returns a structured validation error. The `Agent` then passes this error back to the `Brain`, which attempts to generate a corrected tool call. This loop continues until the call is valid.
-4.  **Secure Dispatch**: Once a tool call is valid, the `Orchestrator` dispatches it to the `ToolExecutor`, which runs the tool in a secure sandbox.
-5.  **Result Integration**: The results are returned up the chain to the `Agent`, which gives them to the `Brain`. The `Brain` uses this new information to generate its final, grounded response for the turn.
-6.  **Final Response**: The `Agent` returns its final response to the `Task Executor`, completing its turn.
+#### Coordination Loop
 
-This entire process ensures that agents can autonomously use tools, correct their own mistakes, and ground their reasoning in real-world information before finalizing their output.
+1. **Agent Selection**: TaskExecutor consults Orchestrator with current context and previous response
+2. **Agent Invocation**: TaskExecutor invokes the selected agent's `generate_response()` or `stream_response()`
+3. **Response Collection**: TaskExecutor receives the agent's complete response
+4. **Routing Decision**: TaskExecutor consults Orchestrator again to determine next action (continue, handoff, or complete)
+
+#### Agent Execution (Step 2 Detail)
+
+When an agent is invoked, it follows its own internal reasoning loop:
+
+1. **Initial Reasoning**: Agent's `Brain` (LLM) generates a response, potentially including tool calls
+2. **Tool Execution**: If tools are needed, Agent requests execution from Orchestrator
+   - Orchestrator validates tool calls against schemas
+   - Invalid calls trigger self-correction loop with Brain
+   - Valid calls are dispatched to ToolExecutor for secure execution
+3. **Response Integration**: Agent integrates tool results and generates final response
+4. **Return**: Agent returns complete response to TaskExecutor
+
+This two-level architecture ensures that routing decisions are centralized and context-aware, while agents can focus on domain-specific reasoning and autonomous tool usage.
 
 ```mermaid
 sequenceDiagram
