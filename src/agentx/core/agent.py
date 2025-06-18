@@ -5,7 +5,7 @@ from enum import Enum
 import json
 import asyncio
 
-from .brain import Brain, LLMMessage, LLMResponse
+from .brain import Brain, BrainMessage, BrainResponse
 from .config import AgentConfig, BrainConfig
 from .message import TaskStep, TextPart, ToolCallPart, ToolResultPart
 from .tool import get_tool_schemas, Tool, get_tool_registry

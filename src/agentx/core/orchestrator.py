@@ -19,7 +19,7 @@ from typing import Dict, Any, Optional, List, AsyncGenerator
 
 from .team import Team
 from .agent import Agent
-from .brain import Brain, LLMMessage
+from .brain import Brain, BrainMessage
 from .config import BrainConfig
 from ..utils.logger import get_logger
 
@@ -393,7 +393,7 @@ CONTINUE if:
 Respond with exactly one word: COMPLETE or CONTINUE"""
 
             messages = [
-                LLMMessage(role="user", content="Should this task be completed or continued?")
+                BrainMessage(role="user", content="Should this task be completed or continued?")
             ]
             
             response_obj = await self.brain.generate_response(

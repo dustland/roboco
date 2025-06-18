@@ -20,8 +20,8 @@ from .config import BrainConfig
 logger = get_logger(__name__)
 
 
-class LLMMessage(BaseModel):
-    """Standard message format for LLM interactions."""
+class BrainMessage(BaseModel):
+    """Standard message format for brain interactions."""
     role: str  # "system", "user", "assistant", "tool"
     content: Optional[str] = None
     tool_calls: Optional[List[Any]] = None
@@ -30,8 +30,8 @@ class LLMMessage(BaseModel):
     timestamp: Optional[datetime] = None
 
 
-class LLMResponse(BaseModel):
-    """Response from LLM call, which can be either text content or a request to call tools."""
+class BrainResponse(BaseModel):
+    """Response from brain call, which can be either text content or a request to call tools."""
     content: Optional[str] = None
     tool_calls: Optional[List[Any]] = None
     model: str
@@ -120,7 +120,7 @@ class Brain:
         system_prompt: Optional[str] = None,
         temperature: Optional[float] = None,
         tools: Optional[List[Dict[str, Any]]] = None,
-    ) -> LLMResponse:
+    ) -> BrainResponse:
         """
         Generate a single response from the LLM.
         
@@ -148,7 +148,7 @@ class Brain:
             response = await litellm.acompletion(**call_params)
             message = response.choices[0].message
             
-            return LLMResponse(
+            return BrainResponse(
                 content=message.content,
                 tool_calls=message.tool_calls if hasattr(message, 'tool_calls') else None,
                 model=response.model,
@@ -159,7 +159,7 @@ class Brain:
             
         except Exception as e:
             logger.error(f"LLM call failed: {e}")
-            return LLMResponse(
+            return BrainResponse(
                 content=f"I apologize, but I encountered an error: {str(e)}", 
                 model=self.config.model or "unknown", 
                 finish_reason="error",
