@@ -1,0 +1,22 @@
+{
+  "requirements": {
+    "title": "需求分析",
+    "type": "page"
+  },
+  "overview": {
+    "title": "系统架构",
+    "type": "page"
+  },
+  "state-and-context": {
+    "title": "状态与上下文",
+    "type": "page"
+  },
+  "tool-call": {
+    "title": "工具调用与执行",
+    "type": "page"
+  },
+  "communication": {
+    "title": "通信架构",
+    "type": "page"
+  }
+}

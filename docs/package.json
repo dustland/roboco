@@ -9,10 +9,23 @@
     "start": "next start"
   },
   "dependencies": {
-    "next": "^14.0.0",
-    "nextra": "^2.13.0",
-    "nextra-theme-docs": "^2.13.0",
-    "react": "^18.0.0",
-    "react-dom": "^18.0.0"
+    "@theguild/remark-mermaid": "^0.3.0",
+    "next": "^15.3.3",
+    "nextra": "^4.2.17",
+    "nextra-theme-docs": "^4.2.17",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0"
+  },
+  "devDependencies": {
+    "@next/bundle-analyzer": "^15.3.3",
+    "@types/node": "^24.0.3",
+    "@types/react": "^19.1.8",
+    "@types/react-dom": "^19.1.6",
+    "typescript": "^5.8.3"
+  },
+  "pnpm": {
+    "overrides": {
+      "@theguild/remark-mermaid": "^0.3.0"
+    }
   }
 }
