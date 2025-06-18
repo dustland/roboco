@@ -105,8 +105,8 @@ class TestTeamConfigLoading:
         assert config.llm_provider.base_url == "https://api.deepseek.com"
         assert config.llm_provider.model == "deepseek-chat"
         assert len(config.agents) == 2
-        assert config.collaboration.speaker_selection_method == "auto"
-        assert config.collaboration.max_rounds == 10
+        assert config.speaker_selection_method == "auto"
+        assert config.max_rounds == 10
     
     def test_load_with_prompt_files(self, temp_dir):
         """Test loading team config that uses prompt files."""
@@ -141,7 +141,7 @@ class TestTeamConfigLoading:
         assert len(agents) == 1
         agent_config, tools = agents[0]
         assert agent_config.name == "researcher"
-        assert agent_config.system_message == prompt_content
+        assert agent_config.prompt_template == prompt_content
     
     def test_prompt_file_fallback_to_system_message(self, temp_dir):
         """Test fallback to system_message when prompt file doesn't exist."""
@@ -167,8 +167,8 @@ class TestTeamConfigLoading:
         agents = loader.create_agents(config)
         
         agent_config, tools = agents[0]
-        # Should use system_message when prompt file fails
-        assert agent_config.system_message == "Fallback message"
+        # Should use prompt_template when prompt file fails
+        assert agent_config.prompt_template == "Fallback message"
 
 
 class TestTeamConfigValidation:
@@ -286,24 +286,23 @@ class TestTeamLoader:
         agent_config = loader._create_agent_config(agent_data)
         
         assert agent_config.name == "test_agent"
-        assert agent_config.system_message == "Test message"
+        assert agent_config.prompt_template == "Test message"
         assert agent_config.description == "Test description"
-        assert agent_config.enable_memory == True
     
-    def test_invalid_agent_role(self, temp_dir):
-        """Test error handling for invalid agent roles."""
+    def test_agent_config_with_any_role(self, temp_dir):
+        """Test that agent config accepts any role since validation is removed."""
         loader = TeamLoader(str(temp_dir))
         
         agent_data = {
             "name": "test_agent",
-            "role": "invalid_role",
+            "role": "any_role_is_fine",  # Role is now ignored
             "system_message": "Test"
         }
         
-        with pytest.raises(ConfigurationError) as exc_info:
-            loader._create_agent_config(agent_data)
-        
-        assert "invalid agent role" in str(exc_info.value).lower()
+        # Should not raise an error
+        agent_config = loader._create_agent_config(agent_data)
+        assert agent_config.name == "test_agent"
+        assert agent_config.prompt_template == "Test"
 
 
 class TestConfigModels:

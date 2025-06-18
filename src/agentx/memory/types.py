@@ -29,21 +29,26 @@ class MemoryType(str, Enum):
     CONSTRAINT = "constraint"
     HOT_ISSUE = "hot_issue"
     DOCUMENT_CHUNK = "document_chunk"
+    
+    def __str__(self):
+        return self.value
 
 
 @dataclass
 class MemoryItem:
     """Individual memory item with metadata."""
-    memory_id: str
     content: str
-    agent_name: str
-    timestamp: datetime
     memory_type: MemoryType
+    agent_name: str
+    memory_id: str = field(default_factory=lambda: generate_short_id())
+    timestamp: datetime = field(default_factory=datetime.now)
     metadata: Dict[str, Any] = field(default_factory=dict)
     importance: float = 1.0
     tags: List[str] = field(default_factory=list)
     source_event_id: Optional[str] = None
     is_active: bool = True
+    version: Optional[int] = None
+    parent_id: Optional[str] = None
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for serialization."""
@@ -57,8 +62,40 @@ class MemoryItem:
             "importance": self.importance,
             "tags": self.tags,
             "source_event_id": self.source_event_id,
-            "is_active": self.is_active
+            "is_active": self.is_active,
+            "version": self.version,
+            "parent_id": self.parent_id
         }
+    
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'MemoryItem':
+        """Create MemoryItem from dictionary."""
+        # Handle timestamp conversion
+        timestamp = data.get("timestamp")
+        if isinstance(timestamp, str):
+            timestamp = datetime.fromisoformat(timestamp)
+        elif timestamp is None:
+            timestamp = datetime.now()
+        
+        # Handle memory_type conversion
+        memory_type = data.get("memory_type")
+        if isinstance(memory_type, str):
+            memory_type = MemoryType(memory_type)
+        
+        return cls(
+            content=data["content"],
+            memory_type=memory_type,
+            agent_name=data["agent_name"],
+            memory_id=data.get("memory_id", generate_short_id()),
+            timestamp=timestamp,
+            metadata=data.get("metadata", {}),
+            importance=data.get("importance", 1.0),
+            tags=data.get("tags", []),
+            source_event_id=data.get("source_event_id"),
+            is_active=data.get("is_active", True),
+            version=data.get("version"),
+            parent_id=data.get("parent_id")
+        )
 
 
 # Pydantic models for synthesis engine (as specified in architecture doc)
@@ -119,14 +156,37 @@ class MemorySearchResult:
     query_time_ms: float
     has_more: bool = False
     query_metadata: Dict[str, Any] = field(default_factory=dict)
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for serialization."""
+        return {
+            "items": [item.to_dict() for item in self.items],
+            "total_count": self.total_count,
+            "query_time_ms": self.query_time_ms,
+            "has_more": self.has_more,
+            "query_metadata": self.query_metadata
+        }
 
 
 @dataclass
 class MemoryStats:
     """Memory backend statistics."""
     total_memories: int
-    memory_types: Dict[str, int]
-    agent_counts: Dict[str, int]
-    storage_size_mb: float
-    avg_query_time_ms: float
-    last_updated: datetime 
+    memories_by_type: Dict[str, int]
+    memories_by_agent: Dict[str, int]
+    avg_importance: float
+    oldest_memory: Optional[datetime] = None
+    newest_memory: Optional[datetime] = None
+    storage_size_mb: Optional[float] = None
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for serialization."""
+        return {
+            "total_memories": self.total_memories,
+            "memories_by_type": self.memories_by_type,
+            "memories_by_agent": self.memories_by_agent,
+            "avg_importance": self.avg_importance,
+            "oldest_memory": self.oldest_memory.isoformat() if self.oldest_memory else None,
+            "newest_memory": self.newest_memory.isoformat() if self.newest_memory else None,
+            "storage_size_mb": self.storage_size_mb
+        } 

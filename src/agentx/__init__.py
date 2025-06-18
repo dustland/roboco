@@ -10,17 +10,21 @@ A flexible framework for building AI agent teams with:
 
 from .core.agent import Agent, create_assistant_agent
 from .core.brain import Brain
-from .core.team import Team
-from .core.task import TaskExecutor, create_task, execute_task, start_task
-from .core.orchestrator import Orchestrator, get_orchestrator
+from .core.task import execute_task, start_task, TaskExecutor, Task
+from .core.orchestrator import Orchestrator
 from .config.team_loader import load_team_config
 from .config.agent_loader import load_single_agent_config, load_agents_config
 
-# Tool framework
+# Tool framework - new system
 from .tool.registry import register_tool, get_tool_registry
 from .tool.executor import ToolExecutor, ToolResult
 from .tool.base import Tool, ToolFunction
 from .tool.schemas import get_tool_schemas
+from .tool.manager import ToolManager
+
+# Tool framework - old system (for backward compatibility)
+from .core.tool import tool, execute_tool
+from .core.tool import Tool as OldTool, ToolResult as OldToolResult
 
 # Built-in tools
 from .builtin_tools import *
@@ -32,44 +36,76 @@ from .memory.factory import create_memory_backend, create_default_memory_backend
 # Search capabilities
 from .search.search_manager import SearchManager
 
+# Messages and data
+from .core.message import TaskStep, TextPart, ToolCallPart, ToolResultPart, ToolCall, Artifact
+
+# Configuration
+from .core.config import AgentConfig, TeamConfig, BrainConfig, ToolConfig
+
+# Prompt loading
+from .config.prompt_loader import PromptLoader, create_prompt_loader
+
 # Utilities
-from .utils.logger import get_logger
+from .utils.logger import get_logger, configure_logging, setup_clean_chat_logging
 
 __version__ = "0.9.0"
 
 __all__ = [
-    # Core components
-    "Agent",
-    "Brain", 
-    "Team",
-    "TaskExecutor",
-    "Orchestrator",
-    "create_assistant_agent",
-    "create_task",
+    # Main API
     "execute_task",
     "start_task",
-    "get_orchestrator",
+    "TaskExecutor",
+    "Task",
     
-    # Configuration
-    "load_team_config",
-    "load_single_agent_config",
-    "load_agents_config",
+    # Core components
+    "Agent", 
+    "Orchestrator",
+    "Brain",
     
-    # Tool framework
+    # Tool framework - new system
     "Tool",
-    "ToolFunction", 
-    "ToolExecutor",
+    "ToolFunction",
     "ToolResult",
+    "ToolExecutor",
+    "ToolManager",
     "register_tool",
     "get_tool_registry",
     "get_tool_schemas",
     
-    # Factories
-    "StorageFactory",
+    # Tool framework - old system (backward compatibility)
+    "tool",  # decorator
+    "execute_tool",
+    "OldTool",
+    "OldToolResult",
+    
+    # Messages and data
+    "TaskStep", 
+    "TextPart",
+    "ToolCallPart",
+    "ToolResultPart",
+    "ToolCall",
+    "Artifact",
+    
+    # Configuration
+    "AgentConfig", 
+    "TeamConfig",
+    "BrainConfig",
+    "ToolConfig",
+    "load_team_config",
+    "load_single_agent_config",
+    "load_agents_config", 
+    "PromptLoader",
+    "create_prompt_loader",
+    
+    # Memory system
     "create_memory_backend",
     "create_default_memory_backend",
+    
+    # Search system
     "SearchManager",
     
-    # Utilities
+    # Logging utilities
     "get_logger",
+    "configure_logging",
+    "setup_clean_chat_logging",
 ]

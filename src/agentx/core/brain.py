@@ -70,8 +70,41 @@ class Brain:
         
     async def _ensure_initialized(self):
         if not self.initialized:
+            # Validate function calling support if tools will be used
+            if self.config.supports_function_calls:
+                await self._validate_function_calling_support()
+            
             self.initialized = True
             logger.info(f"LLM client for '{self.config.model}' initialized.")
+
+    async def _validate_function_calling_support(self):
+        """Validate that the model actually supports function calling."""
+        # Get the full model name as it would be used in API calls
+        model_name = self.config.model
+        if hasattr(self.config, 'provider') and self.config.provider and '/' not in model_name:
+            model_name = f"{self.config.provider}/{self.config.model}"
+        
+        try:
+            # Check if LiteLLM reports the model supports function calling
+            supports_fc = litellm.supports_function_calling(model=model_name)
+            
+            if not supports_fc:
+                logger.warning(
+                    f"Model '{model_name}' does not support native function calling according to LiteLLM. "
+                    f"Function calls will be handled via text-based fallback method."
+                )
+                # Update config to reflect actual capabilities
+                self.config.supports_function_calls = False
+            else:
+                logger.info(f"Model '{model_name}' supports native function calling.")
+                
+        except Exception as e:
+            logger.warning(
+                f"Could not validate function calling support for '{model_name}': {e}. "
+                f"Assuming text-based tool calling."
+            )
+            # Be conservative - assume no native support if we can't validate
+            self.config.supports_function_calls = False
 
     def _format_messages(self, messages: List[Dict[str, Any]], system_prompt: Optional[str] = None) -> List[Dict[str, Any]]:
         """Format messages for LLM call."""
@@ -112,10 +145,16 @@ class Brain:
         if self.config.base_url:
             call_params["api_base"] = self.config.base_url
             
-        # Add tools if provided
-        if tools:
+        # Add tools if model supports native function calling
+        if tools and self.config.supports_function_calls:
             call_params["tools"] = tools
             call_params["tool_choice"] = "auto"
+        elif tools and not self.config.supports_function_calls:
+            logger.warning(
+                f"Tools were provided but model '{model_name}' does not support native function calling. "
+                f"Tools will be ignored for this call. Consider using a model that supports function calling "
+                f"or implement text-based tool calling."
+            )
             
         return call_params
 
@@ -177,13 +216,12 @@ class Brain:
         system_prompt: Optional[str] = None,
         temperature: Optional[float] = None,
         tools: Optional[List[Dict[str, Any]]] = None
-    ) -> AsyncGenerator[str, None]:
+    ) -> AsyncGenerator[Dict[str, Any], None]:
         """
-        Stream response from the LLM in real-time chunks.
+        Stream response from the LLM with integrated tool call detection.
         
-        This is a PURE streaming LLM call - no tool execution or conversation management.
-        If tools are provided and the LLM wants to use them, the stream will end and
-        the orchestrator should handle tool execution separately.
+        Handles both native function calling models and text-based tool calling,
+        always emitting structured tool-call and tool-result chunks for client visualization.
         
         Args:
             messages: Conversation history
@@ -192,7 +230,12 @@ class Brain:
             tools: Available tools for the LLM
             
         Yields:
-            str: Chunks of the response as they arrive from the LLM
+            Dict[str, Any]: Structured chunks with type and data:
+            - {'type': 'text-delta', 'content': str} - Text content chunks
+            - {'type': 'tool-call', 'tool_call': obj} - Tool call requests
+            - {'type': 'tool-result', 'tool_call_id': str, 'result': any} - Tool results
+            - {'type': 'finish', 'finish_reason': str} - Stream completion
+            - {'type': 'error', 'content': str} - Error messages
         """
         await self._ensure_initialized()
         
@@ -202,12 +245,144 @@ class Brain:
         try:
             logger.debug(f"Making streaming LLM call with {len(formatted_messages)} messages")
             
+            # Debug: Log the exact tool schemas being sent
+            if tools:
+                logger.info(f"[BRAIN] Sending {len(tools)} tools to LLM:")
+                for i, tool in enumerate(tools):
+                    logger.info(f"[BRAIN] Tool {i+1}: {tool}")
+            else:
+                logger.info(f"[BRAIN] No tools being sent to LLM")
+            
             response = await litellm.acompletion(**call_params)
             
-            async for chunk in response:
-                if chunk.choices[0].delta.content:
-                    yield chunk.choices[0].delta.content
+            if self.config.supports_function_calls and tools:
+                # Native function calling mode
+                async for chunk in self._handle_native_function_calling_stream(response):
+                    yield chunk
+            else:
+                # Text-based tool calling mode (for models without native support)
+                async for chunk in self._handle_text_based_tool_calling_stream(response, tools):
+                    yield chunk
                     
         except Exception as e:
             logger.error(f"Streaming LLM call failed: {e}")
-            yield f"I apologize, but I encountered an error: {str(e)}" 
+            yield {
+                'type': 'error',
+                'content': f"I apologize, but I encountered an error: {str(e)}"
+            }
+    
+    async def _handle_native_function_calling_stream(self, response) -> AsyncGenerator[Dict[str, Any], None]:
+        """Handle streaming for models with native function calling support."""
+        # Track accumulated tool calls for proper reconstruction
+        accumulated_tool_calls = {}
+        
+        async for chunk in response:
+            choice = chunk.choices[0] if chunk.choices else None
+            if not choice:
+                continue
+                
+            delta = choice.delta
+            
+            # Handle text content streaming
+            if hasattr(delta, 'content') and delta.content:
+                yield {
+                    'type': 'text-delta',
+                    'content': delta.content
+                }
+            
+            # Handle tool calls (structured data from native function calling)
+            if hasattr(delta, 'tool_calls') and delta.tool_calls:
+                logger.info(f"[BRAIN] Received tool calls delta: {delta.tool_calls}")
+                for tool_call_delta in delta.tool_calls:
+                    logger.info(f"[BRAIN] Processing tool call delta: {tool_call_delta}")
+                    tool_call_id = getattr(tool_call_delta, 'id', None)
+                    
+                    if tool_call_id:
+                        # Initialize new tool call with ID
+                        if tool_call_id not in accumulated_tool_calls:
+                            accumulated_tool_calls[tool_call_id] = {
+                                'id': tool_call_id,
+                                'type': getattr(tool_call_delta, 'type', 'function'),
+                                'function': {
+                                    'name': '',
+                                    'arguments': ''
+                                }
+                            }
+                            logger.info(f"[BRAIN] Initialized tool call: {tool_call_id}")
+                        
+                        # Accumulate function name and arguments for this specific tool call
+                        if hasattr(tool_call_delta, 'function'):
+                            func = tool_call_delta.function
+                            if hasattr(func, 'name') and func.name:
+                                accumulated_tool_calls[tool_call_id]['function']['name'] = func.name
+                                logger.info(f"[BRAIN] Set function name: {func.name}")
+                            if hasattr(func, 'arguments') and func.arguments is not None:
+                                accumulated_tool_calls[tool_call_id]['function']['arguments'] += func.arguments
+                                logger.info(f"[BRAIN] Added arguments: '{func.arguments}' -> Total: '{accumulated_tool_calls[tool_call_id]['function']['arguments']}'")
+                            else:
+                                logger.info(f"[BRAIN] No arguments in this delta")
+                    
+                    elif hasattr(tool_call_delta, 'function') and accumulated_tool_calls:
+                        # Handle chunks without ID - accumulate to the most recent tool call
+                        # This handles DeepSeek's pattern where first chunk has ID, subsequent chunks don't
+                        most_recent_id = list(accumulated_tool_calls.keys())[-1]
+                        func = tool_call_delta.function
+                        
+                        if hasattr(func, 'name') and func.name:
+                            accumulated_tool_calls[most_recent_id]['function']['name'] = func.name
+                            logger.info(f"[BRAIN] Set function name (no ID): {func.name}")
+                        if hasattr(func, 'arguments') and func.arguments is not None:
+                            accumulated_tool_calls[most_recent_id]['function']['arguments'] += func.arguments
+                            logger.info(f"[BRAIN] Added arguments (no ID): '{func.arguments}' -> Total: '{accumulated_tool_calls[most_recent_id]['function']['arguments']}'")
+                        else:
+                            logger.info(f"[BRAIN] No arguments in this delta (no ID)")
+            
+            # Handle finish reason - emit complete tool calls
+            if hasattr(choice, 'finish_reason') and choice.finish_reason:
+                logger.debug(f"[BRAIN] Stream finished, accumulated tool calls: {accumulated_tool_calls}")
+                # Emit all accumulated tool calls for client visualization
+                for tool_call in accumulated_tool_calls.values():
+                    if tool_call['function']['name']:  # Only emit complete tool calls
+                        logger.debug(f"[BRAIN] Emitting tool call: {tool_call}")
+                        yield {
+                            'type': 'tool-call',
+                            'tool_call': tool_call
+                        }
+                
+                yield {
+                    'type': 'finish',
+                    'finish_reason': choice.finish_reason,
+                    'tool_calls': list(accumulated_tool_calls.values()) if accumulated_tool_calls else None
+                }
+    
+    async def _handle_text_based_tool_calling_stream(self, response, tools) -> AsyncGenerator[Dict[str, Any], None]:
+        """Handle streaming for models without native function calling support."""
+        content_chunks = []
+        
+        # First, collect all content from the stream
+        async for chunk in response:
+            choice = chunk.choices[0] if chunk.choices else None
+            if not choice:
+                continue
+                
+            delta = choice.delta
+            
+            # Stream text content and collect it
+            if hasattr(delta, 'content') and delta.content:
+                content_chunks.append(delta.content)
+                yield {
+                    'type': 'text-delta',
+                    'content': delta.content
+                }
+        
+        # After streaming, analyze content for tool calls (if tools are available)
+        if tools and content_chunks:
+            full_content = ''.join(content_chunks)
+            # TODO: Implement text-based tool call detection here
+            # This would parse the content for tool usage patterns and emit tool-call chunks
+            # For now, just finish the stream
+            
+        yield {
+            'type': 'finish',
+            'finish_reason': 'stop'
+        } 

@@ -136,23 +136,15 @@ class TeamLoader:
     
     def _create_agent_config(self, agent_data: Dict[str, Any]) -> Any:
         """Create AgentConfig from raw agent data."""
-        from ..core.agent import AgentRole, AgentConfig
-        from ..core.brain import BrainConfig
+        from ..core.config import AgentConfig, BrainConfig
         
         # Required fields
         name = agent_data.get('name')
         if not name:
             raise ConfigurationError("Agent must have a 'name' field")
         
-        # Role
-        role_str = agent_data.get('role', 'assistant')
-        try:
-            role = AgentRole(role_str.lower())
-        except ValueError:
-            raise ConfigurationError(f"Invalid agent role '{role_str}'. Must be: assistant, user, or system")
-        
         # System message - handle prompt_file vs system_message
-        system_message = None
+        prompt_template = None
         prompt_file = agent_data.get('prompt_file')
         
         if prompt_file:
@@ -168,29 +160,49 @@ class TeamLoader:
             # Load from prompt file
             if self.prompt_loader:
                 try:
-                    system_message = self.prompt_loader.load_prompt(prompt_file)
+                    # Strip "prompts/" prefix if present since PromptLoader expects just the filename
+                    prompt_filename = prompt_file
+                    if prompt_filename.startswith("prompts/"):
+                        prompt_filename = prompt_filename[8:]  # Remove "prompts/" prefix
+                    
+                    prompt_template = self.prompt_loader.load_prompt(prompt_filename)
                 except Exception as e:
                     logger.warning(f"Could not load prompt file {prompt_file}: {e}")
-                    system_message = agent_data.get('system_message')
+                    prompt_template = agent_data.get('system_message')
             else:
                 # Try to load directly
                 prompt_path = self.config_dir / prompt_file
                 if prompt_path.exists():
                     try:
-                        system_message = prompt_path.read_text(encoding='utf-8')
+                        prompt_template = prompt_path.read_text(encoding='utf-8')
                     except Exception as e:
                         logger.warning(f"Could not read prompt file {prompt_path}: {e}")
         
-        if not system_message:
-            system_message = agent_data.get('system_message')
+        if not prompt_template:
+            prompt_template = agent_data.get('system_message')
         
-        # Ensure we have some system message
-        if not system_message:
-            system_message = "You are a helpful AI assistant."
+        # Ensure we have some prompt template
+        if not prompt_template:
+            prompt_template = f"You are a helpful AI assistant named {name}."
         
-        # Create brain config with team's LLM provider settings
+        # Create brain config from agent-level llm_config or team-level llm_provider
         brain_config = None
-        if hasattr(self, 'team_config') and self.team_config and self.team_config.llm_provider:
+        
+        # First check for agent-level llm_config
+        if 'llm_config' in agent_data:
+            llm_config = agent_data['llm_config']
+            brain_config = BrainConfig(
+                provider=llm_config.get('provider', 'deepseek'),
+                model=llm_config.get('model', 'deepseek-chat'),
+                temperature=llm_config.get('temperature', 0.7),
+                max_tokens=llm_config.get('max_tokens', 4000),
+                api_key=llm_config.get('api_key'),
+                base_url=llm_config.get('base_url'),
+                timeout=llm_config.get('timeout', 30),
+                supports_function_calls=llm_config.get('supports_function_calls', True)
+            )
+        # Fallback to team-level llm_provider
+        elif hasattr(self, 'team_config') and self.team_config and hasattr(self.team_config, 'llm_provider') and self.team_config.llm_provider:
             llm_provider = self.team_config.llm_provider
             brain_config = BrainConfig(
                 model=llm_provider.model or "deepseek-chat",
@@ -201,16 +213,10 @@ class TeamLoader:
         # Create AgentConfig
         agent_config = AgentConfig(
             name=name,
-            role=role,
-            system_message=system_message,
-            description=agent_data.get('description', ''),
-            prompt_file=prompt_file,
+            description=agent_data.get('description', f"AI assistant named {name}"),
+            prompt_template=prompt_template,
             brain_config=brain_config,
-            enable_code_execution=agent_data.get('enable_code_execution', False),
-            enable_human_interaction=agent_data.get('enable_human_interaction', False),
-            enable_memory=agent_data.get('enable_memory', True),
-            max_consecutive_replies=agent_data.get('max_consecutive_replies', 10),
-            auto_reply=agent_data.get('auto_reply', True)
+            tools=agent_data.get('tools', [])
         )
         
         return agent_config

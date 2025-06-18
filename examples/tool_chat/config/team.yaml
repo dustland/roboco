@@ -7,8 +7,15 @@ agents:
     description: "AI assistant that uses tools to gather information and provide comprehensive answers"
     class: agentx.core.agent.Agent
     prompt_template: "prompts/assistant.md"
+    tools:
+      - get_weather
+      - web_search
+      - store_artifact
+      - read_file
+      - write_file
     llm_config:
       model: deepseek/deepseek-chat
       temperature: 0.3
       max_tokens: 2048
+      supports_function_calls: true
 # No handoffs needed - single agent

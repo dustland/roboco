@@ -100,10 +100,16 @@ class PromptLoader:
             List of variable names found in the template
         """
         try:
-            template = self.jinja_env.get_template(prompt_file)
-            # Get undeclared variables (template variables)
+            # Read the template source directly from file
+            template_path = self.prompts_dir / prompt_file
+            if not template_path.exists():
+                raise ConfigurationError(f"Prompt file not found: {prompt_file}")
+            
+            template_source = template_path.read_text(encoding='utf-8')
+            
+            # Parse the template source to find variables
             from jinja2 import meta
-            ast = self.jinja_env.parse(template.source)
+            ast = self.jinja_env.parse(template_source)
             return list(meta.find_undeclared_variables(ast))
         except Exception as e:
             raise ConfigurationError(f"Error analyzing template {prompt_file}: {e}")

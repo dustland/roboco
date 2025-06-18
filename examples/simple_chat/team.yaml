@@ -24,16 +24,10 @@ tools:
 # Execution configuration
 execution:
   mode: "autonomous"
+  initial_agent: "assistant"
   max_rounds: 10 # Orchestrator will auto-complete single-agent chats
   timeout_seconds: 300
 
 # Memory configuration
 memory:
-  enabled: true
-  max_context_tokens: 8000
-  semantic_search_enabled: true
-  vector_db_config:
-    provider: "qdrant"
-    collection_name: "simple_chat_memories"
-    host: "localhost"
-    port: 6333
+  enabled: false

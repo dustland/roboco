@@ -47,6 +47,7 @@ class BrainConfig(BaseModel):
     base_url: Optional[str] = None
     timeout: int = 30
     retry_policy: Dict[str, Any] = Field(default_factory=dict)
+    supports_function_calls: bool = True  # Whether the model supports native function calling
     
     @model_validator(mode='after')
     def set_default_base_url(self):

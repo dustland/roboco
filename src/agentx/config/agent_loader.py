@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Dict, List, Any, Optional
 from dataclasses import dataclass
 
-# AgentConfig and AgentRole imported locally to avoid circular imports
+# AgentConfig imported locally to avoid circular imports
 from ..core.tool import validate_agent_tools, suggest_tools_for_agent, list_tools
 from ..core.exceptions import ConfigurationError
 from ..utils.logger import get_logger
@@ -96,23 +96,22 @@ def load_agents_config(config_path: str, validate_tools: bool = True) -> List[tu
             logger.info(f"Validated tools for {config_data.name}: {valid_tools}")
         
         # Convert to AgentConfig
-        from ..core.agent import AgentRole, AgentConfig
-        try:
-            role = AgentRole(config_data.role.lower())
-        except ValueError:
-            raise ConfigurationError(f"Invalid agent role '{config_data.role}' for agent '{config_data.name}'. Must be: assistant, user, or system")
+        from ..core.config import AgentConfig
+        
+        # Handle prompt_template - use prompt_file if available, otherwise create from system_message
+        prompt_template = config_data.prompt_file
+        if not prompt_template and config_data.system_message:
+            # For backward compatibility, create a simple template from system_message
+            prompt_template = config_data.system_message
+        elif not prompt_template:
+            # Default template if neither is provided
+            prompt_template = f"You are a helpful AI assistant named {config_data.name}."
         
         agent_config = AgentConfig(
             name=config_data.name,
-            role=role,
-            system_message=config_data.system_message,
-            description=config_data.description,
-            prompt_file=config_data.prompt_file,
-            enable_code_execution=config_data.enable_code_execution,
-            enable_human_interaction=config_data.enable_human_interaction,
-            enable_memory=config_data.enable_memory,
-            max_consecutive_replies=config_data.max_consecutive_replies,
-            auto_reply=config_data.auto_reply
+            description=config_data.description or f"AI assistant named {config_data.name}",
+            prompt_template=prompt_template,
+            tools=config_data.tools
         )
         
         results.append((agent_config, config_data.tools))

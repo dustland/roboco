@@ -1,0 +1,7 @@
+{
+  "00-requirements": "Requirements",
+  "01-architecture": "System Architecture",
+  "02-state-and-context": "State & Context",
+  "03-tool-call": "Tool Calling",
+  "04-communication": "Communication"
+}

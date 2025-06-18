@@ -27,6 +27,7 @@ class MockMemoryBackend(MemoryBackend):
             memory_type=memory_type,
             agent_name=agent_name,
             memory_id=memory_id,
+            timestamp=datetime.now(),
             metadata=metadata or {},
             importance=importance
         )
@@ -111,7 +112,8 @@ class MockMemoryBackend(MemoryBackend):
                 memories_by_agent={},
                 avg_importance=0.0,
                 oldest_memory=None,
-                newest_memory=None
+                newest_memory=None,
+                storage_size_mb=0.0
             )
         
         memories_by_type = {}
@@ -137,7 +139,8 @@ class MockMemoryBackend(MemoryBackend):
             memories_by_agent=memories_by_agent,
             avg_importance=total_importance / len(self.memories),
             oldest_memory=min(timestamps),
-            newest_memory=max(timestamps)
+            newest_memory=max(timestamps),
+            storage_size_mb=1.0  # Mock value
         )
     
     async def health(self):
@@ -346,6 +349,7 @@ class TestMemoryBackend:
         assert stats.avg_importance == 0.0
         assert stats.oldest_memory is None
         assert stats.newest_memory is None
+        assert stats.storage_size_mb == 0.0
         
         # Add some memories
         await backend.add("text 1", MemoryType.TEXT, "agent1", importance=0.8)
@@ -359,6 +363,7 @@ class TestMemoryBackend:
         assert stats.avg_importance == (0.8 + 0.6 + 1.0) / 3
         assert stats.oldest_memory is not None
         assert stats.newest_memory is not None
+        assert stats.storage_size_mb == 1.0
     
     @pytest.mark.asyncio
     async def test_health(self, backend):

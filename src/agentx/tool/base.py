@@ -35,7 +35,7 @@ class Tool(ABC):
         """Get list of callable method names for this tool."""
         methods = []
         for name in dir(self):
-            if not name.startswith('_') and name != 'get_callable_methods':
+            if not name.startswith('_') and name not in ['get_callable_methods', 'get_method_schema']:
                 attr = getattr(self, name)
                 if callable(attr):
                     methods.append(name)

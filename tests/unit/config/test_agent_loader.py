@@ -89,8 +89,8 @@ class TestLoadAgentsConfig:
         assert len(agents) == 1
         agent_config, tools = agents[0]
         assert agent_config.name == "researcher"
-        assert agent_config.role.value == "assistant"
-        assert agent_config.system_message == "You are a researcher."
+        assert agent_config.description == "AI assistant named researcher"
+        assert agent_config.prompt_template == "You are a researcher."
         assert tools == ["search"]
     
     @patch('agentx.config.agent_loader.validate_agent_tools')
@@ -148,24 +148,7 @@ class TestLoadAgentsConfig:
         
         assert len(agents) == 1
         agent_config, tools = agents[0]
-        assert agent_config.prompt_file == "prompts/agent.md"
-    
-    def test_load_agents_invalid_role(self, temp_dir):
-        """Test error handling for invalid agent role."""
-        agent_yaml = {
-            "name": "invalid_agent",
-            "role": "invalid_role",
-            "system_message": "Test"
-        }
-        
-        config_file = temp_dir / "agent.yaml"
-        with open(config_file, 'w') as f:
-            yaml.dump(agent_yaml, f)
-        
-        with pytest.raises(ConfigurationError) as exc_info:
-            load_agents_config(str(config_file), validate_tools=False)
-        
-        assert "invalid agent role" in str(exc_info.value).lower()
+        assert agent_config.prompt_template == "prompts/agent.md"
     
     @patch('agentx.config.agent_loader.validate_agent_tools')
     def test_load_agents_invalid_tools(self, mock_validate, temp_dir):
@@ -205,7 +188,7 @@ class TestLoadSingleAgentConfig:
         agent_config, tools = load_single_agent_config(str(config_file), validate_tools=False)
         
         assert agent_config.name == "solo_agent"
-        assert agent_config.system_message == "Solo agent"
+        assert agent_config.prompt_template == "Solo agent"
     
     def test_load_single_from_multi_config(self, temp_dir):
         """Test loading specific agent from multi-agent config file."""
@@ -226,7 +209,7 @@ class TestLoadSingleAgentConfig:
         )
         
         assert agent_config.name == "agent2"
-        assert agent_config.system_message == "Agent 2"
+        assert agent_config.prompt_template == "Agent 2"
     
     def test_load_single_agent_not_found(self, temp_dir):
         """Test error when specified agent not found."""
@@ -356,25 +339,26 @@ class TestValidateConfigFile:
         assert "search" in result["tools_used"]
     
     def test_validate_invalid_config(self, temp_dir):
-        """Test validation of invalid configuration file."""
+        """Test validation of configuration with ignored role field."""
         config_yaml = {
             "agents": [
                 {
                     "name": "agent1",
-                    "role": "invalid_role"  # Invalid role
+                    "role": "any_role_is_fine"  # Role field is now ignored
                 }
             ]
         }
         
-        config_file = temp_dir / "invalid.yaml"
+        config_file = temp_dir / "config_with_role.yaml"
         with open(config_file, 'w') as f:
             yaml.dump(config_yaml, f)
         
         result = validate_config_file(str(config_file))
         
-        assert result["valid"] == False
-        assert "error" in result
-        assert "invalid agent role" in result["error"].lower()
+        # Should pass since role validation is removed
+        assert result["valid"] == True
+        assert result["total_agents"] == 1
+        assert "agent1" in result["agents"]
 
 
 class TestErrorHandling:

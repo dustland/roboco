@@ -1,0 +1,31 @@
+name: "simple_chat"
+description: "A simple chat example with user, assistant, search, and memory"
+
+# Team agents
+agents:
+  - name: "assistant"
+    description: "Helpful AI assistant"
+    prompt_template: "prompts/assistant.md"
+    tools: []
+    llm_config:
+      provider: "deepseek"
+      model: "deepseek-chat"
+      base_url: "https://api.deepseek.com"
+      temperature: 0.7
+      max_tokens: 4000
+      supports_function_calls: true # DeepSeek supports native function calling
+      # api_key will be read from DEEPSEEK_API_KEY environment variable
+
+# Tools configuration
+tools: []
+
+# Execution configuration
+execution:
+  mode: "autonomous"
+  initial_agent: "assistant"
+  max_rounds: 10 # Orchestrator will auto-complete single-agent chats
+  timeout_seconds: 300
+
+# Memory configuration
+memory:
+  enabled: false

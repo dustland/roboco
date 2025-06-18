@@ -1,6 +1,5 @@
-from .team import Team
 from .orchestrator import Orchestrator
-from .task import TaskExecutor, create_task
+from .task import TaskExecutor
 from .brain import Brain, BrainMessage, BrainResponse
 from .message import (
     TaskStep,
@@ -21,7 +20,6 @@ from .message import (
 )
 
 __all__ = [
-    "Team", 
     "Orchestrator",
     "TaskExecutor",
     "Brain",
@@ -41,6 +39,5 @@ __all__ = [
     "Artifact",
     "StreamChunk",
     "StreamError",
-    "StreamComplete",
-    "create_task"
+    "StreamComplete"
 ] 

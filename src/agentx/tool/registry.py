@@ -127,7 +127,7 @@ class ToolRegistry:
     
     def _extract_parameters(self, func: Callable) -> Dict[str, Any]:
         """
-        Extract parameter schema from function signature.
+        Extract parameter schema from function signature and docstring.
         
         Args:
             func: Function to analyze
@@ -138,6 +138,9 @@ class ToolRegistry:
         sig = inspect.signature(func)
         properties = {}
         required = []
+        
+        # Extract parameter descriptions from docstring
+        param_descriptions = self._extract_param_descriptions_from_docstring(func)
         
         for param_name, param in sig.parameters.items():
             if param_name == 'self':
@@ -158,6 +161,10 @@ class ToolRegistry:
                 elif param.annotation == dict:
                     param_schema["type"] = "object"
             
+            # Add description from docstring if available
+            if param_name in param_descriptions:
+                param_schema["description"] = param_descriptions[param_name]
+            
             properties[param_name] = param_schema
             
             # Check if parameter is required
@@ -169,6 +176,49 @@ class ToolRegistry:
             "properties": properties,
             "required": required
         }
+    
+    def _extract_param_descriptions_from_docstring(self, func: Callable) -> Dict[str, str]:
+        """
+        Extract parameter descriptions from function docstring.
+        
+        Supports Google-style docstrings with Args: section.
+        
+        Args:
+            func: Function to analyze
+            
+        Returns:
+            Dictionary mapping parameter names to descriptions
+        """
+        docstring = inspect.getdoc(func)
+        if not docstring:
+            return {}
+        
+        param_descriptions = {}
+        lines = docstring.split('\n')
+        
+        # Find Args: section
+        in_args_section = False
+        for line in lines:
+            stripped_line = line.strip()
+            
+            if stripped_line.startswith('Args:'):
+                in_args_section = True
+                continue
+            elif in_args_section and stripped_line.startswith(('Returns:', 'Yields:', 'Raises:', 'Note:', 'Example:')):
+                break
+            elif in_args_section and stripped_line and not line.startswith(' '):
+                # End of args section if we hit a non-indented line
+                break
+            elif in_args_section and ':' in stripped_line and not stripped_line.startswith(('Returns:', 'Yields:', 'Raises:')):
+                # Parse parameter line: "param_name: description"
+                parts = stripped_line.split(':', 1)
+                if len(parts) == 2:
+                    param_name = parts[0].strip()
+                    description = parts[1].strip()
+                    if param_name and description:
+                        param_descriptions[param_name] = description
+        
+        return param_descriptions
     
     def clear(self):
         """Clear all registered tools."""
