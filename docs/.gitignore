@@ -4,6 +4,7 @@
 /.sass-cache/
 /build/
 /dist/
+/out/
 
 # Dependencies
 /node_modules/
