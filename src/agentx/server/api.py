@@ -16,7 +16,7 @@ from fastapi.responses import StreamingResponse, HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 
-from ..core.task import create_task, Task
+from ..core.task import create_task, TaskExecutor
 from .models import (
     TaskRequest, TaskResponse, TaskInfo, TaskStatus,
     MemoryRequest, MemoryResponse,
@@ -26,7 +26,7 @@ from .models import (
 logger = get_logger(__name__)
 
 # In-memory task storage (in production, use a proper database)
-active_tasks: Dict[str, Task] = {}
+active_tasks: Dict[str, TaskExecutor] = {}
 server_start_time = datetime.now()
 
 
@@ -281,7 +281,7 @@ def add_routes(app: FastAPI):
         """)
 
 
-async def _execute_task(task: Task, task_description: str, context: Optional[Dict[str, Any]] = None):
+async def _execute_task(task: TaskExecutor, task_description: str, context: Optional[Dict[str, Any]] = None):
     """Execute a task in the background"""
     try:
         # For now, just simulate task execution

@@ -1,6 +1,6 @@
 from .team import Team
 from .orchestrator import Orchestrator
-from .task import Task, create_task
+from .task import TaskExecutor, create_task
 from .brain import Brain, BrainMessage, BrainResponse
 from .message import (
     TaskStep,
@@ -23,7 +23,7 @@ from .message import (
 __all__ = [
     "Team", 
     "Orchestrator",
-    "Task",
+    "TaskExecutor",
     "Brain",
     "BrainMessage", 
     "BrainResponse",

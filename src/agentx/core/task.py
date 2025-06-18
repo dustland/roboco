@@ -23,12 +23,12 @@ from typing import Dict, Any, Optional, List
 from .team import Team
 from .message import TaskStep, TextPart, ToolCallPart, ToolResultPart
 from ..utils.logger import get_logger
-from .tool import execute_tool, ToolResult
+from .tool import execute_tool, ToolResult, register_tool
 
 logger = get_logger(__name__)
 
 
-class Task:
+class TaskExecutor:
     """
     Primary interface for AgentX task execution.
     
@@ -638,7 +638,7 @@ class Task:
 
 
 # Factory function for creating tasks
-def create_task(team_config_path: str, task_id: str = None, workspace_dir: Path = None) -> Task:
+def create_task(team_config_path: str, task_id: str = None, workspace_dir: Path = None) -> TaskExecutor:
     """
     Create a new task from team configuration.
     
@@ -651,7 +651,7 @@ def create_task(team_config_path: str, task_id: str = None, workspace_dir: Path 
         Task instance ready to be started
     """
     team = Team.from_config(team_config_path)
-    return Task(team, task_id, workspace_dir)
+    return TaskExecutor(team, task_id, workspace_dir)
 
 async def execute_task(prompt: str, config_path: str = None, stream: bool = False):
     """
