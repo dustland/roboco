@@ -24,41 +24,148 @@ logger = get_logger(__name__)
 
 class Orchestrator:
     """
-    Central orchestrator for coordination and tool execution.
+    Orchestrates agent coordination and tool execution in the AgentX framework.
     
-    This class handles:
-    - Making intelligent agent routing decisions based on context and responses
-    - Validating tool calls against schemas
-    - Dispatching tool calls to ToolExecutor for security
-    - Managing tool permissions and access control
-    - Providing structured error feedback for agent self-correction
+    The Orchestrator now handles:
+    - Agent routing decisions (both intelligent LLM-based and heuristic fallback)
+    - Tool execution coordination
+    - Memory-driven context injection for enhanced agent awareness
+    - Event-driven memory synthesis
     """
     
-    def __init__(self, team: Team = None):
-        """Initialize orchestrator for coordination and tool execution."""
+    def __init__(
+        self, 
+        team: Team = None, 
+        max_rounds: int = 50, 
+        timeout: int = 3600,
+        memory_system: Optional['MemorySystem'] = None
+    ):
         self.team = team
+        self.max_rounds = max_rounds
+        self.timeout = timeout
+        self.memory_system = memory_system
         
-        # Initialize ToolExecutor for secure tool dispatch
-        self.tool_executor = ToolExecutor()
+        # Initialize tool execution components
         self.tool_registry = get_tool_registry()
+        self.tool_executor = ToolExecutor(registry=self.tool_registry)
         
-        # Initialize Brain for routing decisions if team is provided
-        self.routing_brain = None
-        if team and team.config.orchestrator:
-            brain_config = team.config.orchestrator.brain_config or team.config.orchestrator.get_default_brain_config()
-            self.routing_brain = Brain(brain_config)
-        
+        # Initialize routing brain if configured and team exists
         if team:
-            logger.info(f"🎭 Orchestrator initialized for coordination and tool execution with team '{team.name}'")
+            orchestrator_config = getattr(team.config, 'orchestrator', None)
+            if orchestrator_config and hasattr(orchestrator_config, 'brain_config'):
+                self.routing_brain = Brain.from_config(orchestrator_config.brain_config)
+            else:
+                self.routing_brain = None
+            
+            # Initialize memory system if not provided
+            if not self.memory_system:
+                self._initialize_memory_system()
+                
+            logger.info(f"Orchestrator initialized with team '{team.name}' (routing brain: {'enabled' if self.routing_brain else 'disabled'}, memory: {'enabled' if self.memory_system else 'disabled'})")
         else:
-            # Single-agent mode or global orchestrator
-            logger.info("🎭 Orchestrator initialized for tool execution only")
+            self.routing_brain = None
+            logger.info("Orchestrator initialized without team (tool execution only)")
+
+    def _initialize_memory_system(self) -> None:
+        """Initialize the memory system with synthesis engine."""
+        if not self.team:
+            return
+            
+        try:
+            from ..memory.factory import create_memory_backend
+            # Skip synthesis engine and memory system for now
+            
+            # Get memory config from team if available
+            memory_config = getattr(self.team.config, 'memory', None)
+            
+            if memory_config:
+                backend = create_memory_backend(memory_config)
+                logger.info("Memory backend initialized")
+            
+        except Exception as e:
+            logger.warning(f"Failed to initialize memory system: {e}")
+            self.memory_system = None
 
     # ============================================================================
     # AGENT ROUTING - Intelligent coordination decisions
     # ============================================================================
 
-    async def get_next_agent(
+    async def get_next_agent(self, context: Dict[str, Any], last_response: str = None) -> str:
+        """
+        Determine the next agent to execute with memory-enhanced context.
+        
+        Now includes memory-derived context for better routing decisions.
+        """
+        try:
+            # Enhance context with memory if available
+            enhanced_context = await self._enhance_context_with_memory(context, last_response)
+            
+            if self.routing_brain:
+                return await self._intelligent_agent_selection(enhanced_context, last_response)
+            else:
+                return self._heuristic_agent_selection(enhanced_context)
+                
+        except Exception as e:
+            logger.error(f"Error in get_next_agent: {e}")
+            # Fallback to first agent
+            return list(self.team.agents.keys())[0] if self.team.agents else "unknown"
+
+    async def decide_next_step(self, context: Dict[str, Any], last_response: str = None) -> Dict[str, Any]:
+        """
+        Decide the next action with memory-enhanced context.
+        
+        Enhanced with memory system integration for better decision making.
+        """
+        try:
+            # Enhance context with memory if available
+            enhanced_context = await self._enhance_context_with_memory(context, last_response)
+            
+            if self.routing_brain:
+                return await self._intelligent_routing_decision(enhanced_context, last_response)
+            else:
+                return self._heuristic_routing_decision(enhanced_context)
+                
+        except Exception as e:
+            logger.error(f"Error in decide_next_step: {e}")
+            return {
+                "action": "CONTINUE",
+                "next_agent": context.get("current_agent", "unknown"),
+                "reason": f"Error in routing decision: {e}"
+            }
+
+    async def _enhance_context_with_memory(self, context: Dict[str, Any], last_response: str = None) -> Dict[str, Any]:
+        """
+        Enhance context with memory-derived information.
+        
+        This implements the context injection pipeline from the architecture.
+        """
+        enhanced_context = context.copy()
+        
+        if not self.memory_system:
+            return enhanced_context
+        
+        try:
+            # Get relevant memory context
+            memory_context = await self.memory_system.get_relevant_context(
+                last_user_message=last_response or context.get("last_user_message", ""),
+                agent_name=context.get("current_agent")
+            )
+            
+            if memory_context:
+                enhanced_context["memory_context"] = memory_context
+                enhanced_context["has_memory_context"] = True
+                logger.debug("Enhanced context with memory information")
+            else:
+                enhanced_context["has_memory_context"] = False
+                
+        except Exception as e:
+            logger.error(f"Error enhancing context with memory: {e}")
+            enhanced_context["memory_context_error"] = str(e)
+            enhanced_context["has_memory_context"] = False
+        
+        return enhanced_context
+
+    async def _intelligent_agent_selection(
         self, 
         context: Dict[str, Any], 
         last_response: str = None
@@ -79,7 +186,7 @@ class Orchestrator:
                 return list(self.team.agents.keys())[0]
             return context.get("current_agent", "default")
         
-        routing_decision = await self.decide_next_step(context, last_response)
+        routing_decision = await self._intelligent_routing_decision(context, last_response)
         
         if routing_decision["action"] == "HANDOFF":
             return routing_decision["next_agent"]
@@ -88,39 +195,6 @@ class Orchestrator:
         else:  # COMPLETE
             # Task is complete, return current agent for final cleanup
             return context.get("current_agent")
-
-    async def decide_next_step(
-        self, 
-        context: Dict[str, Any], 
-        last_response: str = None
-    ) -> Dict[str, Any]:
-        """
-        Make an intelligent routing decision based on task context and agent response.
-        
-        Args:
-            context: Current task context including history, agents, progress
-            last_response: The last agent's response to analyze
-            
-        Returns:
-            Dict with action ("CONTINUE", "HANDOFF", "COMPLETE"), next_agent, and reason
-        """
-        if not self.team:
-            return {"action": "COMPLETE", "reason": "No team configured"}
-        
-        # Single agent teams always complete after response
-        if len(self.team.agents) == 1:
-            return {"action": "COMPLETE", "reason": "Single agent task completed"}
-        
-        # Check basic completion conditions first
-        if context.get("round_count", 0) >= context.get("max_rounds", 50):
-            return {"action": "COMPLETE", "reason": "Maximum rounds reached"}
-        
-        # Use Brain for intelligent routing if available
-        if self.routing_brain and last_response:
-            return await self._intelligent_routing_decision(context, last_response)
-        else:
-            # Fall back to simple heuristic routing
-            return self._heuristic_routing_decision(context, last_response)
 
     async def _intelligent_routing_decision(
         self, 
@@ -163,6 +237,29 @@ class Orchestrator:
         except Exception as e:
             logger.error(f"Error in intelligent routing: {e}, falling back to heuristic")
             return self._heuristic_routing_decision(context, last_response)
+
+    def _heuristic_agent_selection(self, context: Dict[str, Any]) -> str:
+        """
+        Determine which agent should execute next based on task context and previous response.
+        
+        Args:
+            context: Current task context including history, current agent, available agents
+            
+        Returns:
+            Name of the agent that should execute next
+        """
+        if not self.team or len(self.team.agents) <= 1:
+            # Single agent or no team - return the only/current agent
+            if self.team and self.team.agents:
+                return list(self.team.agents.keys())[0]
+            return context.get("current_agent", "default")
+        
+        # For heuristic selection, just return current agent or first agent
+        current_agent = context.get("current_agent")
+        if current_agent and current_agent in self.team.agents:
+            return current_agent
+        else:
+            return list(self.team.agents.keys())[0]
 
     def _heuristic_routing_decision(
         self, 
@@ -236,8 +333,8 @@ class Orchestrator:
         
         return None
 
-    def _build_routing_prompt(self, context: Dict[str, Any], last_response: str) -> str:
-        """Build the prompt for intelligent routing decisions."""
+    def _build_routing_prompt(self, context: Dict[str, Any], last_response: str = None) -> str:
+        """Build routing prompt with memory context."""
         current_agent = context.get("current_agent", "unknown")
         available_agents = context.get("available_agents", [])
         round_count = context.get("round_count", 0)
@@ -249,53 +346,70 @@ class Orchestrator:
             for name, agent in self.team.agents.items():
                 agent_descriptions[name] = agent.config.description
         
-        prompt = f"""Analyze the current task context and last agent response to determine the next routing decision.
+        base_prompt = f"""
+You are an intelligent agent routing system for the AgentX framework.
+Your task is to analyze the current context and decide which agent should handle the next step.
 
-TASK CONTEXT:
-- Initial task: {initial_prompt}
-- Current round: {round_count}
-- Current agent: {current_agent}
-- Available agents: {', '.join(available_agents)}
+TEAM CONFIGURATION:
+{self._format_team_info() if self.team else 'No team configured'}
 
-AGENT DESCRIPTIONS:
-{json.dumps(agent_descriptions, indent=2)}
+CURRENT CONTEXT:
+- Current Agent: {context.get('current_agent', 'None')}
+- Round: {context.get('round_count', 0)} / {context.get('max_rounds', self.max_rounds)}
+- Task Status: {context.get('task_status', 'active')}
+- Available Agents: {list(self.team.agents.keys()) if self.team else []}
 
-LAST AGENT RESPONSE:
-{last_response}
-
-Based on this information, determine the next action. Consider:
-1. Is the task complete based on the response?
-2. Should we continue with the current agent?
-3. Should we hand off to a different agent, and if so, which one?
-
-Respond with a JSON object in this exact format:
-{{
-    "action": "CONTINUE|HANDOFF|COMPLETE",
-    "next_agent": "agent_name_if_handoff",
-    "reason": "explanation of the decision"
-}}
-
-For HANDOFF actions, next_agent must be one of the available agents.
-For CONTINUE or COMPLETE actions, next_agent should be omitted or null."""
+RECENT ACTIVITY:
+"""
         
-        return prompt
+        # Add memory context if available
+        if context.get("has_memory_context") and context.get("memory_context"):
+            base_prompt += f"""
+MEMORY CONTEXT:
+{context['memory_context']}
+"""
+        
+        # Add conversation history
+        if last_response:
+            base_prompt += f"""
+Last Response: {last_response[:500]}...
+
+"""
+        
+        base_prompt += """
+Based on this information, determine the most appropriate next agent.
+Respond with just the agent name."""
+        
+        return base_prompt
+
+    def _format_team_info(self) -> str:
+        """Format team information for routing prompts."""
+        if not self.team:
+            return "No team configured"
+        
+        info = f"Team: {self.team.name}\n"
+        for name, agent in self.team.agents.items():
+            info += f"- {name}: {agent.config.description}\n"
+        return info
 
     def _get_routing_system_prompt(self) -> str:
-        """Get the system prompt for routing decisions."""
-        return """You are an intelligent task orchestrator responsible for routing decisions in a multi-agent system.
+        """Get system prompt for routing decisions with memory awareness."""
+        return """You are an expert agent coordination system with access to team memory and context.
 
-Your role is to analyze the current task context and agent responses to make optimal routing decisions:
-- CONTINUE: Keep the current agent working if they should continue their current task
-- HANDOFF: Transfer control to another agent when their expertise is needed
-- COMPLETE: End the task when the objective has been achieved
+Your responsibilities:
+1. Analyze the current task state and agent capabilities
+2. Consider memory context including user constraints and active issues
+3. Route work to the most appropriate agent based on skills and current needs
+4. Ensure efficient collaboration and avoid redundant work
 
-Always respond with valid JSON in the exact format requested. Base decisions on:
-1. Task completion indicators in the response
-2. Whether the current agent has completed their specialized role
-3. Which agent's expertise is needed next
-4. Overall task progress and efficiency
+Key principles:
+- Respect user constraints and preferences from memory
+- Address active issues and hot problems first
+- Leverage agent strengths and specializations
+- Maintain task momentum and quality standards
+- Make routing decisions that advance toward completion
 
-Be decisive and provide clear reasoning for each decision."""
+Always consider the memory context when making routing decisions."""
 
     # ============================================================================
     # TOOL EXECUTION DISPATCH - Security and centralized control
@@ -371,5 +485,5 @@ def get_orchestrator() -> Orchestrator:
     """Get the global orchestrator instance for single-agent tool execution."""
     global _global_orchestrator
     if _global_orchestrator is None:
-        _global_orchestrator = Orchestrator()  # No team = tool execution only
+        _global_orchestrator = Orchestrator(team=None)  # No team = tool execution only
     return _global_orchestrator

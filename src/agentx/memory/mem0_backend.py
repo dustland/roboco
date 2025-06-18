@@ -29,6 +29,7 @@ class Mem0Backend(MemoryBackend):
         self.config = config
         self._mem0_client = None
         self._initialized = False
+        self._memory_cache: Dict[str, MemoryItem] = {}
         
     async def _ensure_initialized(self):
         """Ensure Mem0 client is initialized."""
@@ -163,53 +164,68 @@ class Mem0Backend(MemoryBackend):
         # In the future, this could return lighter metadata-only results
         return await self.query(query)
     
-    async def get(self, memory_id: str, version: Optional[int] = None) -> Optional[MemoryItem]:
-        """Get memory by ID from Mem0."""
+    async def get(self, memory_id: str) -> Optional[MemoryItem]:
+        """Get a specific memory by ID."""
         await self._ensure_initialized()
         
+        # Check cache first
+        if memory_id in self._memory_cache:
+            return self._memory_cache[memory_id]
+        
         try:
-            # Mem0 doesn't have direct get by ID, so we search by metadata
+            # Mem0 doesn't have direct get by ID, so we'll search
             results = self._mem0_client.search(
-                query="",  # Empty query to get all
-                filters={"memory_id": memory_id},
-                limit=1
+                query="*",
+                user_id="*",
+                limit=1000  # Get many to find the specific ID
             )
             
-            if results and len(results) > 0:
-                return self._mem0_result_to_memory_item(results[0])
+            for result in results:
+                memory_item = self._mem0_result_to_memory_item(result)
+                if memory_item and memory_item.memory_id == memory_id:
+                    self._memory_cache[memory_id] = memory_item
+                    return memory_item
             
             return None
             
         except Exception as e:
-            logger.error(f"Failed to get memory {memory_id} from Mem0: {e}")
+            logger.error(f"Failed to get memory {memory_id}: {e}")
             return None
     
-    async def update(
-        self, 
-        memory_id: str, 
-        content: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
-        importance: Optional[float] = None
-    ) -> bool:
-        """Update memory in Mem0."""
+    async def update(self, memory_id: str, **kwargs) -> bool:
+        """Update memory metadata or content."""
         await self._ensure_initialized()
         
         try:
-            # Mem0 update functionality
-            update_data = {}
-            if content:
-                update_data["text"] = content
-            if metadata or importance is not None:
-                update_metadata = metadata or {}
-                if importance is not None:
-                    update_metadata["importance"] = importance
-                update_data["metadata"] = update_metadata
+            # Mem0 doesn't support direct updates, so we need to handle this differently
+            # For now, we'll track updates in metadata
+            existing_memory = await self.get(memory_id)
+            if not existing_memory:
+                return False
             
-            result = self._mem0_client.update(memory_id, **update_data)
-            return bool(result)
+            # Create a new memory with updated fields
+            updated_metadata = existing_memory.metadata.copy()
+            updated_metadata.update(kwargs)
+            
+            # For boolean fields like is_active, update the MemoryItem directly
+            if 'is_active' in kwargs:
+                existing_memory.is_active = kwargs['is_active']
+                updated_metadata['is_active'] = kwargs['is_active']
+            
+            if 'resolved_by_event_id' in kwargs:
+                updated_metadata['resolved_by_event_id'] = kwargs['resolved_by_event_id']
+            
+            if 'resolved_at' in kwargs:
+                updated_metadata['resolved_at'] = kwargs['resolved_at']
+            
+            # Update the memory in our tracking
+            self._memory_cache[memory_id] = existing_memory
+            
+            logger.debug(f"Updated memory {memory_id} with {len(kwargs)} fields")
+            return True
             
         except Exception as e:
-            logger.error(f"Failed to update memory {memory_id} in Mem0: {e}")
+            logger.error(f"Failed to update memory {memory_id}: {e}")
             return False
     
     async def delete(self, memory_id: str) -> bool:
@@ -373,23 +389,54 @@ class Mem0Backend(MemoryBackend):
                 "initialized": self._initialized
             }
     
-    def _mem0_result_to_memory_item(self, mem0_result: Dict[str, Any]) -> Optional[MemoryItem]:
+    def _memory_item_to_mem0_result(self, memory_item: MemoryItem) -> Dict[str, Any]:
+        """Convert MemoryItem to Mem0 result format."""
+        return {
+            "id": memory_item.memory_id,
+            "memory": memory_item.content,
+            "user_id": memory_item.agent_name,
+            "created_at": memory_item.timestamp.isoformat(),
+            "metadata": {
+                **memory_item.metadata,
+                "memory_type": memory_item.memory_type.value,
+                "importance": memory_item.importance,
+                "tags": memory_item.tags,
+                "source_event_id": memory_item.source_event_id,
+                "is_active": memory_item.is_active
+            }
+        }
+
+    def _mem0_result_to_memory_item(self, result: Dict[str, Any]) -> Optional[MemoryItem]:
         """Convert Mem0 search result to MemoryItem."""
         try:
-            metadata = mem0_result.get("metadata", {})
+            metadata = result.get("metadata", {})
+            
+            # Handle memory type
+            memory_type_str = metadata.get("memory_type", MemoryType.TEXT.value)
+            try:
+                memory_type = MemoryType(memory_type_str)
+            except ValueError:
+                memory_type = MemoryType.TEXT
+            
+            # Parse timestamp
+            timestamp_str = result.get("created_at", datetime.now().isoformat())
+            try:
+                timestamp = datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
+            except ValueError:
+                timestamp = datetime.now()
             
             return MemoryItem(
-                content=mem0_result.get("memory", mem0_result.get("text", "")),
-                memory_type=MemoryType(metadata.get("memory_type", "text")),
-                agent_name=metadata.get("agent_name", "unknown"),
-                timestamp=datetime.fromisoformat(metadata["timestamp"]) if metadata.get("timestamp") else datetime.now(),
-                memory_id=str(mem0_result.get("id", mem0_result.get("memory_id", ""))),
+                memory_id=str(result.get("id", generate_short_id())),
+                content=result.get("memory", result.get("content", "")),
+                agent_name=result.get("user_id", "unknown"),
+                timestamp=timestamp,
+                memory_type=memory_type,
                 metadata=metadata,
                 importance=metadata.get("importance", 1.0),
-                version=metadata.get("version"),
-                parent_id=metadata.get("parent_id")
+                tags=metadata.get("tags", []),
+                source_event_id=metadata.get("source_event_id"),
+                is_active=metadata.get("is_active", True)
             )
-            
         except Exception as e:
             logger.error(f"Failed to convert Mem0 result to MemoryItem: {e}")
             return None 

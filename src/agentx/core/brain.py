@@ -62,6 +62,11 @@ class Brain:
         """
         self.config = config
         self.initialized = False
+    
+    @classmethod
+    def from_config(cls, brain_config: BrainConfig) -> "Brain":
+        """Create Brain instance from configuration."""
+        return cls(brain_config)
         
     async def _ensure_initialized(self):
         if not self.initialized:

@@ -35,7 +35,7 @@ from .search.search_manager import SearchManager
 # Utilities
 from .utils.logger import get_logger
 
-__version__ = "0.1.0"
+__version__ = "0.9.0"
 
 __all__ = [
     # Core components

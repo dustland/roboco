@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "agentx-py"
-version = "0.8.0"
+version = "0.9.0"
 description = "AgentX - An Opinionated Multi-Agent Framework"
 authors = [{ name = "Dustland Team", email = "hi@dustland.ai" }]
 readme = "README.md"

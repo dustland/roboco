@@ -116,25 +116,35 @@ tools:
       metrics: ["readability", "coherence", "completeness"]
       target_score: 0.85
 
-# Memory configuration for long-form content
+# Enhanced Memory System with Synthesis Engine
 memory:
-  vector_store:
-    provider: chroma
-    config:
-      collection_name: superwriter_research
-      path: ./workspace/memory_db
-      chunk_size: 2000
-      chunk_overlap: 200
-  llm:
-    config:
-      model: deepseek/deepseek-chat
-      temperature: 0.1
-      max_tokens: 4096
-  embedder:
-    provider: openai
-    config:
-      model: text-embedding-3-small
-  version: v1.2
+  backend_type: "mem0"
+  config:
+    vector_store:
+      provider: chroma
+      config:
+        collection_name: superwriter_research
+        path: ./workspace/memory_db
+        chunk_size: 2000
+        chunk_overlap: 200
+    llm:
+      config:
+        model: deepseek/deepseek-chat
+        temperature: 0.1
+        max_tokens: 4096
+    embedder:
+      provider: openai
+      config:
+        model: text-embedding-3-small
+    version: v1.2
+
+  # Enable synthesis engine for intelligent memory management
+  synthesis_engine:
+    enabled: true
+    constraint_extraction: true
+    hot_issue_tracking: true
+    document_chunking: true
+    context_injection: true
 
 # Execution configuration
 execution:
@@ -155,15 +165,21 @@ execution:
       - "quality_reviewed"
       - "final_report_delivered"
 
-# Orchestrator configuration
+# Orchestrator configuration with intelligent routing
 orchestrator:
   max_rounds: 150
   timeout: 10800
-  llm_config:
+
+  # Brain configuration for intelligent agent routing
+  brain_config:
     model: deepseek/deepseek-chat
     temperature: 0.0
     max_tokens: 150
     timeout: 15
+
+  # Memory-aware routing
+  memory_integration: true
+  context_injection: true
 
 # Context and planning are now handled by built-in tools
 # No need to define context_variables or execution_plan here
