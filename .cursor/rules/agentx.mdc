@@ -47,6 +47,9 @@ alwaysApply: false
 - Use the singleton pattern for factories and services that shoupplor e.glempproach to agent registration and discovery.
 - Design agents to be modular and extensible.
 
+## Document subproject
+- Use 'pnpm' instead of 'npm' as package manager
+
 ## References
 - [FastAPI Documentation](mdc:roboco/roboco_workspace/https:/fastapi.tiangolo.com)
 - [Pydantic Documentation](mdc:roboco/roboco_workspace/https:/docs.pydantic.dev)

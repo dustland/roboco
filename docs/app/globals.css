@@ -1,2 +1,65 @@
 @import "tailwindcss";
-@import "nextra-theme-docs/style.css"; 
+@import "nextra-theme-docs/style.css";
+
+/* Smooth scrolling */
+html {
+  scroll-behavior: smooth;
+}
+
+/* Custom gradient backgrounds for dark mode */
+.dark {
+  --gradient-from: theme('colors.gray.900');
+  --gradient-to: theme('colors.gray.800');
+}
+
+/* Enhanced button hover effects */
+.transform {
+  transition-property: transform;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  transition-duration: 150ms;
+}
+
+/* Custom card hover effects */
+.nextra-card:hover {
+  transform: translateY(-2px);
+  transition: all 0.2s ease-in-out;
+}
+
+/* Gradient text animation */
+@keyframes gradient {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+.bg-gradient-to-r {
+  background-size: 200% 200%;
+  animation: gradient 6s ease infinite;
+}
+
+/* Enhanced code block styling */
+pre {
+  border-radius: 12px !important;
+  border: 1px solid theme('colors.gray.200') !important;
+}
+
+.dark pre {
+  border-color: theme('colors.gray.700') !important;
+}
+
+/* Custom callout styling */
+.nextra-callout {
+  border-radius: 12px;
+  border-width: 1px;
+}
+
+/* Responsive improvements */
+@media (max-width: 768px) {
+  .text-5xl {
+    font-size: 2.5rem;
+  }
+  
+  .text-6xl {
+    font-size: 3rem;
+  }
+}

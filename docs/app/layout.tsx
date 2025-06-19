@@ -1,26 +1,56 @@
-import type { Metadata } from "next";
-import type { ReactNode } from "react";
 import "./globals.css";
+import { Head } from "nextra/components";
 
-export const metadata: Metadata = {
+export const metadata = {
+  metadataBase: new URL("https://dustland.github.io/agentx"),
   title: {
-    template: "%s | AgentX Docs",
-    default: "AgentX Docs",
+    default: "AgentX – Multi-Agent Framework",
+    template: "%s | AgentX",
   },
   description:
     "An open-source framework for building, observing, and orchestrating autonomous multi-agent systems.",
-  metadataBase: new URL("https://dustland.github.io/agentx"),
+  keywords: [
+    "AgentX",
+    "Multi-Agent",
+    "AI",
+    "Framework",
+    "Autonomous",
+    "Python",
+    "LLM",
+    "Agent Orchestration",
+  ],
+  applicationName: "AgentX",
+  generator: "Next.js",
   appleWebApp: {
-    title: "AgentX Docs",
+    title: "AgentX",
+  },
+  icons: {
+    icon: [
+      { url: "/favicon.ico", sizes: "16x16", type: "image/x-icon" },
+      { url: "/favicon-16x16.png", sizes: "16x16", type: "image/png" },
+      { url: "/favicon-32x32.png", sizes: "32x32", type: "image/png" },
+    ],
+    shortcut: "/favicon.ico",
+    apple: "/logo.png",
+  },
+  openGraph: {
+    url: "https://dustland.github.io/agentx",
+    siteName: "AgentX",
+    locale: "en_US",
+    type: "website",
   },
   other: {
     "msapplication-TileColor": "#fff",
   },
+  alternates: {
+    canonical: "https://dustland.github.io/agentx",
+  },
 };
 
-export default function RootLayout({ children }: { children: ReactNode }) {
+export default function RootLayout({ children }) {
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="en" dir="ltr" suppressHydrationWarning>
+      <Head />
       <body>{children}</body>
     </html>
   );

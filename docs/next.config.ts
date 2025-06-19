@@ -1,27 +1,19 @@
 import nextra from "nextra";
 
 const withNextra = nextra({
-  defaultShowCopyCode: true,
   latex: true,
+  defaultShowCopyCode: true,
   search: {
     codeblocks: false,
   },
 });
 
-const nextConfig = withNextra({
-  output: "export",
+export default withNextra({
   reactStrictMode: true,
   eslint: {
-    // Warning: This allows production builds to successfully complete even if
-    // your project has ESLint errors.
+    // Ignore ESLint errors during builds for now
     ignoreDuringBuilds: true,
   },
-  turbopack: {
-    resolveAlias: {
-      "next-mdx-import-source-file": "./mdx-components.ts",
-    },
-  },
-
   webpack(config) {
     // rule.exclude doesn't work starting from Next.js 15
     const { test: _test, ...imageLoaderOptions } = config.module.rules.find(
@@ -40,8 +32,6 @@ const nextConfig = withNextra({
     return config;
   },
   experimental: {
-    optimizePackageImports: [],
+    optimizePackageImports: ["nextra-theme-docs"],
   },
 });
-
-export default nextConfig;
