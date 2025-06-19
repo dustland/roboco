@@ -1,0 +1,49 @@
+name: "Team 1 - Collaborative Research Team"
+description: "Multi-agent team with specialized roles for complex research tasks"
+
+execution:
+  mode: "autonomous"
+  max_rounds: 20
+
+orchestrator:
+  brain_config:
+    provider: "deepseek"
+    model: "deepseek-chat"
+    temperature: 0.0
+
+memory:
+  enabled: true
+  max_context_tokens: 8000
+
+agents:
+  - name: "coordinator"
+    description: "Task Coordinator"
+    prompt_template: "coordinator.md"
+    brain_config:
+      provider: "deepseek"
+      model: "deepseek-chat"
+      temperature: 0.1
+
+  - name: "researcher"
+    description: "Research Specialist"
+    prompt_template: "researcher.md"
+    brain_config:
+      provider: "deepseek"
+      model: "deepseek-chat"
+      temperature: 0.2
+
+  - name: "analyst"
+    description: "Data Analyst"
+    prompt_template: "analyst.md"
+    brain_config:
+      provider: "deepseek"
+      model: "deepseek-chat"
+      temperature: 0.1
+
+  - name: "synthesizer"
+    description: "Answer Synthesizer"
+    prompt_template: "synthesizer.md"
+    brain_config:
+      provider: "deepseek"
+      model: "deepseek-chat"
+      temperature: 0.0

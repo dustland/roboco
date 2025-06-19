@@ -1,0 +1,19 @@
+name: "Team 3 - Single Agent"
+description: "Simple single-agent approach for baseline comparison"
+
+execution:
+  mode: "autonomous"
+  max_rounds: 20
+
+memory:
+  enabled: true
+  max_context_tokens: 8000
+
+agents:
+  - name: "gaia_agent"
+    description: "GAIA Question Solver"
+    prompt_template: "gaia_agent.md"
+    brain_config:
+      provider: "deepseek"
+      model: "deepseek-chat"
+      temperature: 0.1

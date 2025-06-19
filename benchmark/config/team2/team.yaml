@@ -1,0 +1,41 @@
+name: "Team 2 - Sequential Planning Team"
+description: "Focused approach with planning, execution, and validation phases"
+
+execution:
+  mode: "autonomous"
+  max_rounds: 20
+
+orchestrator:
+  brain_config:
+    provider: "anthropic"
+    model: "claude-3-5-haiku-20241022"
+    temperature: 0.0
+
+memory:
+  enabled: true
+  max_context_tokens: 8000
+
+agents:
+  - name: "planner"
+    description: "Task Planner"
+    prompt_template: "planner.md"
+    brain_config:
+      provider: "anthropic"
+      model: "claude-3-5-haiku-20241022"
+      temperature: 0.1
+
+  - name: "executor"
+    description: "Task Executor"
+    prompt_template: "executor.md"
+    brain_config:
+      provider: "anthropic"
+      model: "claude-3-5-haiku-20241022"
+      temperature: 0.2
+
+  - name: "validator"
+    description: "Answer Validator"
+    prompt_template: "validator.md"
+    brain_config:
+      provider: "anthropic"
+      model: "claude-3-5-haiku-20241022"
+      temperature: 0.0
