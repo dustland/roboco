@@ -16,7 +16,7 @@ from agentx.config.agent_loader import (
     create_single_agent_template,
     validate_config_file
 )
-from agentx.core.exceptions import ConfigurationError
+from agentx.config.models import ConfigurationError
 
 
 class TestAgentConfigFile:

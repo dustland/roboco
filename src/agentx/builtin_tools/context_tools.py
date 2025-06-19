@@ -10,7 +10,7 @@ import os
 from pathlib import Path
 from typing import Dict, Any, Optional, List, Union
 from datetime import datetime
-from ..core.tool import Tool, tool, ToolResult
+from ..tool.models import Tool, tool, ToolResult
 from ..utils.logger import get_logger
 
 logger = get_logger(__name__)

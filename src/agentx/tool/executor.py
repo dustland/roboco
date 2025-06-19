@@ -14,25 +14,44 @@ import json
 from typing import Dict, Any, List, Optional
 from datetime import datetime
 from pydantic import BaseModel
+from dataclasses import asdict, is_dataclass
 from ..utils.logger import get_logger
 from .registry import ToolRegistry, get_tool_registry
+from .models import ToolResult
 
 logger = get_logger(__name__)
 
 
-class ToolResult(BaseModel):
-    """Result of a tool execution."""
-    success: bool
-    result: Any = None
-    error: Optional[str] = None
-    execution_time: float = 0.0
-    metadata: Dict[str, Any] = {}
-    timestamp: datetime = None
-    
-    def __init__(self, **data):
-        if 'timestamp' not in data:
-            data['timestamp'] = datetime.now()
-        super().__init__(**data)
+def safe_json_serialize(obj):
+    """
+    Safely serialize objects to JSON, handling dataclasses, Pydantic models, and other complex types.
+    """
+    if is_dataclass(obj):
+        return asdict(obj)
+    elif hasattr(obj, 'model_dump'):  # Pydantic model
+        return obj.model_dump()
+    elif hasattr(obj, '__dict__'):  # Regular object with attributes
+        return obj.__dict__
+    elif isinstance(obj, (list, tuple)):
+        return [safe_json_serialize(item) for item in obj]
+    elif isinstance(obj, dict):
+        return {key: safe_json_serialize(value) for key, value in obj.items()}
+    else:
+        # For primitive types and other serializable objects
+        return obj
+
+
+def safe_json_dumps(obj, **kwargs):
+    """
+    Safely convert object to JSON string, handling complex nested objects.
+    """
+    try:
+        # First try regular JSON serialization
+        return json.dumps(obj, **kwargs)
+    except TypeError:
+        # If that fails, use safe serialization
+        safe_obj = safe_json_serialize(obj)
+        return json.dumps(safe_obj, **kwargs)
 
 
 class SecurityPolicy:
@@ -217,7 +236,7 @@ class ToolExecutor:
                     "role": "tool",
                     "tool_call_id": tc.id,
                     "name": tc.function.name,
-                    "content": json.dumps({
+                    "content": safe_json_dumps({
                         "success": False,
                         "error": error_msg
                     })
@@ -228,39 +247,54 @@ class ToolExecutor:
         
         for tool_call in tool_calls:
             tool_name = tool_call.function.name
+            tool_call_id = tool_call.id
             try:
                 # Parse tool arguments
                 tool_args = json.loads(tool_call.function.arguments)
-                logger.debug(f"🔧 Executing tool '{tool_name}' for agent '{agent_name}' with args: {tool_args}")
+                
+                # Log tool call start
+                logger.info(f"🔧 TOOL CALL START | ID: {tool_call_id} | Tool: {tool_name} | Agent: {agent_name}")
+                logger.info(f"📝 TOOL ARGS | {safe_json_dumps(tool_args, indent=2)}")
                 
                 # Execute the tool
+                start_time = time.time()
                 result = await self.execute_tool(tool_name, agent_name, **tool_args)
+                execution_time = time.time() - start_time
                 
-                # Format result for LLM
+                # Log tool call result
                 if result.success:
-                    content = json.dumps({
+                    logger.info(f"✅ TOOL CALL SUCCESS | ID: {tool_call_id} | Tool: {tool_name} | Time: {execution_time:.2f}s")
+                    logger.info(f"📤 TOOL RESULT | {safe_json_dumps(result.result, indent=2)[:500]}{'...' if len(str(result.result)) > 500 else ''}")
+                else:
+                    logger.error(f"❌ TOOL CALL FAILED | ID: {tool_call_id} | Tool: {tool_name} | Error: {result.error}")
+                    logger.error(f"⏱️  TOOL TIME | {execution_time:.2f}s")
+                
+                # Format result for LLM using safe serialization
+                if result.success:
+                    content = safe_json_dumps({
                         "success": True,
                         "result": result.result,
                         "execution_time": result.execution_time,
                         "metadata": result.metadata
                     }, ensure_ascii=False, indent=2)
                 else:
-                    content = json.dumps({
+                    content = safe_json_dumps({
                         "success": False,
                         "error": result.error,
                         "execution_time": result.execution_time
                     }, ensure_ascii=False, indent=2)
                     
             except json.JSONDecodeError as e:
-                logger.error(f"Invalid tool arguments for '{tool_name}': {e}")
-                content = json.dumps({
+                logger.error(f"❌ TOOL CALL PARSE ERROR | ID: {tool_call_id} | Tool: {tool_name} | Error: Invalid JSON arguments")
+                logger.error(f"🔍 RAW ARGS | {tool_call.function.arguments}")
+                content = safe_json_dumps({
                     "success": False,
                     "error": f"Invalid tool arguments: {str(e)}"
                 })
                 
             except Exception as e:
-                logger.error(f"Tool execution failed for '{tool_name}': {e}")
-                content = json.dumps({
+                logger.error(f"❌ TOOL CALL EXCEPTION | ID: {tool_call_id} | Tool: {tool_name} | Error: {str(e)}")
+                content = safe_json_dumps({
                     "success": False,
                     "error": f"Tool execution failed: {str(e)}"
                 })
@@ -272,6 +306,11 @@ class ToolExecutor:
                 "name": tool_name,
                 "content": content
             })
+        
+        # Log batch summary
+        successful_calls = sum(1 for msg in tool_messages if '"success": true' in msg["content"])
+        failed_calls = len(tool_messages) - successful_calls
+        logger.info(f"📊 TOOL BATCH COMPLETE | Agent: {agent_name} | Total: {len(tool_messages)} | Success: {successful_calls} | Failed: {failed_calls}")
             
         return tool_messages
     
@@ -387,9 +426,9 @@ class ToolExecutor:
         
         # Log to file/external system if needed
         if success:
-            logger.info(f"✅ Tool '{tool_name}' executed successfully for '{agent_name}' in {execution_time:.2f}s")
+            logger.debug(f"✅ Tool '{tool_name}' executed successfully for '{agent_name}' in {execution_time:.2f}s")
         else:
-            logger.error(f"❌ Tool '{tool_name}' failed for '{agent_name}': {error}")
+            logger.debug(f"❌ Tool '{tool_name}' failed for '{agent_name}': {error}")
     
     def get_execution_stats(self) -> Dict[str, Any]:
         """Get execution statistics."""

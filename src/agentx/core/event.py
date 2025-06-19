@@ -2,8 +2,9 @@ from __future__ import annotations
 from datetime import datetime
 from pydantic import BaseModel, Field
 from typing import Union, Literal, List, Dict, Any, Optional
-
-from .message import ToolCall, ToolResult, Artifact
+from .tool import ToolResult
+from .message import Artifact
+from .tool import ToolCall
 
 # This file defines the execution event models for the AgentX framework.
 # These are discrete notifications about significant lifecycle events.

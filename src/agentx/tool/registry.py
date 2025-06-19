@@ -254,4 +254,52 @@ def register_function(func: Callable, name: Optional[str] = None) -> None:
         func: Function to register
         name: Optional name override
     """
-    _global_registry.register_function(func, name) 
+    _global_registry.register_function(func, name)
+
+
+def list_tools() -> List[str]:
+    """List all registered tool names."""
+    return _global_registry.list_tools()
+
+
+def validate_agent_tools(tool_names: List[str]) -> tuple[List[str], List[str]]:
+    """
+    Validate a list of tool names against the registry.
+    
+    Returns:
+        A tuple of (valid_tools, invalid_tools)
+    """
+    available_tools = _global_registry.list_tools()
+    
+    valid = [name for name in tool_names if name in available_tools]
+    invalid = [name for name in tool_names if name not in available_tools]
+    
+    return valid, invalid
+
+
+def suggest_tools_for_agent(agent_name: str, agent_description: str = "") -> List[str]:
+    """
+    Suggest a list of relevant tools for a new agent.
+    (This is a placeholder for a more intelligent suggestion mechanism)
+    """
+    # For now, just return a few basic tools
+    return ['read_file', 'write_file', 'list_directory']
+
+
+def print_available_tools():
+    """Prints a formatted table of all available tools."""
+    registry = get_tool_registry()
+    tool_list = registry.list_tools()
+    
+    if not tool_list:
+        print("No tools are registered.")
+        return
+        
+    print(f"{'Tool Name':<30} {'Description':<70}")
+    print("-" * 100)
+    
+    for tool_name in sorted(tool_list):
+        tool_func = registry.get_tool_function(tool_name)
+        if tool_func:
+            description = tool_func.description.splitlines()[0] if tool_func.description else 'No description available.'
+            print(f"{tool_name:<30} {description:<70}") 

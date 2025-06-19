@@ -16,7 +16,7 @@ from fastapi.responses import StreamingResponse, HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 
-from ..core.task import create_task, TaskExecutor
+from ..core.task import TaskExecutor
 from .models import (
     TaskRequest, TaskResponse, TaskInfo, TaskStatus,
     MemoryRequest, MemoryResponse,

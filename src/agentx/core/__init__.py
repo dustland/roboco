@@ -4,9 +4,7 @@ from .brain import Brain, BrainMessage, BrainResponse
 from .message import (
     TaskStep,
     TextPart,
-    ToolCall,
     ToolCallPart,
-    ToolResult,
     ToolResultPart,
     ArtifactPart,
     ImagePart,
@@ -18,6 +16,7 @@ from .message import (
     StreamError,
     StreamComplete
 )
+from .tool import ToolCall, ToolResult
 
 __all__ = [
     "Orchestrator",

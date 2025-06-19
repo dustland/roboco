@@ -38,7 +38,6 @@ graph TD
     TOOLS["Builtin Tools"]
     API_EXT["External APIs"]
     MCP["MCP"]
-
     CLI --> TE
     API --> TE
     TE --> ORCH
@@ -53,12 +52,95 @@ graph TD
     TE --> PLAT
 ```
 
-The AgentX architecture is composed of four distinct layers:
+The AgentX architecture follows a **clean dependency inversion principle** with four distinct layers:
 
-- **Client Layer**: Provides the primary user-facing interfaces, including a Command-Line Interface (CLI) for developers, a REST/WebSocket API for programmatic integration, and a web-based Dashboard for real-time monitoring.
-- **AgentX Core**: Contains the essential components for task execution and agent collaboration. The `Task Executor` drives the workflow, the `Orchestrator` makes routing decisions, and the `Team of Agents` performs the reasoning.
-- **Platform Services**: A suite of shared, pluggable services that support the core. These include the secure `Tool Executor`, `Configuration System`, `Event Bus`, and stateful services for `Memory` and `Observability`.
-- **External Systems**: Represents all external dependencies, such as `LLM Providers`, `Vector Databases` for memory, `Git` for workspace versioning, and any third-party `APIs` that tools may call.
+- **Consumer Modules**: User-facing interfaces that depend on core in a single direction. Includes CLI tools, REST/WebSocket APIs, and observability dashboards. These modules can freely import from core without creating circular dependencies.
+
+- **Core Framework**: The central orchestration layer containing `TaskExecutor`, `Orchestrator`, `Agent`, and `Brain` components. Core imports FROM subsystems rather than the other way around, implementing true dependency inversion.
+
+- **Self-Contained Subsystems**: Independent modules that never import from core, each with their own `models.py` for data types. Includes `tool/`, `memory/`, `event/`, `config/`, `storage/`, and `builtin_tools/`. This design eliminates circular imports and enables independent development and testing.
+
+- **External Systems**: All external dependencies such as LLM providers, vector databases, Git repositories, and third-party APIs.
+
+### 3.1 Architectural Benefits
+
+This clean separation provides several key advantages:
+
+- **No Circular Dependencies**: Subsystems are self-contained and never import from core, eliminating import cycles and dependency hell.
+- **Independent Development**: Teams can work on subsystems without needing deep core knowledge or causing integration conflicts.
+- **Easier Testing**: Each subsystem can be tested in isolation with minimal mocking requirements.
+- **Pluggable Architecture**: Subsystems can be swapped or extended without modifying core components.
+- **Clear Boundaries**: The dependency flow is unidirectional and predictable, making the codebase easier to understand and maintain.
+
+### 3.2 Implementation Dependency Structure
+
+While the conceptual object model above shows how components relate functionally, the implementation follows a clean dependency architecture where subsystems are self-contained and core components import FROM subsystems (dependency inversion):
+
+```mermaid
+graph TD
+    subgraph "Consumer Modules (OK to depend on core)"
+        CLI["cli/<br/>• main.py<br/>• tools.py<br/>• debug.py"]
+        API["server/<br/>• api.py<br/>• models.py"]
+        OBS["observability/<br/>• monitor.py<br/>• web_app.py"]
+    end
+
+    subgraph "Core Framework"
+        TE["core/<br/>• task.py (TaskExecutor)<br/>• orchestrator.py<br/>• agent.py<br/>• brain.py"]
+    end
+
+    subgraph "Self-Contained Subsystems"
+        TOOL["tool/<br/>• models.py<br/>• registry.py<br/>• executor.py<br/>• manager.py"]
+        MEM["memory/<br/>• models.py<br/>• backend.py<br/>• factory.py<br/>• synthesis_engine.py"]
+        EVENT["event/<br/>• models.py<br/>• bus.py<br/>• api.py<br/>• subscribers.py"]
+        CONFIG["config/<br/>• models.py<br/>• team_loader.py<br/>• agent_loader.py"]
+        STORAGE["storage/<br/>• models.py<br/>• backends.py<br/>• git_storage.py<br/>• workspace.py"]
+        BUILTIN["builtin_tools/<br/>• models.py<br/>• storage_tools.py<br/>• web_tools.py<br/>• memory_tools.py"]
+    end
+
+    subgraph "External Systems"
+        LLM["LLM Providers<br/>• OpenAI<br/>• Anthropic<br/>• DeepSeek"]
+        VDB["Vector DBs<br/>• mem0<br/>• Chroma<br/>• Pinecone"]
+        GIT["Git<br/>• Workspace versioning<br/>• Artifact storage"]
+        EXT_API["External APIs<br/>• Web search<br/>• Third-party services"]
+    end
+
+    %% Consumer modules depend on core (single direction)
+    CLI --> TE
+    API --> TE
+    OBS --> TE
+
+    %% Core imports FROM subsystems (dependency inversion)
+    TE --> TOOL
+    TE --> MEM
+    TE --> EVENT
+    TE --> CONFIG
+    TE --> STORAGE
+    TE --> BUILTIN
+
+    %% External system connections
+    TE --> LLM
+    MEM --> VDB
+    STORAGE --> GIT
+    TOOL --> EXT_API
+
+    %% Styling
+    classDef consumer stroke:#333,stroke-width:2px
+    classDef core stroke:#333,stroke-width:3px
+    classDef subsystem stroke:#333,stroke-width:2px
+    classDef external stroke:#333,stroke-width:2px
+
+    class CLI,API,OBS consumer
+    class TE core
+    class TOOL,MEM,EVENT,CONFIG,STORAGE,BUILTIN subsystem
+    class LLM,VDB,GIT,EXT_API external
+```
+
+**Key Architectural Principles:**
+
+- **Dependency Inversion**: Core framework imports FROM subsystems, not the other way around
+- **Self-Contained Subsystems**: Each subsystem has its own models.py and doesn't import from core
+- **Single Source of Truth**: Each data model has one canonical definition in its subsystem
+- **Clean Boundaries**: Clear separation between framework core and implementation details
 
 ## 4. Collaboration Model
 
@@ -164,22 +246,19 @@ sequenceDiagram
     TaskExecutor->>Agent: invoke
     Agent->>Brain: generate response
     Brain-->>Agent: draft response with tool call
+    Agent->>ToolManager: execute tool calls
 
-    loop Tool Self-Correction
-        Agent->>ToolManager: execute tool calls
-        alt Invalid Tool Call
-            ToolManager-->>Agent: validation error
-            Agent->>Brain: correct tool call
-            Brain-->>Agent: corrected tool call
-        else Valid Tool Call
-            ToolManager->>ToolManager: secure execution
-            ToolManager-->>Agent: tool results
-            Agent->>Brain: generate final response
-            Brain-->>Agent: final response
-            break
-        end
+    alt Invalid Tool Call
+        ToolManager-->>Agent: validation error
+        Agent->>Brain: correct tool call
+        Brain-->>Agent: corrected tool call
+        Agent->>ToolManager: retry tool call
     end
 
+    ToolManager->>ToolManager: secure execution
+    ToolManager-->>Agent: tool results
+    Agent->>Brain: generate final response
+    Brain-->>Agent: final response
     Agent-->>TaskExecutor: return final response
 ```
 

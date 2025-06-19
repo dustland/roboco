@@ -37,7 +37,7 @@ async def publish_event(
     Example:
         ```python
         from agentx.event import publish_event
-from agentx.core.event import TaskStartEvent
+from .models import TaskStartEvent
         
         event_id = await publish_event(
             TaskStartEvent(

@@ -3,10 +3,10 @@ CLI commands for tool management and discovery.
 """
 
 import click
-from ..core.tool import print_available_tools, validate_agent_tools, suggest_tools_for_agent
+from ..tool.registry import validate_agent_tools, suggest_tools_for_agent, list_tools, print_available_tools
 from ..builtin_tools.web_tools import WebTool
 from ..builtin_tools.search_tools import SearchTool
-from ..core.tool import CodeExecutionTool, register_tool
+from ..tool.registry import register_tool
 from ..utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -75,11 +75,9 @@ def _register_builtin_tools():
         # Register built-in tools
         web_tool = WebTool()
         search_tool = SearchTool()
-        code_tool = CodeExecutionTool()
         
         register_tool(web_tool)
         register_tool(search_tool)
-        register_tool(code_tool)
     except Exception as e:
         # Tools might already be registered or have dependency issues
         pass

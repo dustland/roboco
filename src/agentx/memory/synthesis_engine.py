@@ -16,7 +16,7 @@ from pathlib import Path
 from .types import Memory, Constraint, HotIssue, DocumentChunk, MemoryType, MemoryItem
 from .backend import MemoryBackend
 from ..event.types import Event
-from ..core.brain import Brain
+# Brain import will be handled at runtime to avoid circular dependency
 from ..utils.logger import get_logger
 
 logger = get_logger(__name__)

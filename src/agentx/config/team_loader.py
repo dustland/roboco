@@ -7,14 +7,40 @@ import os
 import yaml
 from pathlib import Path
 from typing import Dict, List, Any, Optional, Tuple
+from pydantic import BaseModel, Field
 
-from .models import TeamConfig, LLMProviderConfig
+
 from .agent_loader import load_agents_config
 from .prompt_loader import PromptLoader, create_prompt_loader
-from ..core.exceptions import ConfigurationError
+from .models import ConfigurationError
 from ..utils.logger import get_logger
 
 logger = get_logger(__name__)
+
+
+class LLMProviderConfig(BaseModel):
+    """Simple LLM provider configuration for team loading."""
+    base_url: Optional[str] = None
+    api_key: Optional[str] = None
+    model: Optional[str] = None
+
+
+class TeamConfig(BaseModel):
+    """Simple team configuration for YAML loading."""
+    name: str
+    description: Optional[str] = None
+    llm_provider: Optional[LLMProviderConfig] = None
+    agents: List[Dict[str, Any]]  # Raw agent data from YAML
+    speaker_selection_method: str = "auto"
+    max_rounds: int = 10
+    termination_condition: str = "TERMINATE"
+    timeout_minutes: Optional[int] = None
+    auto_terminate_keywords: Optional[List[str]] = None
+    speaker_order: Optional[List[str]] = None
+    tools: Optional[Dict[str, Any]] = None
+    memory: Optional[Dict[str, Any]] = None  # Simple dict for YAML
+    execution: Optional[Dict[str, Any]] = None
+    orchestrator: Optional[Dict[str, Any]] = None
 
 
 class TeamLoader:
@@ -136,7 +162,7 @@ class TeamLoader:
     
     def _create_agent_config(self, agent_data: Dict[str, Any]) -> Any:
         """Create AgentConfig from raw agent data."""
-        from ..core.config import AgentConfig, BrainConfig
+        from .models import AgentConfig, BrainConfig
         
         # Required fields
         name = agent_data.get('name')

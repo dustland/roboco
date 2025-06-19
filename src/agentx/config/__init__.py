@@ -7,18 +7,12 @@ Public API:
 - TeamConfig, LLMProviderConfig: Core config models (if needed)
 
 Recommended usage:
-    from agentx.core.team import Team
-    team = Team.from_config("config_dir")
+    from agentx import execute_task
+    result = execute_task("config_dir", "Your task here")
 """
 
-from .models import (
-    TeamConfig,
-    LLMProviderConfig,
-    MemoryConfig,
-)
-from .team_loader import (
-    load_team_config,
-)
+from .models import MemoryConfig, TeamConfig
+from .team_loader import load_team_config
 
 # Note: AgentConfig imported in individual modules to avoid circular imports
 
@@ -28,6 +22,5 @@ __all__ = [
     
     # Core config models (for advanced usage)
     "TeamConfig",
-    "LLMProviderConfig", 
     "MemoryConfig",
 ]

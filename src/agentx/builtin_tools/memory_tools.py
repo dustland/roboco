@@ -3,13 +3,13 @@ Memory Tools - Clean implementation using Memory.
 """
 
 from typing import Annotated, Optional
-from ..core.tool import Tool
-from ..core.memory import Memory
+from ..tool.models import Tool
+from ..memory.models import MemoryBackend
 
 class MemoryTool(Tool):
     """Memory management capabilities using Memory."""
     
-    def __init__(self, memory: Memory):
+    def __init__(self, memory: MemoryBackend):
         super().__init__(name="memory_tool", description="Memory management tool")
         self.memory = memory
     

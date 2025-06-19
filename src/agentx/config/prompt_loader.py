@@ -10,7 +10,7 @@ import re
 
 from jinja2 import Template, Environment, FileSystemLoader, TemplateNotFound
 
-from ..core.exceptions import ConfigurationError
+from .models import ConfigurationError
 
 
 class PromptLoader:

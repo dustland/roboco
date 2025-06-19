@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 from enum import Enum
 
 # Import all event types from core.event
-from ..core.event import *
+from .models import *
 
 # Type definitions
 EventHandler = Union[

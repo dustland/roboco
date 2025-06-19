@@ -7,7 +7,7 @@ Built-in integrations:
 """
 
 from ..utils.logger import get_logger
-from ..core.tool import Tool, tool, ToolResult
+from ..tool.models import Tool, tool, ToolResult
 from typing import Dict, List, Optional, Any, Union
 from dataclasses import dataclass
 

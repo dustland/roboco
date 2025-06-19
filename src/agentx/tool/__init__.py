@@ -15,7 +15,8 @@ from .schemas import get_tool_schemas
 from .manager import ToolManager
 
 # Import functions from core.tool module for backward compatibility
-from ..core.tool import list_tools
+from .models import Tool
+from .registry import list_tools
 
 __all__ = [
     # Unified management

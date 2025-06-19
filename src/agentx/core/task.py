@@ -21,7 +21,8 @@ import time
 from .agent import Agent
 from .orchestrator import Orchestrator
 from .brain import Brain
-from .message import TaskStep, TextPart, ToolCallPart, ToolResultPart, ToolCall, Artifact
+from .message import TaskStep, TextPart, ToolCallPart, ToolResultPart, Artifact
+from .tool import ToolCall
 from .config import TeamConfig, AgentConfig, BrainConfig
 from ..config.team_loader import load_team_config
 from ..config.agent_loader import load_agents_config
@@ -229,12 +230,24 @@ class TaskExecutor:
             # Get memory config from team if available
             memory_config = getattr(self.task.team_config, 'memory', None)
             
-            if memory_config and memory_config.enabled:
-                backend = create_memory_backend(memory_config)
-                logger.info("Memory system initialized")
-                return backend
+            if memory_config:
+                # Handle simple memory config format (from YAML)
+                if isinstance(memory_config, dict) and memory_config.get('enabled', False):
+                    # Create default MemoryConfig for simple YAML format
+                    from .config import MemoryConfig
+                    backend = create_memory_backend(MemoryConfig())
+                    logger.info("Memory system initialized with default configuration")
+                    return backend
+                # Handle full MemoryConfig object
+                elif hasattr(memory_config, 'enabled') and memory_config.enabled:
+                    backend = create_memory_backend(memory_config)
+                    logger.info("Memory system initialized")
+                    return backend
+                else:
+                    logger.debug("Memory system disabled in team config")
+                    return None
             else:
-                logger.debug("Memory system disabled in team config")
+                logger.debug("No memory configuration found")
                 return None
                 
         except Exception as e:

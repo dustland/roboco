@@ -10,8 +10,8 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 
 from agentx.config.team_loader import TeamLoader, load_team_config, validate_team_config
-from agentx.config.models import TeamConfig, LLMProviderConfig
-from agentx.core.exceptions import ConfigurationError
+from agentx.config.team_loader import TeamConfig
+from agentx.config.models import ConfigurationError
 
 
 class TestTeamConfigLoading:
@@ -308,9 +308,11 @@ class TestTeamLoader:
 class TestConfigModels:
     """Test configuration model validation and structure."""
     
-    def test_llm_provider_config(self):
-        """Test LLMProviderConfig model."""
-        config = LLMProviderConfig(
+    def test_brain_config_as_llm_provider(self):
+        """Test BrainConfig can serve as LLM provider configuration."""
+        from agentx.config.models import BrainConfig
+        
+        config = BrainConfig(
             base_url="https://api.example.com",
             api_key="test-key",
             model="test-model"

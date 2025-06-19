@@ -6,7 +6,7 @@ without directly manipulating the filesystem.
 """
 
 from typing import Annotated, Optional, Dict, Any
-from ..core.tool import Tool, tool, ToolResult
+from ..tool.models import Tool, tool, ToolResult
 from ..storage.factory import StorageFactory, WorkspaceStorage
 from ..utils.logger import get_logger
 

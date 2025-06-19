@@ -385,7 +385,7 @@ class TestMemoryFactory:
     
     def test_create_memory_backend_with_config(self):
         """Test creating backend with config."""
-        from agentx.core.config import MemoryConfig
+        from agentx.memory.models import MemoryConfig
         config = MemoryConfig()
         
         backend = create_memory_backend(config)

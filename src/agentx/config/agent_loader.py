@@ -8,8 +8,8 @@ from typing import Dict, List, Any, Optional
 from dataclasses import dataclass
 
 # AgentConfig imported locally to avoid circular imports
-from ..core.tool import validate_agent_tools, suggest_tools_for_agent, list_tools
-from ..core.exceptions import ConfigurationError
+from ..tool.registry import validate_agent_tools, suggest_tools_for_agent, list_tools
+from .models import ConfigurationError
 from ..utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -96,7 +96,7 @@ def load_agents_config(config_path: str, validate_tools: bool = True) -> List[tu
             logger.info(f"Validated tools for {config_data.name}: {valid_tools}")
         
         # Convert to AgentConfig
-        from ..core.config import AgentConfig
+        from .models import AgentConfig
         
         # Handle prompt_template - use prompt_file if available, otherwise create from system_message
         prompt_template = config_data.prompt_file

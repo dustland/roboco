@@ -13,6 +13,7 @@ agents:
   - name: "gaia_agent"
     description: "GAIA Question Solver"
     prompt_template: "gaia_agent.md"
+    tools: ["web_search", "extract_content", "news_search"]
     brain_config:
       provider: "deepseek"
       model: "deepseek-chat"

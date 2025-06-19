@@ -6,7 +6,7 @@ multiple search engines (Google, Bing, DuckDuckGo, etc.).
 """
 
 from ..utils.logger import get_logger
-from ..core.tool import Tool, tool, ToolResult
+from ..tool.models import Tool, tool, ToolResult
 from ..search.serpapi_backend import SerpAPIBackend
 from ..search.interfaces import SearchEngine
 from typing import Dict, List, Optional, Any

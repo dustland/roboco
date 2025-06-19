@@ -134,12 +134,19 @@ Please provide a direct, factual answer. Be concise and specific.
         final_response_parts = []
         
         async def execute_with_timeout():
+            print(f"\n🤖 Processing Question: {question_id}")
+            print(f"📋 Question: {question['Question'][:100]}{'...' if len(question['Question']) > 100 else ''}")
+            print("💭 Agent thinking...\n")
+            
             async for result in task.step(stream=True):
                 if result.get("type") == "content":
-                    final_response_parts.append(result.get("content", ""))
+                    content = result.get("content", "")
+                    print(content, end="", flush=True)  # Stream the response in real-time
+                    final_response_parts.append(content)
                 elif result.get("type") == "routing_decision" and result.get("action") == "COMPLETE":
                     break
             
+            print("\n")  # Add newline after completion
             return "".join(final_response_parts).strip()
         
         final_answer = await asyncio.wait_for(

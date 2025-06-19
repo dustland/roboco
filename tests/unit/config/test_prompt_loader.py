@@ -8,7 +8,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from agentx.config.prompt_loader import PromptLoader, create_prompt_loader
-from agentx.core.exceptions import ConfigurationError
+from agentx.config.models import ConfigurationError
 
 
 class TestPromptLoader:

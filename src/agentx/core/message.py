@@ -1,32 +1,21 @@
 from __future__ import annotations
 from datetime import datetime
 from pydantic import BaseModel, Field
-from typing import List, Dict, Any, Optional, Union, Literal
+from typing import List, Dict, Any, Optional, Union, Literal, TYPE_CHECKING
 from ..utils.id import generate_short_id
+
+if TYPE_CHECKING:
+    from .tool import ToolCall
 
 # This file defines the core data structures for the AgentX framework,
 # as specified in design document 03-data-and-events.md.
 
 # --- Core Data Structures ---
 
-class ToolCall(BaseModel):
-    """Tool call specification with retry policy."""
-    id: str = Field(default_factory=lambda: f"tc_{generate_short_id()}")
-    tool_name: str
-    args: Dict[str, Any]
-    expected_output_type: Optional[str] = None
-    timeout: Optional[int] = None
-    retry_policy: Optional[Dict[str, Any]] = None
-
-class ToolResult(BaseModel):
-    """Tool execution result with comprehensive metadata."""
-    tool_call_id: str
-    result: str  # The stdout or serialized result from the tool
-    error: Optional[str] = None  # Stderr if the tool failed
-    artifacts: List[str] = Field(default_factory=list)  # Paths to any files created by the tool
-    execution_time_ms: Optional[int] = None
-    resource_usage: Optional[Dict[str, Any]] = None  # CPU, memory, etc.
-    exit_code: Optional[int] = None
+# Note: ToolCall and ToolResult are defined in core.tool, not here. This separation is intentional:
+# - ToolCall/ToolResult = tool execution models (core.tool)
+# - ToolCallPart/ToolResultPart = conversation representations (here in message.py)
+# The conversation parts contain/reference the tool execution models
 
 class Artifact(BaseModel):
     """Artifact reference with versioning and metadata."""
@@ -52,7 +41,7 @@ class TextPart(BaseModel):
 class ToolCallPart(BaseModel):
     """Tool call request part."""
     type: Literal["tool_call"] = "tool_call"
-    tool_call: ToolCall
+    tool_call: "ToolCall"
 
 class ToolResultPart(BaseModel):
     """Tool execution result part."""
