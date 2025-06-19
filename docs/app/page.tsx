@@ -19,6 +19,10 @@ import {
   Rocket,
   Github,
   ArrowRight,
+  ChartColumnStacked,
+  GraduationCap,
+  Bot,
+  DollarSign,
 } from "lucide-react";
 
 // Floating particles animation
@@ -161,48 +165,81 @@ export default function HomePage() {
       icon: Users,
       title: "Multi-Agent Orchestration",
       description:
-        "Coordinate multiple AI agents seamlessly with intelligent task distribution and collaboration patterns.",
+        "Intelligent task distribution and dynamic load balancing for complex multi-agent workflows.",
       href: "/architecture/overview",
     },
     {
       icon: Wrench,
-      title: "Rich Tool Ecosystem",
+      title: "Extensible Tools",
       description:
-        "Built-in tools for web search, file operations, memory management, and easy integration of custom tools.",
+        "Native integrations for web APIs, file systems, databases, and custom tool development.",
       href: "/architecture/tool-execution",
     },
     {
       icon: Brain,
-      title: "Advanced Memory",
+      title: "Persistent Memory",
       description:
-        "Persistent and contextual memory systems that enable agents to maintain state across long-running tasks.",
+        "Contextual retention, semantic search, and distributed state persistence across agent networks.",
       href: "/architecture/state-and-context",
     },
     {
       icon: Zap,
-      title: "Event-Driven Architecture",
+      title: "Events",
       description:
-        "Real-time communication and coordination between agents with a robust event system.",
+        "Real-time coordination, fault tolerance, and scalable inter-agent communication infrastructure.",
       href: "/architecture/communication",
     },
     {
       icon: BarChart3,
-      title: "Built-in Observability",
+      title: "Observability",
       description:
-        "Monitor, debug, and analyze agent behavior with comprehensive logging and visualization tools.",
+        "Distributed tracing, performance metrics, and intelligent debugging for production deployments.",
       href: "#",
     },
     {
       icon: Settings,
-      title: "Configuration-as-Code",
+      title: "Configuration-Driven",
       description:
-        "Define your entire agent ecosystem in code. Version-controlled YAML configs, reproducible deployments, and GitOps-ready workflows.",
+        "Configure agents and teams through simple YAML and Markdown. Almost no code required.",
       href: "#",
     },
   ];
 
+  const useCases = [
+    {
+      icon: Bot,
+      title: "Agentic Apps",
+      description:
+        "Build intelligent applications where AI agents autonomously handle complex workflows while maintaining human oversight for critical decisions.",
+    },
+    {
+      icon: GraduationCap,
+      title: "Academic Research",
+      description:
+        "Deploy collaborative research teams that systematically gather data, conduct analysis, and synthesize findings across multiple domains and sources.",
+    },
+    {
+      icon: ChartColumnStacked,
+      title: "Operational Excellence",
+      description:
+        "Streamline enterprise operations through intelligent automation, real-time monitoring, and adaptive process optimization at scale.",
+    },
+    {
+      icon: Rocket,
+      title: "Creative Innovation",
+      description:
+        "Accelerate creative processes through AI-assisted ideation, content generation, and iterative design workflows for marketing and product development.",
+    },
+  ];
+
   return (
-    <div className="relative min-h-screen bg-gradient-to-br from-slate-50 via-white to-blue-50 dark:from-slate-950 dark:via-slate-900 dark:to-blue-950 overflow-hidden">
+    <div
+      className={`
+        relative min-h-screen overflow-hidden
+        bg-gradient-to-br from-slate-50 via-white to-blue-50 
+        dark:from-slate-950 dark:via-slate-900 dark:to-blue-950
+      `}
+    >
       {/* Animated background */}
       <div className="absolute inset-0">
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_120%,rgba(120,119,198,0.3),rgba(255,255,255,0))]" />
@@ -232,9 +269,9 @@ export default function HomePage() {
                   className="absolute inset-0 bg-gradient-to-r from-blue-500/10 to-purple-500/10 opacity-0 group-hover:opacity-100 transition-opacity duration-300"
                   layoutId="badge-bg"
                 />
-                <span className="relative flex items-center">
+                <span className="relative flex items-center gap-2">
                   <Sparkles className="w-4 h-4 mr-2" />
-                  Open source multi-agent framework.{" "}
+                  Open source multi-agent framework.
                   <Link
                     href="https://github.com/dustland/agentx"
                     className="font-semibold text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 transition-colors"
@@ -253,7 +290,7 @@ export default function HomePage() {
             >
               <div className="flex flex-col items-center gap-6">
                 <div className="flex flex-col sm:flex-row items-center justify-center gap-3 sm:gap-4 flex-wrap">
-                  <span>Build a</span>
+                  <span>Build</span>
                   <div className="relative inline-block">
                     <div className="px-4 py-2 bg-slate-950 dark:bg-slate-900 border border-slate-700 dark:border-slate-600 rounded-md font-mono text-2xl sm:text-3xl lg:text-4xl min-w-[280px] h-[60px] flex items-center justify-start shadow-inner">
                       <span className="text-emerald-400 mr-2">$</span>
@@ -262,7 +299,7 @@ export default function HomePage() {
                     {/* Terminal cursor indicator */}
                     <div className="absolute top-1 right-2 w-2 h-2 bg-emerald-400 rounded-full animate-pulse opacity-80"></div>
                   </div>
-                  <span>Agentic App</span>
+                  <span>Agentic AI</span>
                 </div>
                 <motion.div
                   className="text-2xl sm:text-3xl lg:text-4xl"
@@ -287,9 +324,9 @@ export default function HomePage() {
               variants={itemVariants}
               className="mt-6 text-xl leading-8 text-slate-600 dark:text-slate-300 sm:text-2xl max-w-3xl mx-auto"
             >
-              Coordinate multiple AI agents seamlessly with intelligent task
-              distribution, human oversight, and cost-effective DeepSeek
-              integration
+              Orchestrate sophisticated multi-agent systems with intelligent
+              task distribution, human-in-the-loop control, and cost-optimized
+              model integration
             </motion.p>
 
             {/* CTA Buttons */}
@@ -387,6 +424,184 @@ export default function HomePage() {
         </div>
       </motion.div>
 
+      {/* The Perfect Balance Section - Moved before Features */}
+      <motion.div
+        initial={{ opacity: 0 }}
+        whileInView={{ opacity: 1 }}
+        viewport={{ once: true }}
+        transition={{ duration: 0.8 }}
+        className="relative z-10 py-24 bg-gradient-to-br from-slate-100 via-blue-50 to-purple-50 dark:from-slate-800 dark:via-slate-900 dark:to-slate-800 overflow-hidden"
+      >
+        {/* Background Pattern Effects */}
+        <div className="absolute inset-0">
+          {/* Floating geometric shapes */}
+          <div className="absolute top-20 left-10 w-32 h-32 bg-blue-200/20 rounded-full blur-xl animate-pulse" />
+          <div
+            className="absolute top-40 right-20 w-24 h-24 bg-purple-200/20 rounded-full blur-lg animate-pulse"
+            style={{ animationDelay: "1s" }}
+          />
+          <div
+            className="absolute bottom-32 left-1/4 w-40 h-40 bg-indigo-200/15 rounded-full blur-2xl animate-pulse"
+            style={{ animationDelay: "2s" }}
+          />
+          <div
+            className="absolute bottom-20 right-1/3 w-28 h-28 bg-violet-200/20 rounded-full blur-xl animate-pulse"
+            style={{ animationDelay: "0.5s" }}
+          />
+
+          {/* Subtle grid pattern */}
+          <div
+            className="absolute inset-0 opacity-5"
+            style={{
+              backgroundImage: `radial-gradient(circle at 1px 1px, rgba(99, 102, 241, 0.3) 1px, transparent 0)`,
+              backgroundSize: "40px 40px",
+            }}
+          />
+
+          {/* Gradient overlays */}
+          <div className="absolute inset-0 bg-gradient-to-r from-blue-500/5 via-transparent to-purple-500/5" />
+          <div className="absolute inset-0 bg-gradient-to-b from-transparent via-indigo-500/3 to-transparent" />
+        </div>
+
+        <div className="mx-auto max-w-7xl px-4 relative z-10">
+          <motion.div
+            className="text-center mb-20"
+            initial={{ opacity: 0, y: 30 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            transition={{ duration: 0.6 }}
+          >
+            <h2 className="text-5xl md:text-6xl font-bold text-slate-900 dark:text-white text-center mb-6">
+              Autonomous AI + Human Oversight
+            </h2>
+            <p className="text-2xl text-slate-700 dark:text-slate-300 max-w-4xl mx-auto leading-relaxed">
+              The future of intelligent automation — where AI autonomy
+              capabilities seamlessly integrate with human expertise for optimal
+              decision-making
+            </p>
+          </motion.div>
+
+          {/* Three Core Pillars with Glass Effect */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 max-w-6xl mx-auto">
+            {/* Multi-Agent Autonomy */}
+            <motion.div
+              className="group relative p-10 h-full min-h-[400px] flex flex-col backdrop-blur-xl shadow-2xl"
+              style={{
+                background: `linear-gradient(45deg, rgba(59, 130, 246, 0.04), rgba(59, 130, 246, 0.08), rgba(59, 130, 246, 0.02))`,
+                border: "1px solid rgba(59, 130, 246, 0.2)",
+                backdropFilter: "blur(18px)",
+                boxShadow:
+                  "0 16px 50px 0 rgba(59, 130, 246, 0.08), inset 0 3px 0 rgba(255,255,255,0.15)",
+                transform: "rotate(1deg)",
+                borderRadius: "30px 10px 30px 10px",
+              }}
+              whileHover={{
+                scale: 1.02,
+                rotate: -0.5,
+              }}
+              transition={{ duration: 0.3 }}
+            >
+              <div className="flex flex-col h-full items-center text-center relative z-10">
+                <div className="mb-8 mx-auto">
+                  <Brain
+                    className="w-16 h-16 opacity-80"
+                    style={{
+                      color: "#3b82f6",
+                      filter: "drop-shadow(0 2px 4px rgba(59, 130, 246, 0.2))",
+                    }}
+                  />
+                </div>
+                <h3 className="text-2xl font-bold mb-6 text-center text-slate-800 dark:text-white">
+                  Multi-Agent Autonomy
+                </h3>
+                <p className="text-slate-700 dark:text-slate-200 leading-relaxed text-center flex-grow opacity-90">
+                  Intelligent orchestration of self-organizing agent networks
+                  that coordinate workloads and scale operations autonomously.
+                </p>
+              </div>
+            </motion.div>
+
+            {/* Human in the Loop */}
+            <motion.div
+              className="group relative p-10 h-full min-h-[400px] flex flex-col backdrop-blur-xl shadow-2xl"
+              style={{
+                background: `linear-gradient(45deg, rgba(139, 92, 246, 0.04), rgba(139, 92, 246, 0.08), rgba(139, 92, 246, 0.02))`,
+                border: "1px solid rgba(139, 92, 246, 0.2)",
+                backdropFilter: "blur(18px)",
+                boxShadow:
+                  "0 16px 50px 0 rgba(139, 92, 246, 0.08), inset 0 3px 0 rgba(255,255,255,0.15)",
+                transform: "rotate(-1deg)",
+                borderRadius: "30px 10px 30px 10px",
+              }}
+              whileHover={{
+                scale: 1.02,
+                rotate: 0.5,
+              }}
+              transition={{ duration: 0.3 }}
+            >
+              <div className="flex flex-col h-full items-center text-center relative z-10">
+                <div className="mb-8 mx-auto">
+                  <Users
+                    className="w-16 h-16 opacity-80"
+                    style={{
+                      color: "#8b5cf6",
+                      filter: "drop-shadow(0 2px 4px rgba(139, 92, 246, 0.2))",
+                    }}
+                  />
+                </div>
+                <h3 className="text-2xl font-bold mb-6 text-center text-slate-800 dark:text-white">
+                  Human in the Loop
+                </h3>
+                <p className="text-slate-700 dark:text-slate-200 leading-relaxed text-center flex-grow opacity-90">
+                  Governance frameworks with human intervention at critical
+                  decision points. Define workflows, compliance boundaries, and
+                  ethical standards.
+                </p>
+              </div>
+            </motion.div>
+
+            {/* Cost Efficiency */}
+            <motion.div
+              className="group relative p-10 h-full min-h-[400px] flex flex-col backdrop-blur-xl shadow-2xl"
+              style={{
+                background: `linear-gradient(45deg, rgba(16, 185, 129, 0.04), rgba(16, 185, 129, 0.08), rgba(16, 185, 129, 0.02))`,
+                border: "1px solid rgba(16, 185, 129, 0.2)",
+                backdropFilter: "blur(18px)",
+                boxShadow:
+                  "0 16px 50px 0 rgba(16, 185, 129, 0.08), inset 0 3px 0 rgba(255,255,255,0.15)",
+                transform: "rotate(0.5deg)",
+                borderRadius: "30px 10px 30px 10px",
+              }}
+              whileHover={{
+                scale: 1.02,
+                rotate: -0.5,
+              }}
+              transition={{ duration: 0.3 }}
+            >
+              <div className="flex flex-col h-full items-center text-center relative z-10">
+                <div className="mb-8 mx-auto">
+                  <DollarSign
+                    className="w-16 h-16 opacity-80"
+                    style={{
+                      color: "#10b981",
+                      filter: "drop-shadow(0 2px 4px rgba(16, 185, 129, 0.2))",
+                    }}
+                  />
+                </div>
+                <h3 className="text-2xl font-bold mb-6 text-center text-slate-800 dark:text-white">
+                  Cost Efficiency
+                </h3>
+                <p className="text-slate-700 dark:text-slate-200 leading-relaxed text-center flex-grow opacity-90">
+                  Native support for high-performance, low-cost models like
+                  DeepSeek, Claude Haiku, and Gemini Flash. Up to 90% cost
+                  reduction with intelligent optimization.
+                </p>
+              </div>
+            </motion.div>
+          </div>
+        </div>
+      </motion.div>
+
       {/* Features Section */}
       <motion.div
         initial={{ opacity: 0 }}
@@ -403,17 +618,17 @@ export default function HomePage() {
             viewport={{ once: true }}
             transition={{ duration: 0.6 }}
           >
-            <h2 className="text-5xl md:text-6xl font-bold text-slate-900 dark:text-white flex items-center justify-center mb-6">
-              <Sparkles className="w-10 h-10 mr-4 text-blue-500" />
+            <h2 className="text-5xl md:text-6xl font-bold text-slate-900 dark:text-white text-center mb-6">
               Key Features
             </h2>
             <p className="text-2xl text-slate-600 dark:text-slate-300 max-w-4xl mx-auto leading-relaxed">
-              Everything you need to build production-ready multi-agent systems
+              Enterprise-grade capabilities for building sophisticated
+              multi-agent architectures
             </p>
           </motion.div>
 
-          {/* Unified Grid Layout */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+          {/* Minimal Feature Cards */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {features.map((feature, index) => (
               <motion.div
                 key={feature.title}
@@ -423,50 +638,62 @@ export default function HomePage() {
                 transition={{ duration: 0.6, delay: index * 0.1 }}
               >
                 <motion.div
-                  className="group relative overflow-hidden rounded-2xl bg-white/80 dark:bg-slate-800/80 backdrop-blur-xl p-8 shadow-xl border border-slate-200/50 dark:border-slate-700/50 h-80 flex flex-col"
-                  whileHover={{ y: -8, scale: 1.02 }}
-                  transition={{ duration: 0.3 }}
+                  className="group relative p-6 border border-slate-200 dark:border-slate-700 rounded-xl hover:border-slate-300 dark:hover:border-slate-600 transition-all duration-200"
+                  whileHover={{ y: -2 }}
+                  transition={{ duration: 0.2 }}
                 >
-                  {/* Icon */}
-                  <div className="flex-shrink-0 w-16 h-16 bg-gradient-to-br from-blue-500 to-purple-500 rounded-2xl flex items-center justify-center mb-6">
-                    <feature.icon className="w-8 h-8 text-white" />
+                  {/* Minimal Icon */}
+                  <div className="w-12 h-12 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center mb-4">
+                    <feature.icon className="w-6 h-6 text-slate-600 dark:text-slate-400" />
                   </div>
 
                   {/* Content */}
-                  <div className="flex-grow flex flex-col">
-                    <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-4">
-                      {feature.title}
-                    </h3>
-                    <p className="text-slate-600 dark:text-slate-300 leading-relaxed mb-6 flex-grow">
-                      {feature.description}
-                    </p>
+                  <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-2">
+                    {feature.title}
+                  </h3>
+                  <p className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed mb-4">
+                    {feature.description}
+                  </p>
 
-                    {/* CTA Link */}
-                    <Link
-                      href={feature.href}
-                      className="inline-flex items-center text-blue-600 dark:text-blue-400 font-medium hover:text-blue-700 dark:hover:text-blue-300 transition-colors group mt-auto"
-                    >
-                      Learn More
-                      <ArrowRight className="ml-1 h-4 w-4 group-hover:translate-x-1 transition-transform" />
-                    </Link>
-                  </div>
+                  {/* Minimal CTA */}
+                  <Link
+                    href={feature.href}
+                    className="inline-flex items-center text-xs font-medium text-slate-500 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 transition-colors group"
+                  >
+                    Learn More
+                    <ArrowRight className="ml-1 h-3 w-3 group-hover:translate-x-0.5 transition-transform" />
+                  </Link>
                 </motion.div>
               </motion.div>
             ))}
           </div>
+
+          {/* Architecture CTA */}
+          <div className="text-center mt-20">
+            <p className="text-lg text-slate-600 dark:text-slate-400 mb-8">
+              Ready to understand how it all works together?
+            </p>
+            <Link
+              href="/architecture"
+              className="inline-flex items-center bg-slate-900 dark:bg-white/20 hover:bg-slate-800 dark:hover:bg-white/30 text-white font-semibold px-8 py-4 rounded-xl transition-colors duration-200 shadow-lg hover:shadow-xl"
+            >
+              <Sparkles className="mr-3 h-5 w-5" />
+              Explore the Architecture
+              <ArrowRight className="ml-3 h-5 w-5" />
+            </Link>
+          </div>
         </div>
       </motion.div>
 
-      {/* Why Choose Section - Key Differentiator */}
+      {/* Suitable For Section - Added after Features */}
       <motion.div
         initial={{ opacity: 0 }}
         whileInView={{ opacity: 1 }}
         viewport={{ once: true }}
         transition={{ duration: 0.8 }}
-        className="relative z-10 py-32 bg-gradient-to-r from-slate-900 via-purple-900 to-slate-900 dark:from-slate-950 dark:via-purple-950 dark:to-slate-950"
+        className="relative z-10 py-24"
       >
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(139,92,246,0.3),transparent_50%)]" />
-        <div className="mx-auto max-w-7xl px-4 relative z-10">
+        <div className="mx-auto max-w-7xl px-4">
           <motion.div
             className="text-center mb-20"
             initial={{ opacity: 0, y: 30 }}
@@ -474,156 +701,222 @@ export default function HomePage() {
             viewport={{ once: true }}
             transition={{ duration: 0.6 }}
           >
-            <h2 className="text-5xl md:text-6xl font-bold text-white flex items-center justify-center mb-6">
-              <Users className="w-12 h-12 mr-4 text-purple-400" />
-              The Perfect Balance
+            <h2 className="text-5xl md:text-6xl font-bold text-slate-900 dark:text-white text-center mb-6">
+              Suitable For
             </h2>
-            <p className="text-2xl text-purple-200 max-w-4xl mx-auto leading-relaxed">
-              <span className="text-white font-semibold">Autonomous AI</span>{" "}
-              meets{" "}
-              <span className="text-white font-semibold">
-                Human Intelligence
-              </span>{" "}
-              — the future of collaborative problem-solving
+            <p className="text-2xl text-slate-600 dark:text-slate-300 max-w-4xl mx-auto leading-relaxed">
+              Engineered for diverse applications across industries and research
+              domains
             </p>
           </motion.div>
 
-          {/* Three Core Pillars */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 max-w-6xl mx-auto">
-            {/* Autonomous Multi-Agent Collaboration */}
-            <motion.div
-              initial={{ opacity: 0, y: 40 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-              transition={{ duration: 0.8, delay: 0.1 }}
-            >
-              <motion.div
-                className="group relative overflow-hidden rounded-3xl bg-gradient-to-br from-blue-600 to-indigo-700 p-10 h-full min-h-[400px] flex flex-col text-white shadow-2xl"
-                whileHover={{ y: -10, scale: 1.02 }}
-                transition={{ duration: 0.3 }}
-              >
-                <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent" />
-                <div className="relative z-10 flex flex-col h-full">
-                  <div className="w-20 h-20 bg-white/20 rounded-2xl flex items-center justify-center mb-8 mx-auto">
-                    <Brain className="w-10 h-10 text-blue-200" />
-                  </div>
-                  <h3 className="text-2xl font-bold mb-6 text-center">
-                    Autonomous Multi-Agent Collaboration
-                  </h3>
-                  <p className="text-blue-100 leading-relaxed text-center flex-grow">
-                    AI agents work together seamlessly, making intelligent
-                    decisions, coordinating tasks, and solving complex problems
-                    without constant supervision. Let your agents handle the
-                    heavy lifting while you focus on strategy.
-                  </p>
-                  <div className="mt-8 flex justify-center">
-                    <div className="px-4 py-2 bg-white/20 rounded-full text-sm font-medium">
-                      🤖 Fully Autonomous
-                    </div>
-                  </div>
-                </div>
-                <div className="absolute -top-10 -right-10 w-32 h-32 bg-white/5 rounded-full" />
-              </motion.div>
-            </motion.div>
+          {/* Floating Card Layout */}
+          <div className="relative max-w-7xl mx-auto min-h-[600px]">
+            {useCases.map((useCase, index) => {
+              const positions = [
+                { top: "5%", left: "10%", rotate: "-3deg", zIndex: 4 },
+                { top: "20%", right: "5%", rotate: "2deg", zIndex: 3 },
+                {
+                  top: "40%",
+                  left: "30%",
+                  rotate: "-1deg",
+                  zIndex: 2,
+                },
+                {
+                  top: "15%",
+                  left: "50%",
+                  rotate: "1deg",
+                  zIndex: 1,
+                },
+              ];
 
-            {/* Human in the Loop */}
-            <motion.div
-              initial={{ opacity: 0, y: 40 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-              transition={{ duration: 0.8, delay: 0.2 }}
-            >
-              <motion.div
-                className="group relative overflow-hidden rounded-3xl bg-gradient-to-br from-purple-600 to-pink-600 p-10 h-full min-h-[400px] flex flex-col text-white shadow-2xl"
-                whileHover={{ y: -10, scale: 1.02 }}
-                transition={{ duration: 0.3 }}
-              >
-                <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent" />
-                <div className="relative z-10 flex flex-col h-full">
-                  <div className="w-20 h-20 bg-white/20 rounded-2xl flex items-center justify-center mb-8 mx-auto">
-                    <Users className="w-10 h-10 text-purple-200" />
-                  </div>
-                  <h3 className="text-2xl font-bold mb-6 text-center">
-                    Human in the Loop
-                  </h3>
-                  <p className="text-purple-100 leading-relaxed text-center flex-grow">
-                    Maintain control when it matters. Step in for critical
-                    decisions, provide guidance, approve sensitive actions, and
-                    ensure AI agents align with your values and business
-                    objectives. The perfect blend of automation and human
-                    oversight.
-                  </p>
-                  <div className="mt-8 flex justify-center">
-                    <div className="px-4 py-2 bg-white/20 rounded-full text-sm font-medium">
-                      👥 Human Oversight
-                    </div>
-                  </div>
-                </div>
-                <div className="absolute -bottom-10 -left-10 w-32 h-32 bg-white/5 rounded-full" />
-              </motion.div>
-            </motion.div>
+              const colors = [
+                {
+                  bg: "from-blue-50 to-blue-100",
+                  border: "border-blue-200",
+                  text: "text-blue-900",
+                  accent: "bg-blue-500",
+                },
+                {
+                  bg: "from-purple-50 to-purple-100",
+                  border: "border-purple-200",
+                  text: "text-purple-900",
+                  accent: "bg-purple-500",
+                },
+                {
+                  bg: "from-emerald-50 to-emerald-100",
+                  border: "border-emerald-200",
+                  text: "text-emerald-900",
+                  accent: "bg-emerald-500",
+                },
+                {
+                  bg: "from-orange-50 to-orange-100",
+                  border: "border-orange-200",
+                  text: "text-orange-900",
+                  accent: "bg-orange-500",
+                },
+              ];
 
-            {/* DeepSeek First */}
-            <motion.div
-              initial={{ opacity: 0, y: 40 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-              transition={{ duration: 0.8, delay: 0.3 }}
-            >
-              <motion.div
-                className="group relative overflow-hidden rounded-3xl bg-gradient-to-br from-emerald-600 to-teal-600 p-10 h-full min-h-[400px] flex flex-col text-white shadow-2xl"
-                whileHover={{ y: -10, scale: 1.02 }}
-                transition={{ duration: 0.3 }}
-              >
-                <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent" />
-                <div className="relative z-10 flex flex-col h-full">
-                  <div className="w-20 h-20 bg-white/20 rounded-2xl flex items-center justify-center mb-8 mx-auto">
-                    <Zap className="w-10 h-10 text-emerald-200" />
-                  </div>
-                  <h3 className="text-2xl font-bold mb-6 text-center">
-                    Cost in Mind
-                  </h3>
-                  <p className="text-emerald-100 leading-relaxed text-center flex-grow">
-                    Optimized for low-cost LLM models like DeepSeek, Claude
-                    Haiku, and Gemini Flash. Get enterprise-grade performance
-                    without breaking the bank. Smart token management and
-                    efficient prompt engineering reduce costs by up to 90%
-                    compared to premium models.
-                  </p>
-                  <div className="mt-8 flex justify-center">
-                    <div className="px-4 py-2 bg-white/20 rounded-full text-sm font-medium">
-                      💰 Cost Optimized
+              return (
+                <motion.div
+                  key={useCase.title}
+                  className="absolute w-96 h-80"
+                  style={{
+                    top: positions[index].top,
+                    left: positions[index].left,
+                    right: positions[index].right,
+                    transform: `rotate(${positions[index].rotate})`,
+                    zIndex: positions[index].zIndex,
+                  }}
+                  initial={{ opacity: 0, y: 50, rotate: 0 }}
+                  whileInView={{
+                    opacity: 1,
+                    y: 0,
+                    rotate: parseInt(
+                      positions[index].rotate.replace("deg", "")
+                    ),
+                  }}
+                  viewport={{ once: true }}
+                  transition={{
+                    duration: 0.8,
+                    delay: index * 0.2,
+                    type: "spring",
+                  }}
+                  whileHover={{
+                    scale: 1.08,
+                    rotate: 0,
+                    zIndex: 20,
+                    y: -10,
+                  }}
+                >
+                  <div
+                    className="relative w-full h-full backdrop-blur-xl rounded-3xl p-8 shadow-2xl"
+                    style={{
+                      background:
+                        colors[index].accent
+                          .replace("bg-", "")
+                          .replace("-500", "") === "blue"
+                          ? `linear-gradient(135deg, rgba(59, 130, 246, 0.15), rgba(59, 130, 246, 0.05))`
+                          : colors[index].accent
+                              .replace("bg-", "")
+                              .replace("-500", "") === "purple"
+                          ? `linear-gradient(135deg, rgba(139, 92, 246, 0.15), rgba(139, 92, 246, 0.05))`
+                          : colors[index].accent
+                              .replace("bg-", "")
+                              .replace("-500", "") === "emerald"
+                          ? `linear-gradient(135deg, rgba(16, 185, 129, 0.15), rgba(16, 185, 129, 0.05))`
+                          : `linear-gradient(135deg, rgba(249, 115, 22, 0.15), rgba(249, 115, 22, 0.05))`,
+                      border:
+                        colors[index].accent
+                          .replace("bg-", "")
+                          .replace("-500", "") === "blue"
+                          ? "1px solid rgba(59, 130, 246, 0.3)"
+                          : colors[index].accent
+                              .replace("bg-", "")
+                              .replace("-500", "") === "purple"
+                          ? "1px solid rgba(139, 92, 246, 0.3)"
+                          : colors[index].accent
+                              .replace("bg-", "")
+                              .replace("-500", "") === "emerald"
+                          ? "1px solid rgba(16, 185, 129, 0.3)"
+                          : "1px solid rgba(249, 115, 22, 0.3)",
+                      backdropFilter: "blur(20px)",
+                      boxShadow:
+                        colors[index].accent
+                          .replace("bg-", "")
+                          .replace("-500", "") === "blue"
+                          ? "0 8px 32px 0 rgba(59, 130, 246, 0.2), inset 0 1px 0 rgba(255,255,255,0.3)"
+                          : colors[index].accent
+                              .replace("bg-", "")
+                              .replace("-500", "") === "purple"
+                          ? "0 8px 32px 0 rgba(139, 92, 246, 0.2), inset 0 1px 0 rgba(255,255,255,0.3)"
+                          : colors[index].accent
+                              .replace("bg-", "")
+                              .replace("-500", "") === "emerald"
+                          ? "0 8px 32px 0 rgba(16, 185, 129, 0.2), inset 0 1px 0 rgba(255,255,255,0.3)"
+                          : "0 8px 32px 0 rgba(249, 115, 22, 0.2), inset 0 1px 0 rgba(255,255,255,0.3)",
+                    }}
+                  >
+                    {/* Corner accent with glass effect */}
+                    <div
+                      className="absolute top-0 right-0 w-20 h-20 rounded-bl-3xl rounded-tr-3xl"
+                      style={{
+                        background:
+                          colors[index].accent
+                            .replace("bg-", "")
+                            .replace("-500", "") === "blue"
+                            ? `linear-gradient(135deg, rgba(59, 130, 246, 0.25), transparent)`
+                            : colors[index].accent
+                                .replace("bg-", "")
+                                .replace("-500", "") === "purple"
+                            ? `linear-gradient(135deg, rgba(139, 92, 246, 0.25), transparent)`
+                            : colors[index].accent
+                                .replace("bg-", "")
+                                .replace("-500", "") === "emerald"
+                            ? `linear-gradient(135deg, rgba(16, 185, 129, 0.25), transparent)`
+                            : `linear-gradient(135deg, rgba(249, 115, 22, 0.25), transparent)`,
+                      }}
+                    />
+
+                    {/* Engraved Icon */}
+                    <div className="mb-6">
+                      <useCase.icon
+                        className="w-12 h-12 opacity-70"
+                        style={{
+                          color:
+                            colors[index].accent
+                              .replace("bg-", "")
+                              .replace("-500", "") === "blue"
+                              ? "#3b82f6"
+                              : colors[index].accent
+                                  .replace("bg-", "")
+                                  .replace("-500", "") === "purple"
+                              ? "#8b5cf6"
+                              : colors[index].accent
+                                  .replace("bg-", "")
+                                  .replace("-500", "") === "emerald"
+                              ? "#10b981"
+                              : "#f97316",
+                          filter:
+                            "drop-shadow(0 1px 2px rgba(0,0,0,0.1)) drop-shadow(0 -1px 1px rgba(255,255,255,0.3))",
+                        }}
+                      />
+                    </div>
+
+                    {/* Content with glass-friendly colors */}
+                    <h3 className="text-2xl font-bold mb-4 text-slate-800 dark:text-white">
+                      {useCase.title}
+                    </h3>
+                    <p className="text-slate-700 dark:text-slate-200 text-base leading-relaxed opacity-90">
+                      {useCase.description}
+                    </p>
+
+                    {/* Glass decorative dots */}
+                    <div className="absolute bottom-6 right-6 flex space-x-1.5">
+                      <div
+                        className="w-2 h-2 rounded-full backdrop-blur-sm border border-white/30"
+                        style={{
+                          background: `linear-gradient(135deg, rgba(255,255,255,0.3), rgba(255,255,255,0.1))`,
+                        }}
+                      />
+                      <div
+                        className="w-2 h-2 rounded-full backdrop-blur-sm border border-white/30"
+                        style={{
+                          background: `linear-gradient(135deg, rgba(255,255,255,0.4), rgba(255,255,255,0.2))`,
+                        }}
+                      />
+                      <div
+                        className="w-2 h-2 rounded-full backdrop-blur-sm border border-white/30"
+                        style={{
+                          background: `linear-gradient(135deg, rgba(255,255,255,0.5), rgba(255,255,255,0.3))`,
+                        }}
+                      />
                     </div>
                   </div>
-                </div>
-                <div className="absolute -top-10 -left-10 w-24 h-24 bg-white/5 rounded-full" />
-                <div className="absolute -bottom-10 -right-10 w-24 h-24 bg-white/5 rounded-full" />
-              </motion.div>
-            </motion.div>
+                </motion.div>
+              );
+            })}
           </div>
-
-          {/* Bottom CTA */}
-          <motion.div
-            initial={{ opacity: 0, y: 30 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
-            transition={{ duration: 0.6, delay: 0.5 }}
-            className="text-center mt-16"
-          >
-            <p className="text-lg text-purple-200 mb-8">
-              Ready to experience the future of AI collaboration?
-            </p>
-            <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
-              <Link
-                href="/architecture"
-                className="inline-flex items-center bg-white/20 hover:bg-white/30 backdrop-blur-sm text-white font-semibold px-8 py-4 rounded-xl transition-all duration-300 shadow-lg"
-              >
-                <Sparkles className="mr-3 h-5 w-5" />
-                Explore the Architecture
-                <ArrowRight className="ml-3 h-5 w-5" />
-              </Link>
-            </motion.div>
-          </motion.div>
         </div>
       </motion.div>
 
@@ -642,11 +935,11 @@ export default function HomePage() {
             transition={{ duration: 0.3 }}
           >
             <h2 className="text-4xl font-bold text-white mb-4">
-              Ready to Get Started?
+              Ready to Deploy Intelligent Agents?
             </h2>
             <p className="text-xl text-blue-100 mb-8 max-w-2xl mx-auto">
-              Join developers building the next generation of AI-powered
-              applications
+              Join industry leaders building the next generation of AI systems
+              with true autonomy
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
               <motion.div

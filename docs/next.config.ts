@@ -11,6 +11,11 @@ const withNextra = nextra({
 
 export default withNextra({
   reactStrictMode: true,
+  output: "export",
+  trailingSlash: true,
+  images: {
+    unoptimized: true,
+  },
   eslint: {
     // Ignore ESLint errors during builds for now
     ignoreDuringBuilds: true,
