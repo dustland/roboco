@@ -1,0 +1,949 @@
+# Tutorial 4: Production Systems
+
+**⏱️ Time: 60 minutes | 🎯 Goal: Build a scalable, production-ready system**
+
+Time to build something serious! In this tutorial, you'll create a comprehensive research system with multiple specialized agents, persistent memory, and production-ready features. This is where AgentX really shines.
+
+## What You'll Learn
+
+- Advanced multi-agent architectures
+- Memory systems for long-term context
+- Error handling and resilience
+- File operations and deliverable generation
+- Production deployment patterns
+- Monitoring and observability
+
+## Prerequisites
+
+- Completed all previous tutorials
+- Understanding of multi-agent systems and tools
+- DeepSeek API key
+- Python 3.8+
+
+---
+
+## Step 1: Project Architecture
+
+Create a sophisticated project structure for your research system:
+
+```bash
+mkdir research-system
+cd research-system
+mkdir -p config/{prompts,memory}
+mkdir -p workspace/{research,reports,temp}
+mkdir -p tools
+mkdir logs
+```
+
+Your production structure:
+
+```
+research-system/
+├── config/
+│   ├── team.yaml           # Team configuration
+│   ├── prompts/            # Agent prompts
+│   │   ├── coordinator.md
+│   │   ├── researcher.md
+│   │   ├── analyst.md
+│   │   └── writer.md
+│   └── memory/             # Memory configuration
+├── tools/
+│   ├── __init__.py
+│   ├── research_tools.py   # Custom research tools
+│   └── file_tools.py       # File operation tools
+├── workspace/
+│   ├── research/           # Research data
+│   ├── reports/            # Final reports
+│   └── temp/               # Temporary files
+├── logs/                   # Application logs
+├── main.py                 # Main application
+└── requirements.txt        # Dependencies
+```
+
+## Step 2: Production Team Configuration
+
+Create `config/team.yaml` with a sophisticated multi-agent setup:
+
+```yaml
+name: "research_system"
+description: "Production research system with specialized agents"
+
+# Four specialized agents for different research phases
+agents:
+  - name: "coordinator"
+    description: "Research coordinator and project manager"
+    prompt_template: "prompts/coordinator.md"
+    tools: ["handoff", "memory", "file_ops"]
+    llm_config:
+      provider: "deepseek"
+      model: "deepseek-chat"
+      temperature: 0.3 # Focused for coordination
+      max_tokens: 4000
+
+  - name: "researcher"
+    description: "Information gathering specialist"
+    prompt_template: "prompts/researcher.md"
+    tools: ["handoff", "memory", "web_search", "file_ops"]
+    llm_config:
+      provider: "deepseek"
+      model: "deepseek-chat"
+      temperature: 0.5 # Balanced for research
+      max_tokens: 4000
+
+  - name: "analyst"
+    description: "Data analysis and synthesis expert"
+    prompt_template: "prompts/analyst.md"
+    tools: ["handoff", "memory", "file_ops"]
+    llm_config:
+      provider: "deepseek"
+      model: "deepseek-chat"
+      temperature: 0.4 # Analytical focus
+      max_tokens: 4000
+
+  - name: "writer"
+    description: "Report writing and documentation specialist"
+    prompt_template: "prompts/writer.md"
+    tools: ["handoff", "memory", "file_ops"]
+    llm_config:
+      provider: "deepseek"
+      model: "deepseek-chat"
+      temperature: 0.7 # Creative for writing
+      max_tokens: 4000
+
+# Production-grade tool configuration
+tools:
+  - name: "handoff"
+    type: "builtin"
+
+  - name: "memory"
+    type: "builtin"
+
+  - name: "web_search"
+    type: "custom"
+    module: "tools.research_tools"
+    class: "WebSearchTool"
+
+  - name: "file_ops"
+    type: "custom"
+    module: "tools.file_tools"
+    class: "FileOperationsTool"
+
+# Production execution configuration
+execution:
+  mode: "autonomous"
+  initial_agent: "coordinator"
+  max_rounds: 20 # Allow for complex workflows
+  timeout_seconds: 1800 # 30 minutes
+
+# Enable orchestrator with production settings
+orchestrator:
+  max_rounds: 20
+  timeout: 1800
+  brain_config:
+    model: "deepseek/deepseek-chat"
+    temperature: 0.0
+    max_tokens: 200
+
+# Production memory configuration
+memory:
+  enabled: true
+  backend: "mem0"
+  config:
+    vector_store:
+      provider: "qdrant"
+      config:
+        collection_name: "research_memory"
+        embedding_model: "sentence-transformers/all-MiniLM-L6-v2"
+    llm:
+      provider: "deepseek"
+      model: "deepseek-chat"
+      temperature: 0.1
+
+# Workspace configuration
+workspace:
+  base_path: "workspace"
+  auto_cleanup: false # Keep files for production
+  max_file_size: "10MB"
+```
+
+## Step 3: Specialized Agent Prompts
+
+### Coordinator Agent
+
+Create `config/prompts/coordinator.md`:
+
+```markdown
+# Research Coordinator
+
+You are the research coordinator responsible for managing complex research projects from start to finish.
+
+## Your Role
+
+- Break down research requests into manageable phases
+- Coordinate between specialist agents
+- Track project progress and deliverables
+- Ensure quality and completeness of research
+- Manage timelines and resources
+
+## Research Process
+
+1. **Planning Phase**: Analyze request, create research plan
+2. **Research Phase**: Direct researcher to gather information
+3. **Analysis Phase**: Have analyst synthesize findings
+4. **Writing Phase**: Direct writer to create final report
+5. **Review Phase**: Quality check and finalization
+
+## Handoff Strategy
+
+- **To Researcher**: When information gathering is needed
+- **To Analyst**: When data synthesis is required
+- **To Writer**: When report creation is needed
+- **Back to yourself**: To coordinate next steps
+
+## Memory Usage
+
+- Store project plans and progress updates
+- Track key findings and decisions
+- Remember stakeholder requirements
+- Maintain research methodology notes
+
+## File Operations
+
+- Create project folders and organize workspace
+- Save research plans and progress reports
+- Track deliverables and versions
+
+## Example Workflow
+
+1. Receive research request
+2. Create detailed research plan
+3. Set up project workspace
+4. Hand off to researcher for data gathering
+5. Coordinate analysis and synthesis
+6. Oversee report writing
+7. Final quality review and delivery
+
+Always maintain professional project management standards.
+```
+
+### Researcher Agent
+
+Create `config/prompts/researcher.md`:
+
+```markdown
+# Research Specialist
+
+You are an expert researcher skilled in gathering, evaluating, and organizing information from multiple sources.
+
+## Your Role
+
+- Conduct thorough information gathering
+- Evaluate source credibility and relevance
+- Organize findings systematically
+- Identify research gaps and opportunities
+- Provide comprehensive data for analysis
+
+## Research Methodology
+
+1. **Scope Definition**: Understand research parameters
+2. **Source Identification**: Find relevant information sources
+3. **Data Collection**: Gather comprehensive information
+4. **Source Evaluation**: Assess credibility and relevance
+5. **Data Organization**: Structure findings logically
+
+## Tools Usage
+
+- **Web Search**: Find current information and data
+- **Memory**: Store and recall research findings
+- **File Operations**: Save research data and sources
+
+## Research Standards
+
+- Always verify information from multiple sources
+- Document sources and methodology
+- Identify potential biases or limitations
+- Organize findings by themes or categories
+- Highlight key insights and patterns
+
+## Handoff Criteria
+
+Hand back to coordinator when:
+
+- Initial research phase is complete
+- Sufficient data has been gathered
+- Research gaps have been identified
+- Ready for analysis phase
+
+## Output Format
+
+Structure research findings with:
+
+- Executive summary of key findings
+- Detailed information by category/theme
+- Source documentation and credibility assessment
+- Identified gaps or areas for further research
+- Recommendations for analysis focus
+
+Always maintain academic research standards and cite sources properly.
+```
+
+### Analyst Agent
+
+Create `config/prompts/analyst.md`:
+
+```markdown
+# Data Analyst
+
+You are a skilled analyst who synthesizes complex information into actionable insights and recommendations.
+
+## Your Role
+
+- Analyze research data for patterns and trends
+- Synthesize information from multiple sources
+- Identify key insights and implications
+- Develop evidence-based recommendations
+- Create structured analysis frameworks
+
+## Analysis Process
+
+1. **Data Review**: Examine all research findings
+2. **Pattern Recognition**: Identify trends and relationships
+3. **Synthesis**: Combine information into coherent insights
+4. **Validation**: Cross-check findings and conclusions
+5. **Recommendation Development**: Create actionable advice
+
+## Analytical Frameworks
+
+- SWOT analysis for strategic insights
+- Trend analysis for market intelligence
+- Comparative analysis for benchmarking
+- Risk assessment for decision-making
+- Impact analysis for recommendations
+
+## Memory Usage
+
+- Store analytical frameworks and methodologies
+- Remember key insights and patterns
+- Track analysis progress and decisions
+- Maintain analytical standards and criteria
+
+## File Operations
+
+- Save analysis reports and frameworks
+- Create data visualizations and summaries
+- Organize findings by analytical dimensions
+
+## Handoff Criteria
+
+Hand to writer when:
+
+- Analysis is complete and validated
+- Key insights are clearly identified
+- Recommendations are evidence-based
+- Analysis framework is documented
+
+## Output Standards
+
+- Clear methodology and assumptions
+- Evidence-based conclusions
+- Quantified impacts where possible
+- Risk assessments and limitations
+- Actionable recommendations
+
+Always maintain analytical rigor and objectivity.
+```
+
+### Writer Agent
+
+Create `config/prompts/writer.md`:
+
+```markdown
+# Report Writer
+
+You are a professional writer who creates clear, comprehensive reports and documentation.
+
+## Your Role
+
+- Transform analysis into readable reports
+- Create executive summaries and detailed findings
+- Ensure clear communication of complex information
+- Maintain professional writing standards
+- Produce publication-ready documents
+
+## Writing Process
+
+1. **Content Planning**: Organize information structure
+2. **Executive Summary**: Create high-level overview
+3. **Detailed Sections**: Develop comprehensive content
+4. **Review and Edit**: Ensure clarity and accuracy
+5. **Formatting**: Apply professional presentation standards
+
+## Report Structure
+
+- **Executive Summary**: Key findings and recommendations
+- **Introduction**: Background and methodology
+- **Findings**: Detailed research results
+- **Analysis**: Insights and implications
+- **Recommendations**: Actionable next steps
+- **Appendices**: Supporting data and sources
+
+## Writing Standards
+
+- Clear, professional tone
+- Logical flow and structure
+- Evidence-based statements
+- Proper citations and references
+- Executive-ready presentation
+
+## File Operations
+
+- Create professional report documents
+- Save multiple versions and drafts
+- Generate executive summaries
+- Organize supporting materials
+
+## Handoff Criteria
+
+Hand back to coordinator when:
+
+- Report is complete and professionally formatted
+- All sections are comprehensive and accurate
+- Executive summary captures key points
+- Ready for final review and delivery
+
+## Quality Checklist
+
+- Clear executive summary
+- Logical document structure
+- Evidence-based content
+- Professional formatting
+- Proper citations
+- Actionable recommendations
+
+Always maintain professional writing and presentation standards.
+```
+
+## Step 4: Custom Production Tools
+
+### Research Tools
+
+Create `tools/__init__.py`:
+
+```python
+# Empty file to make tools a package
+```
+
+Create `tools/research_tools.py`:
+
+```python
+import aiohttp
+import asyncio
+from typing import List, Dict, Any
+from agentx.tool.base import Tool
+
+class WebSearchTool(Tool):
+    """Production web search tool with rate limiting and error handling."""
+
+    def __init__(self):
+        super().__init__()
+        self.search_results_cache = {}
+        self.rate_limit_delay = 1.0  # Seconds between requests
+        self.last_request_time = 0
+
+    async def search_web(self, query: str, max_results: int = 10) -> str:
+        """
+        Search the web for information.
+
+        Args:
+            query: Search query string
+            max_results: Maximum number of results to return
+
+        Returns:
+            Formatted search results
+        """
+        try:
+            # Check cache first
+            cache_key = f"{query}_{max_results}"
+            if cache_key in self.search_results_cache:
+                return self.search_results_cache[cache_key]
+
+            # Rate limiting
+            current_time = asyncio.get_event_loop().time()
+            if current_time - self.last_request_time < self.rate_limit_delay:
+                await asyncio.sleep(self.rate_limit_delay)
+
+            # Simulate web search (in production, use real search API)
+            results = await self._simulate_search(query, max_results)
+
+            if not results:
+                return f"No search results found for: {query}"
+
+            formatted_results = self._format_search_results(query, results)
+
+            # Cache results
+            self.search_results_cache[cache_key] = formatted_results
+            self.last_request_time = asyncio.get_event_loop().time()
+
+            return formatted_results
+
+        except Exception as e:
+            return f"Error searching for '{query}': {str(e)}"
+
+    async def _simulate_search(self, query: str, max_results: int) -> List[Dict[str, Any]]:
+        """Simulate search results for demonstration."""
+        # In production, replace with real search API
+        await asyncio.sleep(0.5)  # Simulate network delay
+
+        return [
+            {
+                "title": f"Research Article: {query}",
+                "url": f"https://example.com/research/{query.replace(' ', '-')}",
+                "snippet": f"Comprehensive research on {query} with detailed analysis and findings...",
+                "source": "Academic Journal"
+            },
+            {
+                "title": f"Industry Report: {query}",
+                "url": f"https://industry.com/reports/{query.replace(' ', '-')}",
+                "snippet": f"Latest industry insights on {query} including market trends and forecasts...",
+                "source": "Industry Publication"
+            },
+            {
+                "title": f"News Article: {query}",
+                "url": f"https://news.com/articles/{query.replace(' ', '-')}",
+                "snippet": f"Recent developments in {query} with expert opinions and analysis...",
+                "source": "News Outlet"
+            }
+        ][:max_results]
+
+    def _format_search_results(self, query: str, results: List[Dict[str, Any]]) -> str:
+        """Format search results for agent consumption."""
+        formatted = f"🔍 Search Results for: {query}\n\n"
+
+        for i, result in enumerate(results, 1):
+            formatted += f"**Result {i}:**\n"
+            formatted += f"Title: {result['title']}\n"
+            formatted += f"Source: {result['source']}\n"
+            formatted += f"URL: {result['url']}\n"
+            formatted += f"Summary: {result['snippet']}\n\n"
+
+        formatted += f"Found {len(results)} results for analysis.\n"
+        return formatted
+```
+
+### File Operations Tool
+
+Create `tools/file_tools.py`:
+
+```python
+import os
+import json
+import aiofiles
+from pathlib import Path
+from typing import Dict, Any, Optional
+from agentx.tool.base import Tool
+
+class FileOperationsTool(Tool):
+    """Production file operations with error handling and security."""
+
+    def __init__(self):
+        super().__init__()
+        self.workspace_path = Path("workspace")
+        self.allowed_extensions = {'.txt', '.md', '.json', '.csv', '.html'}
+        self.max_file_size = 10 * 1024 * 1024  # 10MB
+
+    async def save_file(self, filename: str, content: str, folder: str = "temp") -> str:
+        """
+        Save content to a file in the workspace.
+
+        Args:
+            filename: Name of the file to save
+            content: Content to write to the file
+            folder: Subfolder within workspace (temp, research, reports)
+
+        Returns:
+            Success message with file path
+        """
+        try:
+            # Validate inputs
+            if not self._is_safe_filename(filename):
+                return f"Error: Invalid filename '{filename}'. Use only alphanumeric characters, hyphens, and underscores."
+
+            if not self._is_allowed_extension(filename):
+                return f"Error: File extension not allowed. Allowed: {', '.join(self.allowed_extensions)}"
+
+            if len(content.encode('utf-8')) > self.max_file_size:
+                return f"Error: File size exceeds maximum allowed size of {self.max_file_size // (1024*1024)}MB."
+
+            # Create directory structure
+            folder_path = self.workspace_path / folder
+            folder_path.mkdir(parents=True, exist_ok=True)
+
+            # Save file
+            file_path = folder_path / filename
+            async with aiofiles.open(file_path, 'w', encoding='utf-8') as f:
+                await f.write(content)
+
+            return f"✅ File saved successfully: {file_path}"
+
+        except Exception as e:
+            return f"❌ Error saving file '{filename}': {str(e)}"
+
+    async def read_file(self, filename: str, folder: str = "temp") -> str:
+        """
+        Read content from a file in the workspace.
+
+        Args:
+            filename: Name of the file to read
+            folder: Subfolder within workspace
+
+        Returns:
+            File content or error message
+        """
+        try:
+            file_path = self.workspace_path / folder / filename
+
+            if not file_path.exists():
+                return f"❌ File not found: {file_path}"
+
+            if file_path.stat().st_size > self.max_file_size:
+                return f"❌ File too large to read: {filename}"
+
+            async with aiofiles.open(file_path, 'r', encoding='utf-8') as f:
+                content = await f.read()
+
+            return f"📄 Content of {filename}:\n\n{content}"
+
+        except Exception as e:
+            return f"❌ Error reading file '{filename}': {str(e)}"
+
+    async def list_files(self, folder: str = "temp") -> str:
+        """
+        List files in a workspace folder.
+
+        Args:
+            folder: Subfolder to list
+
+        Returns:
+            Formatted list of files
+        """
+        try:
+            folder_path = self.workspace_path / folder
+
+            if not folder_path.exists():
+                return f"📁 Folder '{folder}' does not exist or is empty."
+
+            files = []
+            for file_path in folder_path.iterdir():
+                if file_path.is_file():
+                    size = file_path.stat().st_size
+                    files.append({
+                        'name': file_path.name,
+                        'size': f"{size:,} bytes",
+                        'modified': file_path.stat().st_mtime
+                    })
+
+            if not files:
+                return f"📁 Folder '{folder}' is empty."
+
+            # Sort by modification time (newest first)
+            files.sort(key=lambda x: x['modified'], reverse=True)
+
+            result = f"📁 Files in '{folder}' folder:\n\n"
+            for file_info in files:
+                result += f"• {file_info['name']} ({file_info['size']})\n"
+
+            return result
+
+        except Exception as e:
+            return f"❌ Error listing files in '{folder}': {str(e)}"
+
+    def _is_safe_filename(self, filename: str) -> bool:
+        """Check if filename is safe (no path traversal, etc.)."""
+        if not filename or '..' in filename or '/' in filename or '\\' in filename:
+            return False
+        return True
+
+    def _is_allowed_extension(self, filename: str) -> bool:
+        """Check if file extension is allowed."""
+        return Path(filename).suffix.lower() in self.allowed_extensions
+```
+
+## Step 5: Production Main Application
+
+Create `main.py`:
+
+```python
+#!/usr/bin/env python3
+import asyncio
+import logging
+import sys
+from pathlib import Path
+from datetime import datetime
+
+# Add tools to path
+sys.path.insert(0, str(Path(__file__).parent))
+
+from agentx.core.task import TaskExecutor
+
+# Configure production logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler('logs/research_system.log'),
+        logging.StreamHandler()
+    ]
+)
+
+logger = logging.getLogger(__name__)
+
+class ResearchSystem:
+    """Production research system with comprehensive features."""
+
+    def __init__(self):
+        self.config_path = Path(__file__).parent / "config" / "team.yaml"
+        self.task_executor = None
+        self.session_id = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+    async def initialize(self):
+        """Initialize the research system."""
+        try:
+            logger.info("Initializing Research System...")
+            self.task_executor = TaskExecutor(str(self.config_path))
+            logger.info("Research System initialized successfully")
+        except Exception as e:
+            logger.error(f"Failed to initialize Research System: {e}")
+            raise
+
+    async def conduct_research(self, research_request: str) -> str:
+        """Conduct comprehensive research on a topic."""
+        logger.info(f"Starting research session: {self.session_id}")
+        logger.info(f"Research request: {research_request}")
+
+        try:
+            # Enhanced prompt for production research
+            enhanced_prompt = f"""
+            RESEARCH REQUEST: {research_request}
+
+            SESSION ID: {self.session_id}
+            TIMESTAMP: {datetime.now().isoformat()}
+
+            INSTRUCTIONS:
+            1. Create a comprehensive research plan
+            2. Conduct thorough information gathering
+            3. Perform detailed analysis and synthesis
+            4. Generate a professional research report
+            5. Save all work products to appropriate workspace folders
+
+            DELIVERABLES REQUIRED:
+            - Research plan document
+            - Comprehensive findings report
+            - Executive summary
+            - Recommendations document
+
+            Begin the research process now.
+            """
+
+            # Track research progress
+            progress_log = []
+            handoff_count = 0
+            current_agent = "coordinator"
+
+            print(f"🔬 Research System - Session {self.session_id}")
+            print(f"📋 Request: {research_request}")
+            print("=" * 60)
+
+            async for update in self.task_executor.execute_task(enhanced_prompt, stream=True):
+                update_type = update.get("type")
+
+                if update_type == "content":
+                    content = update.get("content", "")
+                    print(content, end="", flush=True)
+
+                elif update_type == "handoff":
+                    handoff_count += 1
+                    from_agent = update["from_agent"]
+                    to_agent = update["to_agent"]
+                    current_agent = to_agent
+
+                    progress_entry = {
+                        "timestamp": datetime.now().isoformat(),
+                        "handoff": handoff_count,
+                        "from": from_agent,
+                        "to": to_agent
+                    }
+                    progress_log.append(progress_entry)
+
+                    print(f"\n\n🔄 HANDOFF #{handoff_count}: {from_agent} → {to_agent}")
+                    print("─" * 40)
+                    logger.info(f"Agent handoff: {from_agent} → {to_agent}")
+
+                elif update_type == "tool_call":
+                    tool_name = update.get("tool_name", "unknown")
+                    print(f"\n🛠️  Using tool: {tool_name}")
+                    logger.info(f"Tool call: {tool_name}")
+
+                elif update_type == "routing_decision":
+                    if update["action"] == "complete":
+                        print(f"\n\n🎉 Research Complete!")
+                        print(f"📊 Session: {self.session_id}")
+                        print(f"🔄 Total handoffs: {handoff_count}")
+                        print(f"🎯 Final agent: {current_agent}")
+                        logger.info(f"Research session completed: {self.session_id}")
+                        break
+
+            # Save session log
+            await self._save_session_log(progress_log, research_request)
+
+            return f"Research session {self.session_id} completed successfully."
+
+        except Exception as e:
+            logger.error(f"Research session failed: {e}")
+            print(f"\n❌ Research failed: {e}")
+            return f"Research session failed: {e}"
+
+    async def _save_session_log(self, progress_log: list, research_request: str):
+        """Save session progress log."""
+        try:
+            log_data = {
+                "session_id": self.session_id,
+                "timestamp": datetime.now().isoformat(),
+                "research_request": research_request,
+                "progress_log": progress_log,
+                "summary": {
+                    "total_handoffs": len(progress_log),
+                    "agents_involved": list(set([entry["from"] for entry in progress_log] + [entry["to"] for entry in progress_log]))
+                }
+            }
+
+            log_file = Path("logs") / f"session_{self.session_id}.json"
+            log_file.parent.mkdir(exist_ok=True)
+
+            with open(log_file, 'w') as f:
+                import json
+                json.dump(log_data, f, indent=2)
+
+            logger.info(f"Session log saved: {log_file}")
+
+        except Exception as e:
+            logger.error(f"Failed to save session log: {e}")
+
+async def main():
+    """Main application entry point."""
+    print("🏭 AgentX Production Research System")
+    print("Advanced multi-agent research with memory and file operations")
+    print()
+
+    # Initialize system
+    research_system = ResearchSystem()
+    await research_system.initialize()
+
+    # Interactive mode
+    while True:
+        print("\n" + "="*60)
+        research_request = input("Enter research topic (or 'quit' to exit): ").strip()
+
+        if research_request.lower() in ['quit', 'q', 'exit']:
+            print("Goodbye! 👋")
+            break
+
+        if not research_request:
+            print("Please enter a research topic.")
+            continue
+
+        # Conduct research
+        result = await research_system.conduct_research(research_request)
+        print(f"\n✅ {result}")
+
+        # Show workspace contents
+        workspace_path = Path("workspace")
+        if workspace_path.exists():
+            print(f"\n📁 Check the workspace folder for research deliverables:")
+            for folder in ["research", "reports", "temp"]:
+                folder_path = workspace_path / folder
+                if folder_path.exists() and any(folder_path.iterdir()):
+                    print(f"  • {folder}/ - {len(list(folder_path.iterdir()))} files")
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+## Step 6: Production Dependencies
+
+Create `requirements.txt`:
+
+```txt
+agentx-py>=0.1.0
+aiofiles>=23.2.1
+aiohttp>=3.9.0
+mem0ai>=0.1.0
+qdrant-client>=1.7.0
+sentence-transformers>=2.2.2
+```
+
+## Step 7: Run the Production System
+
+```bash
+# Install dependencies
+pip install -r requirements.txt
+
+# Set environment variables
+export DEEPSEEK_API_KEY="your-api-key-here"
+
+# Run the system
+python main.py
+```
+
+## Step 8: Test Production Features
+
+Try these comprehensive research requests:
+
+### Market Research
+
+```
+Enter research topic: AI market trends and opportunities 2024
+```
+
+### Competitive Analysis
+
+```
+Enter research topic: Competitive landscape analysis for electric vehicles
+```
+
+### Technology Assessment
+
+```
+Enter research topic: Blockchain technology adoption in healthcare
+```
+
+## 🎉 Congratulations!
+
+You've completed the comprehensive AgentX tutorial series! You now have the knowledge and skills to build production-ready multi-agent systems.
+
+### What You've Mastered
+
+✅ **Single Agent Systems** - Basic agent configuration and interaction  
+✅ **Multi-Agent Collaboration** - Agent handoffs and team coordination  
+✅ **Custom Tools** - Extending agent capabilities with external integrations  
+✅ **Production Concepts** - Scalable, maintainable agent architectures
+
+### Real-World Applications
+
+With your AgentX skills, you can now build:
+
+- **Research Systems** - Automated research with multiple specialist agents
+- **Content Creation** - Writer-reviewer teams for high-quality content
+- **Customer Service** - Multi-agent support systems with specialized roles
+- **Data Analysis** - Research, analysis, and reporting pipelines
+- **Workflow Automation** - Complex business process automation
+
+### Next Steps
+
+1. **Explore the Examples** - Check out the [example projects](https://github.com/dustland/agentx/tree/main/examples)
+2. **Read the API Docs** - Dive deeper with the [API Reference](/api/core-classes)
+3. **Join the Community** - Connect with other developers on [GitHub Discussions](https://github.com/dustland/agentx/discussions)
+4. **Build Something Amazing** - Apply your skills to solve real problems
+
+---
+
+🚀 **Ready to build the future with AgentX?** The possibilities are endless!

@@ -1,0 +1,159 @@
+# Tools
+
+AgentX provides a comprehensive tool system for extending agent capabilities.
+
+## Built-in Tools
+
+### Web Search
+
+Search the web for current information.
+
+```python
+tools: ["web_search"]
+```
+
+**Usage:**
+
+```python
+result = await agent.use_tool("web_search", {
+    "query": "latest AI developments 2024"
+})
+```
+
+### Memory Tools
+
+Store and retrieve information across conversations.
+
+```python
+tools: ["memory"]
+```
+
+**Usage:**
+
+```python
+# Store information
+await agent.use_tool("memory_store", {
+    "content": "User prefers technical explanations"
+})
+
+# Retrieve information
+result = await agent.use_tool("memory_search", {
+    "query": "user preferences"
+})
+```
+
+### Storage Tools
+
+File system operations for reading and writing files.
+
+```python
+tools: ["storage"]
+```
+
+**Usage:**
+
+```python
+# Write file
+await agent.use_tool("write_file", {
+    "path": "report.md",
+    "content": "# My Report\n\nContent here..."
+})
+
+# Read file
+result = await agent.use_tool("read_file", {
+    "path": "data.txt"
+})
+```
+
+## Custom Tools
+
+Create custom tools using the `@tool` decorator:
+
+```python
+from agentx.tool import tool
+
+@tool
+def calculate(expression: str) -> str:
+    """Calculate mathematical expressions safely.
+
+    Args:
+        expression: Mathematical expression to evaluate
+
+    Returns:
+        Result of the calculation
+    """
+    # Safe evaluation logic here
+    return str(eval(expression))  # Use safe_eval in production
+
+# Register the tool
+from agentx.tool import ToolRegistry
+ToolRegistry.register(calculate)
+```
+
+## Tool Configuration
+
+### In Team Configuration
+
+```yaml
+agents:
+  - name: "assistant"
+    tools:
+      - "web_search"
+      - "memory"
+      - "custom_tool"
+```
+
+### Programmatic Registration
+
+```python
+from agentx.tool import ToolManager
+
+tool_manager = ToolManager()
+tool_manager.register_tool(my_custom_tool)
+```
+
+## Tool Security
+
+AgentX provides secure tool execution:
+
+- **Sandboxed execution** for shell commands
+- **Input validation** for all tool parameters
+- **Permission controls** for file system access
+- **Rate limiting** to prevent abuse
+
+## Advanced Tool Features
+
+### Async Tools
+
+```python
+@tool
+async def async_web_request(url: str) -> str:
+    """Make an async web request."""
+    async with httpx.AsyncClient() as client:
+        response = await client.get(url)
+        return response.text
+```
+
+### Tool Dependencies
+
+```python
+@tool
+def process_data(data: str, format: str = "json") -> str:
+    """Process data with specified format."""
+    if format == "json":
+        return json.dumps(json.loads(data), indent=2)
+    return data
+```
+
+### Error Handling
+
+```python
+@tool
+def safe_operation(input_data: str) -> str:
+    """Perform operation with error handling."""
+    try:
+        result = risky_operation(input_data)
+        return f"Success: {result}"
+    except Exception as e:
+        return f"Error: {str(e)}"
+```

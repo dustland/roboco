@@ -1,0 +1,526 @@
+# Tutorial 3: Custom Tools
+
+**⏱️ Time: 45 minutes | 🎯 Goal: Create agents with custom capabilities**
+
+Let's give your agents superpowers! In this tutorial, you'll create custom tools that extend what your agents can do beyond text generation. You'll build a weather tool that connects to real-world data.
+
+## What You'll Learn
+
+- Custom tool development with Python classes
+- Tool integration with agents
+- External API usage and async operations
+- Advanced agent capabilities
+- Error handling in tools
+
+## Prerequisites
+
+- Completed [Tutorial 2: Multi-Agent Collaboration](/docs/tutorials/2-multi-agent)
+- Basic understanding of Python classes
+- DeepSeek API key
+- Internet connection for API calls
+
+---
+
+## Step 1: Project Setup
+
+Create a new project for your weather-enabled assistant:
+
+```bash
+mkdir weather-assistant
+cd weather-assistant
+mkdir -p config/prompts
+mkdir workspace
+```
+
+Your project structure:
+
+```
+weather-assistant/
+├── config/
+│   ├── team.yaml           # Agent configuration
+│   └── prompts/
+│       └── assistant.md    # Assistant prompt
+├── weather_tool.py         # Custom weather tool
+├── main.py                 # Main application
+└── workspace/              # Working directory
+```
+
+## Step 2: Create a Custom Weather Tool
+
+The heart of this tutorial is building a custom tool. Create `weather_tool.py`:
+
+```python
+import aiohttp
+from typing import Dict, Any
+from agentx.tool.base import Tool
+
+class WeatherTool(Tool):
+    """Custom weather tool using Open-Meteo API (no API key required)."""
+
+    def __init__(self):
+        super().__init__()
+        self.base_url = "https://api.open-meteo.com/v1/forecast"
+        self.geocoding_url = "https://geocoding-api.open-meteo.com/v1/search"
+
+    async def get_weather(self, location: str) -> str:
+        """
+        Get current weather for a location.
+
+        Args:
+            location: City name, e.g., "San Francisco" or "London, UK"
+
+        Returns:
+            Weather information as a formatted string
+        """
+        try:
+            # Get coordinates for the location
+            coords = await self._get_coordinates(location)
+            if not coords:
+                return f"Sorry, I couldn't find the location '{location}'. Please try a more specific location name."
+
+            # Get weather data
+            weather = await self._get_weather_data(coords)
+            if not weather:
+                return f"Sorry, I couldn't get weather data for {location}. Please try again later."
+
+            return self._format_weather(location, weather, coords)
+
+        except Exception as e:
+            return f"Error getting weather for {location}: {str(e)}"
+
+    async def _get_coordinates(self, location: str) -> Dict[str, Any]:
+        """Get latitude and longitude for a location."""
+        try:
+            async with aiohttp.ClientSession() as session:
+                params = {
+                    "name": location,
+                    "count": 1,
+                    "language": "en",
+                    "format": "json"
+                }
+
+                async with session.get(self.geocoding_url, params=params) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        if data.get("results") and len(data["results"]) > 0:
+                            result = data["results"][0]
+                            return {
+                                "lat": result["latitude"],
+                                "lon": result["longitude"],
+                                "name": result["name"],
+                                "country": result.get("country", "")
+                            }
+                    return None
+        except Exception as e:
+            print(f"Error getting coordinates for {location}: {e}")
+            return None
+
+    async def _get_weather_data(self, coords: Dict[str, Any]) -> Dict[str, Any]:
+        """Get weather data from coordinates."""
+        try:
+            async with aiohttp.ClientSession() as session:
+                params = {
+                    "latitude": coords["lat"],
+                    "longitude": coords["lon"],
+                    "current": "temperature_2m,weathercode,windspeed_10m,relative_humidity_2m",
+                    "timezone": "auto"
+                }
+
+                async with session.get(self.base_url, params=params) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        return data
+                    return None
+        except Exception as e:
+            print(f"Error getting weather data: {e}")
+            return None
+
+    def _format_weather(self, location: str, weather: Dict[str, Any], coords: Dict[str, Any]) -> str:
+        """Format weather data into readable text."""
+        try:
+            current = weather.get("current", {})
+            temp = current.get("temperature_2m", "N/A")
+            humidity = current.get("relative_humidity_2m", "N/A")
+            wind_speed = current.get("windspeed_10m", "N/A")
+            weather_code = current.get("weathercode", 0)
+
+            # Simple weather code interpretation
+            weather_desc = self._get_weather_description(weather_code)
+
+            location_name = coords["name"]
+            if coords.get("country"):
+                location_name += f", {coords['country']}"
+
+            return f"""🌤️ Current Weather for {location_name}:
+
+🌡️ Temperature: {temp}°C
+💧 Humidity: {humidity}%
+💨 Wind Speed: {wind_speed} km/h
+☁️ Conditions: {weather_desc}
+
+Data from Open-Meteo API"""
+        except Exception as e:
+            return f"Error formatting weather data: {str(e)}"
+
+    def _get_weather_description(self, code: int) -> str:
+        """Convert weather code to description."""
+        weather_codes = {
+            0: "Clear sky",
+            1: "Mainly clear",
+            2: "Partly cloudy",
+            3: "Overcast",
+            45: "Fog",
+            48: "Depositing rime fog",
+            51: "Light drizzle",
+            53: "Moderate drizzle",
+            55: "Dense drizzle",
+            61: "Slight rain",
+            63: "Moderate rain",
+            65: "Heavy rain",
+            71: "Slight snow",
+            73: "Moderate snow",
+            75: "Heavy snow",
+            95: "Thunderstorm"
+        }
+        return weather_codes.get(code, f"Unknown conditions (code: {code})")
+```
+
+### Understanding the Tool
+
+- **Inherits from Tool**: All custom tools extend the AgentX `Tool` base class
+- **Async methods**: Uses `async/await` for non-blocking API calls
+- **Error handling**: Graceful handling of network and API errors
+- **Structured data**: Converts raw API data into readable format
+- **No API key required**: Uses free Open-Meteo API
+
+## Step 3: Agent Configuration with Custom Tool
+
+Create `config/team.yaml` to integrate your custom tool:
+
+```yaml
+name: "weather_assistant"
+description: "AI assistant with weather capabilities"
+
+agents:
+  - name: "assistant"
+    description: "Helpful assistant with weather tools"
+    prompt_template: "prompts/assistant.md"
+    tools: ["weather"] # Reference our custom tool
+    llm_config:
+      provider: "deepseek"
+      model: "deepseek-chat"
+      temperature: 0.7
+      max_tokens: 4000
+      supports_function_calls: true
+
+# Configure the custom tool
+tools:
+  - name: "weather"
+    type: "custom"
+    module: "weather_tool" # Python file name
+    class: "WeatherTool" # Class name
+
+execution:
+  mode: "autonomous"
+  initial_agent: "assistant"
+  max_rounds: 10
+  timeout_seconds: 300
+
+memory:
+  enabled: false
+```
+
+### Configuration Highlights
+
+- **Custom tool type**: `type: "custom"` tells AgentX this is a custom tool
+- **Module and class**: Points to your Python file and class
+- **Tool reference**: Agent lists "weather" in its tools array
+
+## Step 4: Agent Prompt with Tool Instructions
+
+Create `config/prompts/assistant.md`:
+
+```markdown
+# Weather Assistant
+
+You are a helpful AI assistant with access to real-time weather information.
+
+## Your Capabilities
+
+- Answer general questions about any topic
+- Get current weather for any location using your weather tool
+- Provide weather-related advice and insights
+- Help users plan activities based on weather conditions
+
+## Using the Weather Tool
+
+When users ask about weather:
+
+1. Use the `get_weather` function with the location they specify
+2. Present the information in a friendly, conversational way
+3. Offer relevant advice based on the weather conditions
+
+## Examples of Weather Queries
+
+- "What's the weather in Tokyo?" → Use get_weather("Tokyo")
+- "How's the weather looking in New York City?" → Use get_weather("New York City")
+- "Tell me about the weather in London, UK" → Use get_weather("London, UK")
+
+## Response Guidelines
+
+- Be friendly and conversational
+- Explain weather conditions in practical terms
+- Offer suggestions when appropriate (e.g., "Great weather for a walk!")
+- If weather data isn't available, suggest alternatives or ask for clarification
+- Always acknowledge the data source when providing weather information
+
+## Non-Weather Queries
+
+For questions not related to weather, respond normally as a helpful assistant.
+You don't need to use the weather tool for every conversation.
+
+## Example Interactions
+
+**User**: "What's the weather like in Paris?"
+**You**: I'll check the current weather in Paris for you.
+_[Use get_weather("Paris")]_
+Based on the weather data, it's currently [temperature] with [conditions]. [Add relevant advice or observations]
+
+**User**: "Should I bring an umbrella to London today?"
+**You**: Let me check the current weather conditions in London to help you decide.
+_[Use get_weather("London")]_
+[Provide recommendation based on weather data]
+```
+
+## Step 5: Main Application with Tool Demonstration
+
+Create `main.py`:
+
+```python
+#!/usr/bin/env python3
+import asyncio
+import sys
+from pathlib import Path
+
+# Add current directory to path for custom tool import
+sys.path.insert(0, str(Path(__file__).parent))
+
+from agentx.core.task import TaskExecutor
+
+async def main():
+    print("🌤️  Weather Assistant")
+    print("Ask me about the weather anywhere in the world!")
+    print("Type 'quit' to exit\n")
+
+    config_path = Path(__file__).parent / "config" / "team.yaml"
+    task_executor = TaskExecutor(str(config_path))
+
+    # Show some example questions
+    print("💡 Try asking:")
+    print("  - What's the weather in Paris?")
+    print("  - How's the weather in Tokyo today?")
+    print("  - Should I bring a jacket in London?")
+    print("  - Tell me about the weather in your city")
+    print("  - Or ask me anything else!")
+    print()
+
+    while True:
+        user_input = input("You: ").strip()
+        if user_input.lower() in ['quit', 'q', 'exit']:
+            print("Goodbye! Stay dry! 🌂")
+            break
+
+        print("Assistant: ", end="", flush=True)
+        try:
+            async for chunk in task_executor.execute_task(user_input, stream=True):
+                if chunk.get("type") == "content":
+                    print(chunk.get("content", ""), end="", flush=True)
+            print("\n")
+        except Exception as e:
+            print(f"\n❌ Error: {e}\n")
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+### Code Features
+
+- **Path management**: Ensures Python can find your custom tool
+- **Error handling**: Graceful handling of tool errors
+- **User guidance**: Shows example queries to help users
+- **Streaming responses**: Real-time display of agent responses
+
+## Step 6: Install Dependencies and Run
+
+```bash
+# Install required dependency for HTTP requests
+pip install aiohttp
+
+# Set your API key
+export DEEPSEEK_API_KEY="your-api-key-here"
+
+# Run your weather assistant
+python main.py
+```
+
+## Step 7: Test Your Custom Tool
+
+Try these example interactions:
+
+### Weather Queries
+
+```
+You: What's the weather in San Francisco?
+Assistant: I'll check the current weather in San Francisco for you.
+
+🌤️ Current Weather for San Francisco, United States:
+🌡️ Temperature: 18°C
+💧 Humidity: 65%
+💨 Wind Speed: 12 km/h
+☁️ Conditions: Partly cloudy
+
+It's a pleasant day in San Francisco! The partly cloudy conditions and mild temperature make it perfect for outdoor activities.
+```
+
+### Planning Questions
+
+```
+You: Should I bring a jacket to London today?
+Assistant: Let me check the current weather conditions in London to help you decide.
+
+🌤️ Current Weather for London, United Kingdom:
+🌡️ Temperature: 8°C
+💧 Humidity: 78%
+💨 Wind Speed: 15 km/h
+☁️ Conditions: Overcast
+
+Yes, I'd definitely recommend bringing a jacket! At 8°C with overcast conditions, it's quite cool in London today.
+```
+
+### Non-Weather Questions
+
+```
+You: Can you explain how APIs work?
+Assistant: Absolutely! APIs (Application Programming Interfaces) are like bridges that allow different software applications to communicate with each other...
+```
+
+## 🎉 Congratulations!
+
+You've successfully built an agent with custom capabilities! Here's what you accomplished:
+
+✅ **Created a custom tool** that connects to external APIs  
+✅ **Integrated the tool** with your agent configuration  
+✅ **Handled async operations** for non-blocking API calls  
+✅ **Implemented error handling** for robust tool behavior  
+✅ **Built a practical application** that provides real value
+
+## 💡 Key Concepts Learned
+
+- **Custom Tool Development**: Extending agent capabilities with Python classes
+- **Tool Integration**: How agents discover and use custom tools
+- **External APIs**: Connecting to real-world data sources
+- **Async Programming**: Handling network requests without blocking
+- **Error Handling**: Building resilient tools that handle failures gracefully
+
+## 🔍 Understanding Tool Architecture
+
+### How Tools Work
+
+1. **Agent receives request**: User asks about weather
+2. **LLM decides to use tool**: Based on the prompt and request
+3. **Tool is invoked**: AgentX calls your `get_weather` method
+4. **Tool processes request**: Makes API calls and formats data
+5. **Agent uses result**: Incorporates tool output into response
+
+### Tool Design Principles
+
+- **Single responsibility**: Each tool should do one thing well
+- **Clear interfaces**: Well-documented methods with type hints
+- **Error handling**: Graceful handling of all failure modes
+- **Async support**: Non-blocking operations for better performance
+- **Testability**: Easy to test in isolation
+
+## 🚀 What's Next?
+
+You've mastered custom tools, but now let's scale up! In [Tutorial 4: Production Systems](/docs/tutorials/4-production), you'll build a comprehensive, production-ready system with multiple agents, persistent memory, and enterprise features.
+
+### Preview: What You'll Build Next
+
+- **Multi-agent research system** with specialized roles
+- **Persistent memory** for long-term context
+- **Advanced error handling** and monitoring
+- **Production deployment patterns** for real applications
+- **File operations** and deliverable generation
+
+## 🔧 Advanced Tool Development
+
+### Adding More Methods
+
+You can add multiple methods to a single tool:
+
+```python
+class WeatherTool(Tool):
+    async def get_weather(self, location: str) -> str:
+        # Current weather
+
+    async def get_forecast(self, location: str, days: int = 5) -> str:
+        # Multi-day forecast
+
+    async def get_weather_alerts(self, location: str) -> str:
+        # Weather warnings and alerts
+```
+
+### Tool Configuration
+
+Tools can accept configuration parameters:
+
+```yaml
+tools:
+  - name: "weather"
+    type: "custom"
+    module: "weather_tool"
+    class: "WeatherTool"
+    config:
+      api_timeout: 30
+      default_units: "metric"
+```
+
+### Error Handling Best Practices
+
+- Always use try-catch blocks
+- Provide meaningful error messages
+- Log errors for debugging
+- Have fallback responses
+- Validate input parameters
+
+## 🔧 Troubleshooting
+
+**Tool not being called?**
+
+- Check the agent's tools list includes your tool name
+- Verify the prompt mentions when to use the tool
+- Ensure the tool is properly configured in team.yaml
+
+**Import errors?**
+
+- Check that sys.path includes your project directory
+- Verify module and class names match exactly
+- Ensure all dependencies are installed
+
+**API errors?**
+
+- Check your internet connection
+- Verify the API endpoint is working
+- Look at error messages for specific issues
+- Test the API directly in a browser
+
+**Want to build more tools?**
+
+- Try a news API for current events
+- Build a calculator for math operations
+- Create a file operations tool
+- Add database connectivity
+
+---
+
+Ready to build production systems? Continue to [Tutorial 4: Production Systems](/docs/tutorials/4-production)! 🏭

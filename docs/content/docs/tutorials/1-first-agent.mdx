@@ -1,0 +1,267 @@
+# Tutorial 1: Your First Agent
+
+**⏱️ Time: 15 minutes | 🎯 Goal: Build a simple chat agent**
+
+In this tutorial, you'll create your first AgentX agent - a helpful assistant that can chat with users. This is the foundation for everything else you'll build with AgentX.
+
+## What You'll Learn
+
+- Basic AgentX project structure
+- Agent configuration with YAML
+- Prompt engineering for agents
+- Running and interacting with agents
+- Understanding the TaskExecutor
+
+## Prerequisites
+
+- Python 3.8+ installed
+- AgentX installed (`pip install agentx-py`)
+- DeepSeek API key (get one free at [platform.deepseek.com](https://platform.deepseek.com))
+
+---
+
+## Step 1: Set Up Your Project
+
+Let's create a clean project structure for your first agent:
+
+```bash
+# Create a new project directory
+mkdir my-first-agent
+cd my-first-agent
+
+# Create the basic structure
+mkdir -p config/prompts
+mkdir workspace
+```
+
+Your project structure should look like this:
+
+```
+my-first-agent/
+├── config/
+│   ├── team.yaml           # Agent configuration
+│   └── prompts/            # Agent prompt files
+├── workspace/              # Working directory for agents
+└── main.py                 # Main application (we'll create this)
+```
+
+## Step 2: Create Your Agent Configuration
+
+The heart of any AgentX system is the configuration file. Create `config/team.yaml`:
+
+```yaml
+name: "my_first_agent"
+description: "My first AgentX agent - a helpful assistant"
+
+# Define your agents
+agents:
+  - name: "assistant"
+    description: "Helpful AI assistant"
+    prompt_template: "prompts/assistant.md"
+    tools: []
+    llm_config:
+      provider: "deepseek"
+      model: "deepseek-chat"
+      base_url: "https://api.deepseek.com"
+      temperature: 0.7
+      max_tokens: 4000
+      supports_function_calls: true
+
+# No custom tools for this simple example
+tools: []
+
+# Execution configuration
+execution:
+  mode: "autonomous"
+  initial_agent: "assistant"
+  max_rounds: 10
+  timeout_seconds: 300
+
+# Memory disabled for simplicity
+memory:
+  enabled: false
+```
+
+### Understanding the Configuration
+
+- **`name`**: Identifies your agent system
+- **`agents`**: List of agents in your system (just one for now)
+- **`prompt_template`**: Path to the agent's behavior definition
+- **`llm_config`**: Which AI model to use and how to configure it
+- **`execution`**: How the agent system should run
+- **`memory`**: Whether to remember past conversations (disabled for now)
+
+## Step 3: Write Your Agent's Prompt
+
+The prompt defines your agent's personality and behavior. Create `config/prompts/assistant.md`:
+
+```markdown
+# Helpful Assistant
+
+You are a helpful AI assistant created with AgentX. Your role is to:
+
+- Answer questions clearly and accurately
+- Be friendly and professional
+- Help users understand complex topics
+- Admit when you don't know something
+
+## Guidelines
+
+- Keep responses concise but thorough
+- Use examples when helpful
+- Ask clarifying questions if needed
+- Always be respectful and helpful
+
+## Response Format
+
+Respond naturally in a conversational tone. No special formatting required.
+```
+
+### Prompt Engineering Tips
+
+- **Be specific**: Clear instructions lead to better behavior
+- **Set the tone**: Define personality and communication style
+- **Provide examples**: Show the agent how to behave in different situations
+- **Set boundaries**: Explain what the agent should and shouldn't do
+
+## Step 4: Create the Main Application
+
+Now let's create the Python application that runs your agent. Create `main.py`:
+
+```python
+#!/usr/bin/env python3
+import asyncio
+from pathlib import Path
+from agentx.core.task import TaskExecutor
+
+async def main():
+    print("🤖 My First AgentX Agent")
+    print("Type 'quit' to exit\n")
+
+    # Load the agent configuration
+    config_path = Path(__file__).parent / "config" / "team.yaml"
+    task_executor = TaskExecutor(str(config_path))
+
+    # Main chat loop
+    while True:
+        user_input = input("You: ").strip()
+        if user_input.lower() in ['quit', 'q', 'exit']:
+            print("Goodbye! 👋")
+            break
+
+        # Stream the agent's response
+        print("Assistant: ", end="", flush=True)
+        async for chunk in task_executor.execute_task(user_input, stream=True):
+            if chunk.get("type") == "content":
+                print(chunk.get("content", ""), end="", flush=True)
+        print("\n")
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+### Understanding the Code
+
+- **`TaskExecutor`**: The main class for running AgentX agents
+- **`execute_task`**: Processes user input and generates responses
+- **`stream=True`**: Enables real-time response streaming
+- **Async/await**: AgentX uses asynchronous programming for better performance
+
+## Step 5: Run Your Agent
+
+Set up your environment and run the agent:
+
+```bash
+# Set your API key (replace with your actual key)
+export DEEPSEEK_API_KEY="your-api-key-here"
+
+# Run your agent
+python main.py
+```
+
+You should see:
+
+```
+🤖 My First AgentX Agent
+Type 'quit' to exit
+
+You:
+```
+
+## Step 6: Test Your Agent
+
+Try these example conversations:
+
+**Example 1: Simple Question**
+
+```
+You: What is AgentX?
+Assistant: AgentX is a multi-agent framework that allows you to build AI applications with multiple specialized agents working together...
+```
+
+**Example 2: Ask for Help**
+
+```
+You: Can you help me understand Python decorators?
+Assistant: I'd be happy to help! Python decorators are a way to modify or extend the behavior of functions...
+```
+
+**Example 3: Test Boundaries**
+
+```
+You: What's the weather like?
+Assistant: I don't have access to real-time weather data, but I can help you understand how to add weather capabilities to agents in later tutorials...
+```
+
+## 🎉 Congratulations!
+
+You've successfully built your first AgentX agent! Here's what you accomplished:
+
+✅ **Created a project structure** with proper organization  
+✅ **Configured an agent** using YAML  
+✅ **Wrote a prompt** that defines agent behavior  
+✅ **Built a Python application** that runs the agent  
+✅ **Tested real conversations** with streaming responses
+
+## 💡 Key Concepts Learned
+
+- **Team Configuration**: YAML files define your agent setup
+- **Prompt Templates**: Markdown files define agent behavior and personality
+- **TaskExecutor**: The main class for running agents and processing tasks
+- **Streaming**: Real-time response generation for better user experience
+- **Project Structure**: Organized file layout for maintainable agent systems
+
+## 🚀 What's Next?
+
+Your agent works great, but it's working alone. In [Tutorial 2: Multi-Agent Collaboration](/docs/tutorials/2-multi-agent), you'll learn how to create teams of agents that work together to solve more complex problems.
+
+### Preview: What You'll Build Next
+
+- A **writer agent** that creates content
+- A **reviewer agent** that improves the content
+- **Agent handoffs** where agents pass work between each other
+- **Collaborative workflows** where the whole is greater than the sum of its parts
+
+## 🔧 Troubleshooting
+
+**Agent not responding?**
+
+- Check your API key is set correctly
+- Verify your internet connection
+- Make sure the config file path is correct
+
+**Getting errors?**
+
+- Check that all files are in the right locations
+- Verify YAML syntax (indentation matters!)
+- Look at the error messages for clues
+
+**Want to experiment?**
+
+- Try changing the `temperature` in the config (0.1 = focused, 0.9 = creative)
+- Modify the prompt to change the agent's personality
+- Add more specific instructions for different types of questions
+
+---
+
+Ready for the next challenge? Continue to [Tutorial 2: Multi-Agent Collaboration](/docs/tutorials/2-multi-agent)! 🚀

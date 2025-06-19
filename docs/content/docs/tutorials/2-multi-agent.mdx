@@ -1,0 +1,398 @@
+# Tutorial 2: Multi-Agent Collaboration
+
+**⏱️ Time: 30 minutes | 🎯 Goal: Build a writer-reviewer team**
+
+Now let's create a team of agents that work together! You'll build a system where a writer creates content and a reviewer improves it. This introduces the powerful concept of multi-agent collaboration.
+
+## What You'll Learn
+
+- Multi-agent orchestration and coordination
+- Agent handoffs and collaboration patterns
+- Role-based specialization
+- Team dynamics and workflows
+- Understanding the Orchestrator
+
+## Prerequisites
+
+- Completed [Tutorial 1: Your First Agent](/docs/tutorials/1-first-agent)
+- Understanding of basic AgentX concepts
+- DeepSeek API key
+
+---
+
+## Step 1: Project Setup
+
+Let's create a new project for our collaborative writing team:
+
+```bash
+mkdir writer-reviewer-team
+cd writer-reviewer-team
+mkdir -p config/prompts
+mkdir workspace
+```
+
+Your project structure:
+
+```
+writer-reviewer-team/
+├── config/
+│   ├── team.yaml           # Team configuration
+│   └── prompts/
+│       ├── writer.md       # Writer agent prompt
+│       └── reviewer.md     # Reviewer agent prompt
+├── workspace/              # Working directory
+└── main.py                 # Main application
+```
+
+## Step 2: Team Configuration
+
+Multi-agent systems require more sophisticated configuration. Create `config/team.yaml`:
+
+```yaml
+name: "writer_reviewer_team"
+description: "A collaborative writing team with writer and reviewer agents"
+
+# Define multiple agents with different roles
+agents:
+  - name: "writer"
+    description: "Creative content writer"
+    prompt_template: "prompts/writer.md"
+    tools: ["handoff"]
+    llm_config:
+      provider: "deepseek"
+      model: "deepseek-chat"
+      temperature: 0.8 # More creative for writing
+      max_tokens: 4000
+
+  - name: "reviewer"
+    description: "Content reviewer and editor"
+    prompt_template: "prompts/reviewer.md"
+    tools: ["handoff"]
+    llm_config:
+      provider: "deepseek"
+      model: "deepseek-chat"
+      temperature: 0.3 # More focused for reviewing
+      max_tokens: 4000
+
+# Enable handoff tool for agent collaboration
+tools:
+  - name: "handoff"
+    type: "builtin"
+
+# Execution configuration for multi-agent workflows
+execution:
+  mode: "autonomous"
+  initial_agent: "writer" # Start with the writer
+  max_rounds: 6 # Allow multiple handoffs
+  timeout_seconds: 600
+
+# Enable orchestrator with intelligent routing
+orchestrator:
+  max_rounds: 6
+  timeout: 600
+  brain_config:
+    model: "deepseek/deepseek-chat"
+    temperature: 0.0
+    max_tokens: 150
+```
+
+### New Configuration Concepts
+
+- **Multiple agents**: Each with specialized roles and different temperatures
+- **Handoff tool**: Enables agents to pass work between each other
+- **Initial agent**: Which agent starts the workflow
+- **Orchestrator**: Manages agent coordination and routing decisions
+
+## Step 3: Writer Agent Prompt
+
+The writer focuses on creating engaging content. Create `config/prompts/writer.md`:
+
+```markdown
+# Content Writer
+
+You are a skilled content writer specializing in creating engaging, informative articles.
+
+## Your Role
+
+- Write clear, engaging content on requested topics
+- Use storytelling techniques to make content interesting
+- Structure content with proper headings and flow
+- Write in a conversational, accessible tone
+
+## Process
+
+1. Analyze the writing request carefully
+2. Create an outline (mental or explicit)
+3. Write the content with proper structure
+4. When finished, hand off to the reviewer for feedback
+
+## Handoff Instructions
+
+When you complete your first draft, use the handoff tool to pass your work to the "reviewer" agent:
+
+- Explain what you've written
+- Ask for specific feedback
+- Be open to collaboration
+
+## Output Format
+
+Structure your content with:
+
+- Clear headings (use ## for main sections)
+- Short paragraphs for readability
+- Bullet points where appropriate
+- Engaging introduction and conclusion
+
+## Example Handoff
+
+When ready for review, say something like:
+"I've completed a draft article about [topic]. I've structured it with an engaging introduction, three main sections covering [key points], and a strong conclusion. Could you please review it for clarity, flow, and overall quality? I'm particularly interested in feedback on [specific area]."
+
+Then use the handoff tool to transfer to the reviewer.
+```
+
+## Step 4: Reviewer Agent Prompt
+
+The reviewer focuses on improving content quality. Create `config/prompts/reviewer.md`:
+
+```markdown
+# Content Reviewer & Editor
+
+You are an experienced editor who improves content quality and provides constructive feedback.
+
+## Your Role
+
+- Review content for clarity, accuracy, and engagement
+- Suggest improvements for structure and flow
+- Check for grammar and style consistency
+- Provide specific, actionable feedback
+
+## Review Process
+
+1. Read the content thoroughly
+2. Identify strengths and areas for improvement
+3. Provide specific suggestions with examples
+4. If major revisions needed, hand back to writer
+5. If content is good, approve and finalize
+
+## Feedback Guidelines
+
+- Be constructive and specific
+- Explain WHY changes are needed
+- Suggest concrete improvements
+- Acknowledge what works well
+- Focus on clarity and reader experience
+
+## Handoff Decision
+
+- **Hand back to writer**: If content needs significant revision
+- **Finalize**: If content meets quality standards with minor notes
+
+## Example Review Process
+
+1. Start with positive feedback: "This is a strong draft with [specific strengths]..."
+2. Provide specific suggestions: "To improve clarity in section 2, consider..."
+3. Make your decision: Either hand back with revision requests or approve the final version
+
+Use the handoff tool to communicate your decision and feedback.
+```
+
+## Step 5: Main Application with Collaboration Tracking
+
+Create `main.py` to observe the collaboration in action:
+
+```python
+#!/usr/bin/env python3
+import asyncio
+from pathlib import Path
+from agentx import execute_task
+
+async def main():
+    print("✍️  Writer-Reviewer Team Demo")
+    print("Watch as our agents collaborate to create great content!\n")
+
+    config_path = str(Path(__file__).parent / "config" / "team.yaml")
+
+    # Get writing topic from user
+    topic = input("What would you like an article about? ").strip()
+    if not topic:
+        topic = "the benefits of remote work"
+
+    prompt = f"Write a 400-word article about: {topic}"
+
+    print(f"\n🎬 Starting collaboration on: {topic}")
+    print("=" * 50)
+
+    try:
+        # Track the collaboration process
+        handoff_count = 0
+        current_agent = "writer"
+
+        async for update in execute_task(prompt, config_path, stream=True):
+            update_type = update.get("type")
+
+            if update_type == "content":
+                print(update["content"], end="", flush=True)
+
+            elif update_type == "handoff":
+                handoff_count += 1
+                from_agent = update["from_agent"]
+                to_agent = update["to_agent"]
+                current_agent = to_agent
+
+                print(f"\n\n🔄 HANDOFF #{handoff_count}: {from_agent} → {to_agent}")
+                print("─" * 30)
+
+            elif update_type == "routing_decision":
+                if update["action"] == "complete":
+                    print(f"\n\n🎉 Collaboration complete!")
+                    print(f"📊 Total handoffs: {handoff_count}")
+                    print(f"🎯 Final agent: {current_agent}")
+                    break
+
+        print(f"\n\n✅ Article finished! The team worked together to create great content.")
+
+    except Exception as e:
+        print(f"❌ Error: {e}")
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+### Code Highlights
+
+- **Collaboration tracking**: Monitor handoffs between agents
+- **Real-time updates**: See the workflow as it happens
+- **User input**: Let users choose the writing topic
+- **Error handling**: Graceful handling of issues
+
+## Step 6: Run the Collaborative Team
+
+```bash
+# Set your API key
+export DEEPSEEK_API_KEY="your-api-key-here"
+
+# Run the team
+python main.py
+```
+
+You'll see something like:
+
+```
+✍️  Writer-Reviewer Team Demo
+Watch as our agents collaborate to create great content!
+
+What would you like an article about? artificial intelligence trends
+
+🎬 Starting collaboration on: artificial intelligence trends
+==================================================
+```
+
+## Step 7: Watch the Magic Happen
+
+Here's what you'll observe during the collaboration:
+
+### Phase 1: Writer Creates Content
+
+The writer will:
+
+- Analyze the topic
+- Create structured content
+- Write engaging introduction and conclusion
+- Prepare to hand off to reviewer
+
+### Phase 2: Handoff to Reviewer
+
+You'll see:
+
+```
+🔄 HANDOFF #1: writer → reviewer
+──────────────────────────────
+```
+
+### Phase 3: Reviewer Provides Feedback
+
+The reviewer will:
+
+- Analyze the content quality
+- Provide specific feedback
+- Either approve or request revisions
+
+### Phase 4: Potential Revision Cycle
+
+If revisions are needed:
+
+```
+🔄 HANDOFF #2: reviewer → writer
+──────────────────────────────
+```
+
+## 🎉 Congratulations!
+
+You've built your first multi-agent collaborative system! Here's what you accomplished:
+
+✅ **Created specialized agents** with different roles and personalities  
+✅ **Enabled agent handoffs** for collaborative workflows  
+✅ **Implemented role-based specialization** (creative writer, focused reviewer)  
+✅ **Built orchestrated workflows** with intelligent routing  
+✅ **Observed real-time collaboration** between AI agents
+
+## 💡 Key Concepts Learned
+
+- **Agent Handoffs**: How agents pass work between each other using the handoff tool
+- **Role Specialization**: Different agents optimized for different tasks
+- **Collaborative Workflows**: Agents working together toward a shared goal
+- **Orchestration**: How AgentX manages multi-agent interactions automatically
+- **Temperature Settings**: Using different creativity levels for different roles
+
+## 🔍 Understanding the Collaboration
+
+### Why This Works
+
+1. **Specialized Roles**: Writer focuses on creativity, reviewer on quality
+2. **Clear Communication**: Agents explain their work when handing off
+3. **Iterative Improvement**: Multiple rounds of refinement
+4. **Autonomous Coordination**: Orchestrator manages the workflow
+
+### Real-World Applications
+
+- **Content Creation**: Blog posts, documentation, marketing copy
+- **Code Review**: Developer writes code, reviewer checks quality
+- **Research**: Researcher gathers info, analyst synthesizes findings
+- **Customer Service**: Specialist agents for different types of issues
+
+## 🚀 What's Next?
+
+Your agents can collaborate, but they're still limited to built-in capabilities. In [Tutorial 3: Custom Tools](/docs/tutorials/3-custom-tools), you'll learn how to give your agents superpowers by creating custom tools that connect to external APIs and services.
+
+### Preview: What You'll Build Next
+
+- **Custom weather tool** that gets real-time data
+- **Agent with external API access** for enhanced capabilities
+- **Tool integration patterns** for extending functionality
+- **Advanced agent capabilities** beyond text generation
+
+## 🔧 Troubleshooting
+
+**Agents not handing off?**
+
+- Check that the handoff tool is configured correctly
+- Verify agents understand when to use handoffs
+- Look at the prompts to ensure handoff instructions are clear
+
+**Workflow getting stuck?**
+
+- Check the max_rounds setting
+- Verify timeout configuration
+- Look for infinite loops in handoff logic
+
+**Want to experiment?**
+
+- Try different temperature settings for different creative levels
+- Add a third agent (like a fact-checker or editor)
+- Modify prompts to change collaboration patterns
+- Test with different types of content
+
+---
+
+Ready to give your agents superpowers? Continue to [Tutorial 3: Custom Tools](/docs/tutorials/3-custom-tools)! 🛠️

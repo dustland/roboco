@@ -1,0 +1,465 @@
+# Getting Started with AgentX
+
+Welcome to AgentX - the powerful multi-agent framework that lets you build sophisticated AI applications with ease. Whether you're creating a simple chatbot or a complex multi-agent system, AgentX provides the tools and patterns you need to succeed.
+
+## What is AgentX?
+
+AgentX is a Python framework designed for building multi-agent AI systems. It allows you to create teams of specialized AI agents that work together to solve complex problems, each with their own roles, tools, and capabilities.
+
+### Key Features
+
+- **🤖 Multi-Agent Orchestration**: Create teams of agents that collaborate seamlessly
+- **🛠️ Extensible Tool System**: Build custom tools or use built-in capabilities
+- **🧠 Intelligent Routing**: Automatic agent coordination and task delegation
+- **💾 Memory Integration**: Persistent memory for long-term context
+- **⚡ Streaming Support**: Real-time response generation
+- **🔧 Production Ready**: Built for scalable, maintainable applications
+
+### Why Choose AgentX?
+
+**Developer-First Design**
+
+- Clean, intuitive APIs that feel natural to Python developers
+- Configuration-driven approach with YAML files
+- Comprehensive documentation and examples
+
+**Production-Grade Architecture**
+
+- Built-in error handling and resilience
+- Monitoring and observability features
+- Scalable deployment patterns
+
+**Flexible and Extensible**
+
+- Support for multiple LLM providers (DeepSeek, OpenAI, Claude, etc.)
+- Custom tool development framework
+- Pluggable memory and storage backends
+
+## Installation
+
+### Prerequisites
+
+Before installing AgentX, ensure you have:
+
+- **Python 3.11 or higher**
+- **pip** (Python package installer)
+- An **API key** from a supported LLM provider
+
+### Install AgentX
+
+```bash
+# Install from PyPI
+pip install agentx-py
+
+# Or install from source
+git clone https://github.com/dustland/agentx.git
+cd agentx
+pip install -e .
+```
+
+### Verify Installation
+
+```python
+import agentx
+print(f"AgentX version: {agentx.__version__}")
+```
+
+## Quick Start
+
+Let's create your first AgentX agent in just a few minutes!
+
+### 1. Set Up Your Environment
+
+```bash
+# Create a new project
+mkdir my-agentx-project
+cd my-agentx-project
+
+# Create the basic structure
+mkdir -p config/prompts
+mkdir workspace
+```
+
+### 2. Get an API Key
+
+AgentX supports multiple LLM providers. For this example, we'll use DeepSeek (free tier available):
+
+1. Visit [platform.deepseek.com](https://platform.deepseek.com)
+2. Sign up for a free account
+3. Generate an API key
+4. Set your environment variable:
+
+```bash
+export DEEPSEEK_API_KEY="your-api-key-here"
+```
+
+### 3. Create Your First Agent
+
+Create `config/team.yaml`:
+
+```yaml
+name: "my_first_agent"
+description: "My first AgentX agent"
+
+agents:
+  - name: "assistant"
+    description: "Helpful AI assistant"
+    prompt_template: "prompts/assistant.md"
+    tools: []
+    llm_config:
+      provider: "deepseek"
+      model: "deepseek-chat"
+      temperature: 0.7
+      max_tokens: 4000
+
+tools: []
+
+execution:
+  mode: "autonomous"
+  initial_agent: "assistant"
+  max_rounds: 10
+  timeout_seconds: 300
+
+memory:
+  enabled: false
+```
+
+### 4. Define Your Agent's Behavior
+
+Create `config/prompts/assistant.md`:
+
+```markdown
+# Helpful Assistant
+
+You are a helpful AI assistant created with AgentX. Your role is to:
+
+- Answer questions clearly and accurately
+- Be friendly and professional
+- Help users understand complex topics
+- Admit when you don't know something
+
+## Guidelines
+
+- Keep responses concise but thorough
+- Use examples when helpful
+- Ask clarifying questions if needed
+- Always be respectful and helpful
+```
+
+### 5. Create the Application
+
+Create `main.py`:
+
+```python
+#!/usr/bin/env python3
+import asyncio
+from pathlib import Path
+from agentx.core.task import TaskExecutor
+
+async def main():
+    print("🤖 My First AgentX Agent")
+    print("Type 'quit' to exit\n")
+
+    config_path = Path(__file__).parent / "config" / "team.yaml"
+    task_executor = TaskExecutor(str(config_path))
+
+    while True:
+        user_input = input("You: ").strip()
+        if user_input.lower() in ['quit', 'q', 'exit']:
+            print("Goodbye! 👋")
+            break
+
+        print("Assistant: ", end="", flush=True)
+        async for chunk in task_executor.execute_task(user_input, stream=True):
+            if chunk.get("type") == "content":
+                print(chunk.get("content", ""), end="", flush=True)
+        print("\n")
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+### 6. Run Your Agent
+
+```bash
+python main.py
+```
+
+You should see:
+
+```
+🤖 My First AgentX Agent
+Type 'quit' to exit
+
+You: Hello!
+Assistant: Hello! I'm your AgentX assistant. How can I help you today?
+
+You:
+```
+
+🎉 **Congratulations!** You've just created your first AgentX agent!
+
+## Core Concepts
+
+Understanding these key concepts will help you build more sophisticated systems:
+
+### Agents
+
+Agents are the core building blocks of AgentX. Each agent has:
+
+- **Identity**: Name and description
+- **Behavior**: Defined by prompt templates
+- **Capabilities**: Tools they can use
+- **Configuration**: LLM settings and parameters
+
+### Teams
+
+Teams are collections of agents that work together:
+
+- **Coordination**: Agents can hand off tasks to each other
+- **Specialization**: Each agent can have different roles
+- **Orchestration**: Automatic routing and task management
+
+### Tools
+
+Tools extend what agents can do:
+
+- **Built-in Tools**: Memory, handoffs, web search
+- **Custom Tools**: Build your own integrations
+- **External APIs**: Connect to databases, services, etc.
+
+### Memory
+
+Memory enables agents to remember context:
+
+- **Short-term**: Within a conversation
+- **Long-term**: Across multiple sessions
+- **Shared**: Between multiple agents
+
+## Project Structure
+
+A typical AgentX project follows this structure:
+
+```
+my-agentx-project/
+├── config/
+│   ├── team.yaml           # Team configuration
+│   └── prompts/            # Agent prompt templates
+│       ├── agent1.md
+│       └── agent2.md
+├── tools/                  # Custom tools (optional)
+│   ├── __init__.py
+│   └── my_tool.py
+├── workspace/              # Agent workspace
+├── main.py                 # Application entry point
+└── requirements.txt        # Dependencies
+```
+
+## Configuration Overview
+
+AgentX uses YAML configuration files to define your agent systems:
+
+### Basic Configuration
+
+```yaml
+name: "my_system"
+description: "Description of what this system does"
+
+# Define your agents
+agents:
+  - name: "agent_name"
+    description: "What this agent does"
+    prompt_template: "prompts/agent.md"
+    tools: ["tool1", "tool2"]
+    llm_config:
+      provider: "deepseek"
+      model: "deepseek-chat"
+      temperature: 0.7
+
+# Define available tools
+tools:
+  - name: "tool1"
+    type: "builtin"
+
+# Execution settings
+execution:
+  mode: "autonomous"
+  initial_agent: "agent_name"
+  max_rounds: 10
+```
+
+### Advanced Features
+
+```yaml
+# Multi-agent coordination
+orchestrator:
+  max_rounds: 20
+  timeout: 600
+  brain_config:
+    model: "deepseek/deepseek-chat"
+    temperature: 0.0
+
+# Memory configuration
+memory:
+  enabled: true
+  backend: "mem0"
+  config:
+    vector_store:
+      provider: "qdrant"
+
+# Workspace settings
+workspace:
+  base_path: "workspace"
+  auto_cleanup: false
+```
+
+## LLM Provider Support
+
+AgentX supports multiple LLM providers:
+
+### DeepSeek (Recommended for beginners)
+
+```yaml
+llm_config:
+  provider: "deepseek"
+  model: "deepseek-chat"
+  base_url: "https://api.deepseek.com"
+```
+
+### OpenAI
+
+```yaml
+llm_config:
+  provider: "openai"
+  model: "gpt-4"
+```
+
+### Claude
+
+```yaml
+llm_config:
+  provider: "anthropic"
+  model: "claude-3-sonnet-20240229"
+```
+
+### Local Models
+
+```yaml
+llm_config:
+  provider: "ollama"
+  model: "llama2"
+  base_url: "http://localhost:11434"
+```
+
+## Best Practices
+
+### Agent Design
+
+- **Single Responsibility**: Each agent should have a clear, focused role
+- **Clear Prompts**: Write specific, detailed prompt templates
+- **Appropriate Tools**: Give agents only the tools they need
+- **Proper Temperature**: Use lower values for focused tasks, higher for creative work
+
+### Configuration Management
+
+- **Version Control**: Keep your configuration files in version control
+- **Environment Variables**: Use environment variables for sensitive data
+- **Documentation**: Document your agent roles and workflows
+- **Testing**: Test your agents with various inputs
+
+### Error Handling
+
+- **Graceful Degradation**: Handle API failures gracefully
+- **Logging**: Implement comprehensive logging
+- **Monitoring**: Monitor agent performance and behavior
+- **Timeouts**: Set appropriate timeouts for long-running tasks
+
+## Common Patterns
+
+### Single Agent Pattern
+
+Perfect for simple assistants and chatbots:
+
+```yaml
+agents:
+  - name: "assistant"
+    # Single agent configuration
+```
+
+### Multi-Agent Collaboration
+
+For complex workflows requiring specialization:
+
+```yaml
+agents:
+  - name: "researcher"
+    tools: ["web_search", "handoff"]
+  - name: "writer"
+    tools: ["handoff", "file_ops"]
+```
+
+### Tool-Heavy Agents
+
+For agents that need external capabilities:
+
+```yaml
+agents:
+  - name: "data_agent"
+    tools: ["database", "api_client", "file_ops"]
+```
+
+## Troubleshooting
+
+### Common Issues
+
+**Agent not responding?**
+
+- Check your API key is set correctly
+- Verify your internet connection
+- Look at the logs for error messages
+
+**Configuration errors?**
+
+- Validate your YAML syntax
+- Check file paths are correct
+- Ensure all required fields are present
+
+**Tool not working?**
+
+- Verify tool is properly configured
+- Check tool dependencies are installed
+- Review tool implementation for errors
+
+### Getting Help
+
+- **Documentation**: Check the [API Reference](/api/core-classes)
+- **Examples**: Look at the [example projects](https://github.com/dustland/agentx/tree/main/examples)
+- **Community**: Join [GitHub Discussions](https://github.com/dustland/agentx/discussions)
+- **Issues**: Report bugs on [GitHub Issues](https://github.com/dustland/agentx/issues)
+
+## What's Next?
+
+Now that you have AgentX installed and running, here are some suggested next steps:
+
+### 📚 Learn More
+
+- **[Tutorials](/tutorials)** - Comprehensive step-by-step guides
+- **[API Reference](/api/core-classes)** - Detailed API documentation
+- **[Architecture Guide](/design/overview)** - How AgentX works internally
+
+### 🛠️ Build Something
+
+- **Simple Chatbot** - Start with a basic conversational agent
+- **Multi-Agent Team** - Create agents that collaborate
+- **Custom Tools** - Build integrations with external services
+- **Production System** - Deploy a scalable agent application
+
+### 🤝 Get Involved
+
+- **Contribute** - Help improve AgentX on GitHub
+- **Share** - Tell others about your AgentX projects
+- **Learn** - Join the community and learn from others
+
+---
+
+Ready to dive deeper? Start with the [Tutorials](/tutorials) to build your first multi-agent system! 🚀

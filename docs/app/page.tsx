@@ -72,8 +72,8 @@ const IconWrapper = ({
   className?: string;
 }) => <div className={`inline-flex ${className}`}>{children}</div>;
 
-// Typewriter effect component
-const TypewriterText = () => {
+// Optimized typewriter with minimal flickering and single line layout
+const AnimatedText = () => {
   const words = ["autonomous", "supervised", "low-cost"];
   const [currentWordIndex, setCurrentWordIndex] = useState(0);
   const [currentText, setCurrentText] = useState("");
@@ -82,48 +82,59 @@ const TypewriterText = () => {
 
   useEffect(() => {
     const currentWord = words[currentWordIndex];
+    let timeout: NodeJS.Timeout;
 
-    const typeChar = () => {
-      if (!isDeleting && currentText.length < currentWord.length) {
+    if (!isDeleting && currentText.length < currentWord.length) {
+      // Typing
+      timeout = setTimeout(() => {
         setCurrentText(currentWord.slice(0, currentText.length + 1));
-      } else if (!isDeleting && currentText.length === currentWord.length) {
-        // Wait before starting to delete
-        setTimeout(() => setIsDeleting(true), 2000);
-        return;
-      } else if (isDeleting && currentText.length > 0) {
+      }, 100);
+    } else if (!isDeleting && currentText.length === currentWord.length) {
+      // Pause before deleting
+      timeout = setTimeout(() => {
+        setIsDeleting(true);
+      }, 2000);
+    } else if (isDeleting && currentText.length > 0) {
+      // Deleting
+      timeout = setTimeout(() => {
         setCurrentText(currentText.slice(0, -1));
-      } else if (isDeleting && currentText.length === 0) {
-        setIsDeleting(false);
-        setCurrentWordIndex((prev) => (prev + 1) % words.length);
-      }
+      }, 50);
+    } else if (isDeleting && currentText.length === 0) {
+      // Move to next word
+      setIsDeleting(false);
+      setCurrentWordIndex((prev) => (prev + 1) % words.length);
+    }
+
+    return () => {
+      if (timeout) clearTimeout(timeout);
     };
-
-    const speed = isDeleting ? 50 : 100;
-    const timer = setTimeout(typeChar, speed);
-
-    return () => clearTimeout(timer);
   }, [currentText, isDeleting, currentWordIndex]);
 
-  // Cursor blinking effect
+  // Cursor blinking
   useEffect(() => {
     const cursorInterval = setInterval(() => {
       setShowCursor((prev) => !prev);
     }, 530);
-
     return () => clearInterval(cursorInterval);
   }, []);
 
+  // Calculate the width needed for the longest word to prevent layout shifts
+  const maxWidth = Math.max(...words.map((word) => word.length)) * 0.6; // Approximate character width in em
+
   return (
-    <div className="flex items-center justify-center h-full">
-      <span className="bg-gradient-to-r from-blue-600 via-purple-600 to-indigo-600 bg-clip-text text-transparent">
-        {currentText || " "}
-      </span>
-      <span
-        className={`inline-block w-1 ml-1 bg-gradient-to-r from-blue-600 via-purple-600 to-indigo-600 transition-opacity duration-150 ${
-          showCursor ? "opacity-100" : "opacity-0"
-        }`}
-        style={{ height: "0.9em" }}
-      />
+    <div className="flex items-center h-full">
+      {/* Fixed width container based on longest word to prevent layout shifts */}
+      <div className="flex items-center" style={{ minWidth: `${maxWidth}em` }}>
+        <span className="text-white font-mono whitespace-nowrap">
+          {currentText}
+        </span>
+        <span
+          className={`inline-block w-0.5 ml-1 bg-emerald-400 transition-opacity duration-150 ${
+            showCursor ? "opacity-100" : "opacity-0"
+          }`}
+          style={{ height: "1em" }}
+        />
+      </div>
     </div>
   );
 };
@@ -244,11 +255,12 @@ export default function HomePage() {
                 <div className="flex flex-col sm:flex-row items-center justify-center gap-3 sm:gap-4 flex-wrap">
                   <span>Build a</span>
                   <div className="relative inline-block">
-                    <div className="px-6 py-3 bg-white dark:bg-slate-800 border-2 border-slate-300 dark:border-slate-600 rounded-xl shadow-lg min-w-[320px] h-[70px] flex items-center justify-center text-3xl sm:text-4xl lg:text-5xl font-bold">
-                      <TypewriterText />
+                    <div className="px-4 py-2 bg-slate-950 dark:bg-slate-900 border border-slate-700 dark:border-slate-600 rounded-md font-mono text-2xl sm:text-3xl lg:text-4xl min-w-[280px] h-[60px] flex items-center justify-start shadow-inner">
+                      <span className="text-emerald-400 mr-2">$</span>
+                      <AnimatedText />
                     </div>
-                    {/* Input field styling elements */}
-                    <div className="absolute -top-1 -right-1 w-3 h-3 bg-blue-500 rounded-full animate-pulse opacity-60"></div>
+                    {/* Terminal cursor indicator */}
+                    <div className="absolute top-1 right-2 w-2 h-2 bg-emerald-400 rounded-full animate-pulse opacity-80"></div>
                   </div>
                   <span>Agentic App</span>
                 </div>
@@ -291,7 +303,7 @@ export default function HomePage() {
                 whileTap={{ scale: 0.95 }}
               >
                 <Link
-                  href="/architecture"
+                  href="/getting-started"
                   className="group relative inline-flex items-center overflow-hidden rounded-xl bg-gradient-to-r from-blue-600 via-purple-600 to-indigo-600 px-8 py-4 text-lg font-bold text-white shadow-2xl transition-all duration-300 hover:shadow-purple-500/25 hover:from-blue-700 hover:via-purple-700 hover:to-indigo-700"
                 >
                   <Sparkles className="mr-3 h-5 w-5 group-hover:rotate-12 transition-transform duration-300" />
@@ -344,7 +356,7 @@ export default function HomePage() {
 
             <div className="space-y-6">
               <motion.div
-                className="rounded-lg bg-slate-950 p-4 shadow-inner"
+                className="rounded-lg bg-slate-950 dark:bg-slate-950 p-4 shadow-inner"
                 whileHover={{ scale: 1.02 }}
                 transition={{ duration: 0.2 }}
               >
@@ -360,7 +372,7 @@ export default function HomePage() {
               </div>
 
               <motion.div
-                className="rounded-lg bg-slate-950 p-4 shadow-inner"
+                className="rounded-lg bg-slate-950 dark:bg-slate-950 p-4 shadow-inner"
                 whileHover={{ scale: 1.02 }}
                 transition={{ duration: 0.2 }}
               >

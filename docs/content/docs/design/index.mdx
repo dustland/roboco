@@ -1,0 +1,89 @@
+# AgentX Design & Architecture
+
+Welcome to the AgentX design documentation! This section provides comprehensive technical insights into how AgentX works internally, its architectural decisions, and the principles that guide its development.
+
+## 🏗️ Architecture Overview
+
+AgentX is built as a lightweight micro-kernel that orchestrates specialized agents in a secure, observable, and scalable manner. The system transforms complex user requests into coordinated multi-agent workflows with complete auditability.
+
+### Key Design Principles
+
+- **Separation of Concerns** - Each component has a single, well-defined responsibility
+- **Centralized Orchestration** - Unified control plane for coordination and security
+- **Agent Autonomy** - Agents manage their own reasoning with private Brains
+- **Event-Driven Architecture** - Asynchronous, structured communication
+- **Configuration-Driven** - Declarative team and workflow definitions
+- **Security by Design** - Audited, policy-enforced external interactions
+- **Workspace Isolation** - Version-controlled, reproducible task environments
+
+## 📚 Design Documentation
+
+### [System Architecture](/design/overview)
+
+Complete architectural overview covering the four-layer system design, collaboration models, and execution patterns. Includes detailed sequence diagrams and component interactions.
+
+### [State and Context Management](/design/state-and-context)
+
+Deep dive into how AgentX manages state, context, and memory across agents and tasks. Covers workspace isolation, memory systems, and context propagation.
+
+### [Tool Execution](/design/tool-execution)
+
+Detailed explanation of the secure tool execution system, including validation, sandboxing, and the tool self-correction mechanism that enables reliable agent tool usage.
+
+### [Communication Patterns](/design/communication)
+
+Event-driven communication architecture, message passing patterns, and how agents coordinate through the orchestrator and event bus.
+
+## 🎯 Key Architectural Components
+
+### TaskExecutor
+
+The primary workflow engine that owns the end-to-end lifecycle of tasks, manages workspace provisioning, and coordinates agent invocations.
+
+### Orchestrator
+
+Centralized service for tool management and validation. Handles tool-call requests, schema validation, and secure dispatch to the ToolExecutor.
+
+### Agent & Brain
+
+Specialized agents with private reasoning capabilities. Each agent encapsulates a role and uses its Brain (LLM) for autonomous decision-making.
+
+### Platform Services
+
+Shared, pluggable services including the Event Bus, Memory System, Configuration Management, and Observability infrastructure.
+
+## 🔄 Execution Modes
+
+AgentX supports two primary execution patterns:
+
+- **Autonomous Execution** - Fire-and-forget mode ideal for production workflows
+- **Interactive Execution** - Step-by-step control for debugging and human-in-the-loop scenarios
+
+## 🛡️ Security & Observability
+
+Every interaction in AgentX is:
+
+- **Auditable** - Complete event logging of all decisions and actions
+- **Secure** - Sandboxed tool execution with policy enforcement
+- **Observable** - Real-time monitoring and debugging capabilities
+- **Reproducible** - Version-controlled workspaces and deterministic execution
+
+## 🚀 Getting Started with Design Docs
+
+1. **Read [System Architecture](/design/overview)** - Get the big picture view
+1. **Dive into specific areas** based on your interests:
+   - Building tools? See [Tool Execution](/design/tool-execution)
+   - Working with state? Check [State and Context](/design/state-and-context)
+   - Integrating systems? Review [Communication](/design/communication)
+
+## 🤝 Contributing to Design
+
+The design documentation evolves with the framework. If you're:
+
+- **Implementing new features** - Update relevant design docs
+- **Finding gaps** - Contribute missing architectural details
+- **Suggesting improvements** - Propose design changes through issues
+
+---
+
+_This documentation reflects the current architecture of AgentX. For implementation details and API references, see the [API Documentation](/api)._
