@@ -9,14 +9,14 @@ const withNextra = nextra({
   contentDirBasePath: "/",
 });
 
-// Only use basePath for production builds (GitHub Pages)
-const isProduction = process.env.NODE_ENV === "production";
+// Use basePath only for GitHub Pages deployment
+const isGitHubPages = process.env.GITHUB_ACTIONS === "true";
 
 export default withNextra({
   reactStrictMode: true,
   output: "export",
   trailingSlash: true,
-  ...(isProduction && {
+  ...(isGitHubPages && {
     basePath: "/agentx",
     assetPrefix: "/agentx",
   }),
