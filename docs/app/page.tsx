@@ -12,9 +12,6 @@ import {
   Zap,
   BarChart3,
   Settings,
-  Target,
-  Lock,
-  Building,
   Sparkles,
   Rocket,
   Github,
@@ -166,28 +163,28 @@ export default function HomePage() {
       title: "Multi-Agent Orchestration",
       description:
         "Intelligent task distribution and dynamic load balancing for complex multi-agent workflows.",
-      href: "/architecture/overview",
+      href: "/docs/design/overview",
     },
     {
       icon: Wrench,
       title: "Extensible Tools",
       description:
         "Native integrations for web APIs, file systems, databases, and custom tool development.",
-      href: "/architecture/tool-execution",
+      href: "/docs/design/tool-execution",
     },
     {
       icon: Brain,
       title: "Persistent Memory",
       description:
         "Contextual retention, semantic search, and distributed state persistence across agent networks.",
-      href: "/architecture/state-and-context",
+      href: "/docs/design/state-and-context",
     },
     {
       icon: Zap,
       title: "Events",
       description:
         "Real-time coordination, fault tolerance, and scalable inter-agent communication infrastructure.",
-      href: "/architecture/communication",
+      href: "/docs/design/communication",
     },
     {
       icon: BarChart3,
@@ -340,7 +337,7 @@ export default function HomePage() {
                 whileTap={{ scale: 0.95 }}
               >
                 <Link
-                  href="/getting-started"
+                  href="/docs/getting-started"
                   className="group relative inline-flex items-center overflow-hidden rounded-xl bg-gradient-to-r from-blue-600 via-purple-600 to-indigo-600 px-8 py-4 text-lg font-bold text-white shadow-2xl transition-all duration-300 hover:shadow-purple-500/25 hover:from-blue-700 hover:via-purple-700 hover:to-indigo-700"
                 >
                   <Sparkles className="mr-3 h-5 w-5 group-hover:rotate-12 transition-transform duration-300" />
