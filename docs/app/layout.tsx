@@ -1,5 +1,30 @@
 import "./globals.css";
 import { Head } from "nextra/components";
+import { Layout, Navbar } from "nextra-theme-docs";
+import { getPageMap } from "nextra/page-map";
+
+const navbar = (
+  <Navbar
+    logo={
+      <div>
+        <img
+          src="/logo.png"
+          alt="AgentX"
+          height="24"
+          width="24"
+          style={{
+            height: "24px",
+            width: "auto",
+            display: "inline",
+            marginRight: "8px",
+          }}
+        />
+        <b>AgentX</b>
+      </div>
+    }
+    projectLink="https://github.com/dustland/agentx"
+  />
+);
 
 export const metadata = {
   metadataBase: new URL("https://dustland.github.io/agentx"),
@@ -47,11 +72,22 @@ export const metadata = {
   },
 };
 
-export default function RootLayout({ children }) {
+export default async function RootLayout({ children }) {
+  const pageMap = await getPageMap();
   return (
     <html lang="en" dir="ltr" suppressHydrationWarning>
       <Head />
-      <body>{children}</body>
+      <body>
+        <Layout
+          navbar={navbar}
+          editLink="Edit this page on GitHub"
+          docsRepositoryBase="https://github.com/dustland/agentx/tree/main/docs"
+          sidebar={{ defaultMenuCollapseLevel: 1 }}
+          pageMap={pageMap}
+        >
+          {children}
+        </Layout>
+      </body>
     </html>
   );
 }

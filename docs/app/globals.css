@@ -32,9 +32,9 @@ html {
   100% { background-position: 0% 50%; }
 }
 
-.bg-gradient-to-r {
+.animate-gradient {
   background-size: 200% 200%;
-  animation: gradient 6s ease infinite;
+  animation: gradient 8s ease infinite;
 }
 
 /* Enhanced code block styling */
