@@ -2,16 +2,23 @@ import "./globals.css";
 import { Head } from "nextra/components";
 import { Layout, Navbar } from "nextra-theme-docs";
 import { getPageMap } from "nextra/page-map";
+import Image from "next/image";
+
+// Get the base path for favicon assets in metadata
+const basePath =
+  process.env.NODE_ENV === "production" && process.env.GITHUB_ACTIONS === "true"
+    ? "/agentx"
+    : "";
 
 const navbar = (
   <Navbar
     logo={
       <div>
-        <img
+        <Image
           src="/logo.png"
           alt="AgentX"
-          height="24"
-          width="24"
+          height={24}
+          width={24}
           style={{
             height: "24px",
             width: "auto",
@@ -51,12 +58,20 @@ export const metadata = {
   },
   icons: {
     icon: [
-      { url: "/favicon.ico", sizes: "16x16", type: "image/x-icon" },
-      { url: "/favicon-16x16.png", sizes: "16x16", type: "image/png" },
-      { url: "/favicon-32x32.png", sizes: "32x32", type: "image/png" },
+      { url: `${basePath}/favicon.ico`, sizes: "16x16", type: "image/x-icon" },
+      {
+        url: `${basePath}/favicon-16x16.png`,
+        sizes: "16x16",
+        type: "image/png",
+      },
+      {
+        url: `${basePath}/favicon-32x32.png`,
+        sizes: "32x32",
+        type: "image/png",
+      },
     ],
-    shortcut: "/favicon.ico",
-    apple: "/logo.png",
+    shortcut: `${basePath}/favicon.ico`,
+    apple: `${basePath}/logo.png`,
   },
   openGraph: {
     url: "https://dustland.github.io/agentx",
