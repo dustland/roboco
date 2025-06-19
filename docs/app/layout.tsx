@@ -15,7 +15,7 @@ const navbar = (
     logo={
       <div>
         <Image
-          src="/logo.png"
+          src={`${basePath}/logo.png`}
           alt="AgentX"
           height={24}
           width={24}
