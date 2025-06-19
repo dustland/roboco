@@ -34,7 +34,13 @@ The best way to get started is by following our **[Quickstart Guide](./docs/quic
 
 ### 1. Installation
 
-First, clone the repository and install the dependencies.
+Install AgentX from PyPI:
+
+```sh
+pip install agentx-py
+```
+
+Or for development, clone the repository:
 
 ```sh
 git clone https://github.com/dustland/agentx.git
@@ -119,56 +125,15 @@ You can also use the observability features in CLI mode without the option `--we
 
 ## 🏗️ Architecture Overview
 
-AgentX is a modular framework composed of several key components that work together to execute complex tasks. At its heart is the `TaskExecutor`, which manages the overall workflow. It interacts with a `Team of Agents` to perform work, and consults the `Orchestrator` to handle agent sequencing and tool calls.
+AgentX is a modular framework composed of several key components that work together to execute complex tasks. At its heart is the `TaskExecutor`, which manages the overall workflow and provides secure tool execution through its integrated `ToolManager`. It interacts with a `Team of Agents` to perform work, and consults the `Orchestrator` for intelligent agent routing and coordination decisions.
 
-```mermaid
-graph TD
-    %% Client Layer
-    CLI[CLI Interface]
-    API[REST / WebSocket API]
+**Key Components:**
 
-    %% AgentX Core
-    TE[Task Executor]
-    ORCH[Orchestrator]
-    AGENTS[Team of Agents]
-    BRAIN[Agent Brain]
-    TOOL_EXEC[Tool Executor]
-    PLAT[Platform Services]
-
-    LLM[LLM Providers]
-    TOOLS[Builtin Tools]
-    API_EXT[External APIs]
-    MCP[MCP]
-
-    %% Vertical flow connections
-    CLI --> TE
-    API --> TE
-
-    TE --> ORCH
-    TE --> AGENTS
-    AGENTS --> BRAIN
-    BRAIN --> LLM
-
-    ORCH --> TOOL_EXEC
-    TOOL_EXEC --> TOOLS
-    TOOL_EXEC --> MCP
-    MCP --> API_EXT
-
-    TE --> PLAT
-
-    %% Styling for rounded corners
-    classDef default stroke:#333,stroke-width:2px,rx:10,ry:10
-    classDef client stroke:#1976d2,stroke-width:2px,rx:10,ry:10
-    classDef core stroke:#388e3c,stroke-width:2px,rx:10,ry:10
-    classDef external stroke:#f57c00,stroke-width:2px,rx:10,ry:10
-    classDef platform stroke:#7b1fa2,stroke-width:2px,rx:10,ry:10
-
-    %% Apply styles to specific nodes
-    class CLI,API client
-    class TE,ORCH,AGENTS,BRAIN core
-    class LLM,API_EXT,MCP external
-    class TOOL_EXEC,TOOLS,PLAT platform
-```
+- **Task Executor**: Manages task lifecycle, workspace, and tool execution
+- **Orchestrator**: Handles agent routing and coordination decisions
+- **Team of Agents**: Specialized agents that perform the actual work
+- **ToolManager**: Provides secure, isolated tool execution per task
+- **Platform Services**: Shared services for memory, storage, and observability
 
 You can discover more design details from following documents:
 

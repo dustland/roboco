@@ -242,28 +242,28 @@ sequenceDiagram
     participant Agent
     participant ToolExecutor
 
-    Client->>AgentX: POST /chat (User Message)
+    Client->>AgentX: POST /chat with User Message
 
     activate AgentX
     AgentX->>Agent: invoke
 
     Agent-->>AgentX: Generate ToolCallPart
-    AgentX-->>Client: Stream Packet 1 (Message with ToolCallPart)
-    Note over Client: UI displays "Calling write_file..."
+    AgentX-->>Client: Stream Packet with ToolCallPart
+    Note over Client: UI displays tool call status
 
-    AgentX->>ToolExecutor: execute(tool_call)
+    AgentX->>ToolExecutor: execute tool call
     ToolExecutor-->>AgentX: result
 
-    AgentX-->>Client: Stream Packet 2 (Message with ToolResultPart)
-    Note over Client: UI displays "Tool successful."
+    AgentX-->>Client: Stream Packet with ToolResultPart
+    Note over Client: UI displays tool success
 
-    AgentX->>Agent: provide_result
+    AgentX->>Agent: provide result
     Agent->>AgentX: Generate TextPart stream
 
     loop Text Streaming
-        AgentX-->>Client: Stream Packet 3...N (Message with TextPart chunks)
+        AgentX-->>Client: Stream Packets with TextPart chunks
     end
-    Note over Client: UI streams final text response.
+    Note over Client: UI streams final text response
 
     deactivate AgentX
 ```

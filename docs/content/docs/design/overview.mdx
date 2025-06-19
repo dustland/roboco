@@ -26,51 +26,31 @@ The architecture rests on the following foundational principles:
 
 ```mermaid
 graph TD
-    %% Client Layer
-    CLI[CLI Interface]
-    API[REST / WebSocket API]
+    CLI["CLI Interface"]
+    API["REST / WebSocket API"]
+    TE["Task Executor"]
+    ORCH["Orchestrator"]
+    AGENTS["Team of Agents"]
+    BRAIN["Agent Brain"]
+    TM["Tool Manager"]
+    PLAT["Platform Services"]
+    LLM["LLM Providers"]
+    TOOLS["Builtin Tools"]
+    API_EXT["External APIs"]
+    MCP["MCP"]
 
-    %% AgentX Core
-    TE[Task Executor]
-    ORCH[Orchestrator]
-    AGENTS[Team of Agents]
-    BRAIN[Agent Brain]
-    TOOL_EXEC[Tool Executor]
-    PLAT[Platform Services]
-
-    LLM[LLM Providers]
-    TOOLS[Builtin Tools]
-    API_EXT[External APIs]
-    MCP[MCP]
-
-    %% Vertical flow connections
     CLI --> TE
     API --> TE
-
     TE --> ORCH
     TE --> AGENTS
+    TE --> TM
     AGENTS --> BRAIN
+    AGENTS --> TM
     BRAIN --> LLM
-
-    ORCH --> TOOL_EXEC
-    TOOL_EXEC --> TOOLS
-    TOOL_EXEC --> MCP
+    TM --> TOOLS
+    TM --> MCP
     MCP --> API_EXT
-
     TE --> PLAT
-
-    %% Styling for rounded corners
-    classDef default stroke:#333,stroke-width:2px,rx:10,ry:10
-    classDef client stroke:#1976d2,stroke-width:2px,rx:10,ry:10
-    classDef core stroke:#388e3c,stroke-width:2px,rx:10,ry:10
-    classDef external stroke:#f57c00,stroke-width:2px,rx:10,ry:10
-    classDef platform stroke:#7b1fa2,stroke-width:2px,rx:10,ry:10
-
-    %% Apply styles to specific nodes
-    class CLI,API client
-    class TE,ORCH,AGENTS,BRAIN core
-    class LLM,API_EXT,MCP external
-    class TOOL_EXEC,TOOLS,PLAT platform
 ```
 
 The AgentX architecture is composed of four distinct layers:
@@ -86,9 +66,9 @@ In AgentX, a **Team** of collaborating agents is the primary mechanism for execu
 
 ### 4.1 Key Roles
 
-- **Task Executor**: Owns the end-to-end lifecycle of a single task. It acts as the primary workflow engine, responsible for provisioning the workspace, managing the overall task state, and deciding which agent to invoke in each turn of the conversation.
-- **Orchestrator**: Acts as a dedicated, centralized service for tool management. It does **not** route between agents. Instead, it is invoked _by_ an agent when it needs to run a tool. The Orchestrator's sole responsibilities are to validate tool-call requests against their schemas, dispatch them to the secure `ToolExecutor`, and return the results to the calling agent.
-- **Agent**: Encapsulates a specialised role (e.g., _researcher_, _writer_). It receives control from the `Task Executor`, reasons with its private **Brain**, and can invoke the `Orchestrator` if it needs to execute a tool.
+- **Task Executor**: Owns the end-to-end lifecycle of a single task. It acts as the primary workflow engine, responsible for provisioning the workspace, managing the overall task state, deciding which agent to invoke in each turn of the conversation, and providing secure tool execution capabilities through its integrated `ToolManager`.
+- **Orchestrator**: Acts as a dedicated service for intelligent agent routing and coordination. It makes decisions about which agent should execute next and when tasks should be completed, but does **not** handle tool execution. The Orchestrator focuses purely on multi-agent coordination logic.
+- **Agent**: Encapsulates a specialised role (e.g., _researcher_, _writer_). It receives control from the `Task Executor`, reasons with its private **Brain**, and can execute tools directly through the `ToolManager` provided by the Task Executor. Agents no longer need to request tool execution from the Orchestrator.
 
 ### 4.2 Execution Modes
 
@@ -101,21 +81,21 @@ This "fire-and-forget" mode is ideal for production. A client submits a task and
 ```mermaid
 sequenceDiagram
     participant C as Client
-    participant TX as Task Executor
+    participant TX as TaskExecutor
     participant AG as Agent
+    participant TM as ToolManager
     participant OR as Orchestrator
-    participant TE as Tool Executor
 
-    C->>TX: execute_task(prompt)
+    C->>TX: execute task with prompt
     loop Autonomous Loop
-        TX->>AG: invoke_agent
-        AG-->>OR: request_tool_execution
-        OR-->>TE: dispatch_tool
-        TE-->>OR: return_result
-        OR-->>AG: provide_result
-        AG-->>TX: return_turn_response
+        TX->>AG: invoke agent
+        AG->>TM: execute tool calls
+        TM-->>AG: return tool results
+        AG-->>TX: return turn response
+        TX->>OR: decide next step
+        OR-->>TX: routing decision
     end
-    TX-->>C: final_result
+    TX-->>C: final result
 ```
 
 **2. Interactive Execution (`start_task` & `step`)**
@@ -125,23 +105,23 @@ For debugging or human-in-the-loop workflows, a client can call `start_task` to 
 ```mermaid
 sequenceDiagram
     participant C as Client
-    participant TX as Task Executor
+    participant TX as TaskExecutor
     participant AG as Agent
+    participant TM as ToolManager
     participant OR as Orchestrator
-    participant TE as Tool Executor
 
-    C->>TX: start_task(prompt)
-    TX-->>C: task_object
+    C->>TX: start task with prompt
+    TX-->>C: task object
 
     loop Interactive Steps
-        C->>TX: task.step()
-        TX->>AG: invoke_agent
-        AG-->>OR: request_tool_execution
-        OR-->>TE: dispatch_tool
-        TE-->>OR: return_result
-        OR-->>AG: provide_result
-        AG-->>TX: return_turn_response
-        TX-->>C: step_result
+        C->>TX: call task step
+        TX->>AG: invoke agent
+        AG->>TM: execute tool calls
+        TM-->>AG: return tool results
+        AG-->>TX: return turn response
+        TX->>OR: decide next step
+        OR-->>TX: routing decision
+        TX-->>C: step result
     end
 ```
 
@@ -165,38 +145,35 @@ This just-in-time templating allows agents to be both powerful and reusable, ada
 When an agent is invoked by the `Task Executor`, it enters a sophisticated internal loop to produce the most informed output possible. This loop includes a crucial self-correction mechanism for tool usage.
 
 1.  **Initial Reasoning**: The `Agent` passes the prompt to its `Brain` (LLM), which generates an initial response that may include one or more desired tool calls.
-2.  **Request Execution**: The `Agent` requests execution for these tool calls from the `Orchestrator`.
-3.  **Validation and Self-Correction**: The `Orchestrator` validates the calls against the registered tool schemas.
-    - If a call is invalid, the `Orchestrator` immediately returns a structured validation error. The `Agent` then passes this error back to the `Brain`, which attempts to generate a corrected tool call. This loop continues until the call is valid.
-4.  **Secure Dispatch**: Once a tool call is valid, the `Orchestrator` dispatches it to the `ToolExecutor`, which runs the tool in a secure sandbox.
-5.  **Result Integration**: The results are returned up the chain to the `Agent`, which gives them to the `Brain`. The `Brain` uses this new information to generate its final, grounded response for the turn.
+2.  **Direct Tool Execution**: The `Agent` executes tool calls directly through the `ToolManager` provided by the Task Executor. This eliminates the need for inter-component communication and provides faster, more secure tool execution.
+3.  **Validation and Self-Correction**: The `ToolManager` validates the calls against the registered tool schemas and security policies.
+    - If a call is invalid, the `ToolManager` immediately returns a structured validation error. The `Agent` then passes this error back to the `Brain`, which attempts to generate a corrected tool call. This loop continues until the call is valid.
+4.  **Secure Execution**: Once a tool call is valid, the `ToolManager` executes it securely through its integrated `ToolExecutor`, which runs tools in a secure sandbox when necessary.
+5.  **Result Integration**: The results are returned directly to the `Agent`, which gives them to the `Brain`. The `Brain` uses this new information to generate its final, grounded response for the turn.
 6.  **Final Response**: The `Agent` returns its final response to the `Task Executor`, completing its turn.
 
-This entire process ensures that agents can autonomously use tools, correct their own mistakes, and ground their reasoning in real-world information before finalizing their output.
+This streamlined process ensures that agents can autonomously use tools with minimal overhead, correct their own mistakes, and ground their reasoning in real-world information before finalizing their output.
 
 ```mermaid
 sequenceDiagram
     participant TaskExecutor
     participant Agent
     participant Brain
-    participant Orchestrator
-    participant ToolExecutor
+    participant ToolManager
 
     TaskExecutor->>Agent: invoke
     Agent->>Brain: generate response
-    Brain-->>Agent: draft response (with tool call)
+    Brain-->>Agent: draft response with tool call
 
     loop Tool Self-Correction
-        Agent->>Orchestrator: request execution
+        Agent->>ToolManager: execute tool calls
         alt Invalid Tool Call
-            Orchestrator-->>Agent: validation error
+            ToolManager-->>Agent: validation error
             Agent->>Brain: correct tool call
             Brain-->>Agent: corrected tool call
         else Valid Tool Call
-            Orchestrator->>ToolExecutor: dispatch tool
-            ToolExecutor-->>Orchestrator: tool result
-            Orchestrator-->>Agent: return result
-
+            ToolManager->>ToolManager: secure execution
+            ToolManager-->>Agent: tool results
             Agent->>Brain: generate final response
             Brain-->>Agent: final response
             break
@@ -299,7 +276,26 @@ The Observability service provides real-time insight into the inner workings of 
 
 By making the system transparent by default, the Observability service dramatically reduces the time required to build, test, and refine sophisticated agent-based workflows.
 
-## 8. Builtin Tools
+## 8. Tool Management Architecture
+
+The AgentX framework uses a unified **ToolManager** architecture that provides task-level tool isolation and streamlined execution. Each Task Executor creates its own ToolManager instance, ensuring that tool registrations and executions are isolated between different tasks.
+
+### 8.1 ToolManager Components
+
+The ToolManager combines three key components:
+
+- **ToolRegistry**: Manages tool definitions, schemas, and discovery. Handles tool registration and provides JSON schemas for LLM consumption.
+- **ToolExecutor**: Handles secure tool execution with validation, security policies, performance monitoring, and sandbox isolation.
+- **Task Isolation**: Each task gets its own ToolManager instance, preventing tool conflicts and enabling task-specific tool configurations.
+
+### 8.2 Benefits of the New Architecture
+
+- **Simplified Agent Interface**: Agents no longer need to communicate with the Orchestrator for tool execution, reducing complexity and improving performance.
+- **Enhanced Security**: Tool execution happens within the Task Executor's controlled environment with comprehensive security policies and validation.
+- **Better Performance**: Direct tool execution eliminates inter-component communication overhead.
+- **Task Isolation**: Each task maintains its own tool registry, enabling custom tool configurations per task.
+
+## 9. Builtin Tools
 
 Builtin Tools extend AgentX with first-class capabilities without requiring users to write custom plugins. They are registered automatically at startup and are available to any agent subject to security policy. These tools are designed to be general-purpose and cover the most common needs of autonomous agents.
 
@@ -314,14 +310,14 @@ Key builtin tools include:
 
 By providing these foundational capabilities, AgentX ensures that developers can build powerful and effective agent teams from day one.
 
-## 9. Extensibility
+## 10. Extensibility
 
 AgentX is designed as a production-ready backbone, which means it must be extensible at every layer.
 
 - **Adding LLM Providers**: The `Brain` component uses a provider model that allows new LLMs to be integrated by implementing a simple, common interface.
-- **Custom Tools**: Developers can add their own tools by decorating Python functions. These are registered alongside builtin tools and exposed to agents in the same way.
+- **Custom Tools**: Developers can add their own tools by decorating Python functions. These are registered with the task's ToolManager and exposed to agents in the same way as builtin tools.
 - **MCP Tools & API Integration**: For complex integrations, the framework supports Multi-Container Platform (MCP) tools, which run in secure sandboxes, allowing safe interaction with enterprise APIs and SaaS platforms.
 
-## 10. The Future of AgentX
+## 11. The Future of AgentX
 
 AgentX will continue to evolve along three pillars: performance, interoperability, and safety. Upcoming priorities include native support for streaming multimodal models, tighter integration with external knowledge graphs to improve grounding, and progressive guardrail policies that adapt to organisational compliance requirements. We also plan to introduce a plug-and-play planning module so that teams can experiment with alternative orchestration strategies without modifying core code. Finally, deeper observability hooks—spanning trace-level token accounting through to high-level outcome metrics—will help users fine-tune cost, latency, and quality trade-offs.

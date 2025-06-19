@@ -97,26 +97,23 @@ graph TD
     end
 
     subgraph "Memory System"
-        MSL[Event Bus Listener]
-        MSE[Synthesis Engine <br/> "LLM-Powered Logic"]
-        MSB[Memory Backend <br/> "Vector DB + KV Store"]
+        MSL["Event Bus Listener"]
+        MSE["Synthesis Engine<br/>LLM-Powered Logic"]
+        MSB["Memory Backend<br/>Vector DB + KV Store"]
     end
 
-    User -- "Sends Message" --> EventBus
-    Orchestrator -- "Executes Tool" --> EventBus
+    User --> EventBus
+    Orchestrator --> EventBus
 
-    EventBus -- "Receives Events <br/> UserMessage, ToolResult" --> MSL
-    MSL -- "Forwards Events" --> MSE
+    EventBus --> MSL
+    MSL --> MSE
 
-    MSE -- "Analyzes for Constraints" --> MSE
-    MSE -- "Analyzes for Hot-Issues" --> MSE
-    MSE -- "Extracts Content for Indexing" --> MSE
+    MSE --> MSE
+    MSE --> MSB
+    MSB --> MSB
 
-    MSE -- "Persists Memories" --> MSB
-    MSB -- "Stores: <br/> - Constraints <br/> - Hot-Issues <br/> - Vector Embeddings" --> MSB
-
-    Orchestrator -- "get_relevant_context()" --> MSE
-    MSE -- "Queries Backend" --> MSB
-    MSB -- "Returns Memories" --> MSE
-    MSE -- "Injects into Agent Prompt" --> Orchestrator
+    Orchestrator --> MSE
+    MSE --> MSB
+    MSB --> MSE
+    MSE --> Orchestrator
 ```

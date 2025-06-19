@@ -63,57 +63,56 @@ The following diagram and steps describe the end-to-end flow of a tool call, fro
 ```mermaid
 graph TD
     subgraph "Agent"
-        A[Brain] -- "Generates Tool Call" --> B(Agent Core)
+        A["Brain"]
+        B["Agent Core"]
     end
 
-    subgraph "Orchestration Layer"
-        C[Orchestrator]
-        D[ToolRegistry]
-        E[ToolExecutor]
+    subgraph "Task Executor"
+        TM["ToolManager"]
+        TR["ToolRegistry"]
+        TE["ToolExecutor"]
     end
 
     subgraph "Execution Environment"
-        F[Python Function]
-        G[Sandbox] -- "Executes Command" --> H(Shell Command)
+        F["Python Function"]
+        G["Sandbox"]
+        H["Shell Command"]
     end
 
-    B -- "Delegates Call" --> C
-    C -- "Validates against Schema" --> D
-    C -- "Validation FAILED" --> B
-    B -- "Sends Error to LLM for Correction" --> A
-
-    C -- "Validation PASSED<br/>Dispatches for Execution" --> E
-
-    E -- "Python Tool" --> F
-    E -- "Shell Tool" --> G
-
-    F -- "Result" --> E
-    H -- "stdout/stderr" --> G
-    G -- "Result" --> E
-
-    E -- "Returns Structured Result" --> C
-    C -- "Forwards Result" --> B
-    B -- "Formats for LLM &<br/>Adds to Context" --> A
+    A --> B
+    B --> TM
+    TM --> TR
+    TM --> B
+    B --> A
+    TM --> TE
+    TE --> F
+    TE --> G
+    G --> H
+    F --> TE
+    H --> G
+    G --> TE
+    TE --> TM
+    TM --> B
 ```
 
 **Step-by-Step Flow:**
 
-1.  **Generation (Agent Brain)**: The `Orchestrator` provides the `Brain` (LLM) with the conversation history and a list of available tool schemas. The LLM determines a tool call is needed and generates the call in a structured format (e.g., JSON).
+1.  **Generation (Agent Brain)**: The `Agent` provides the `Brain` (LLM) with the conversation history and a list of available tool schemas from its injected `ToolManager`. The LLM determines a tool call is needed and generates the call in a structured format (e.g., JSON).
 
-2.  **Delegation (Agent Core)**: The `Agent`'s core logic receives the raw text from the LLM, parses out the tool call request, and delegates it to the `Orchestrator` for execution. **The agent itself has no permission to execute tools.**
+2.  **Direct Execution (Agent Core)**: The `Agent`'s core logic receives the raw text from the LLM, parses out the tool call request, and executes it directly through the `ToolManager` provided by the Task Executor. **Agents now have direct, secure access to tool execution.**
 
-3.  **Validation (Orchestrator)**: The `Orchestrator` receives the tool call. It retrieves the corresponding schema from the `ToolRegistry` and validates the call. It checks for missing required arguments, incorrect types, etc.
+3.  **Validation (ToolManager)**: The `ToolManager` receives the tool call. It retrieves the corresponding schema from its internal `ToolRegistry` and validates the call. It checks for missing required arguments, incorrect types, security policies, etc.
 
 4.  **Self-Correction Loop (If Validation Fails)**:
 
-    - If validation fails, the `Orchestrator` does **not** attempt to run the tool.
+    - If validation fails, the `ToolManager` does **not** attempt to run the tool.
     - It generates a structured error message (e.g., "Validation Error: Missing required argument 'path' for tool 'write_file'").
-    - This error is sent back to the `Agent`, which in turn passes it back to the `Brain` (LLM) in the next turn.
+    - This error is returned directly to the `Agent`, which passes it back to the `Brain` (LLM) in the next turn.
     - The LLM now has the context of its previous failed attempt and the specific validation error, allowing it to generate a corrected tool call.
 
-5.  **Dispatch (If Validation Succeeds)**: If the call is valid, the `Orchestrator` dispatches it to the `ToolExecutor`.
+5.  **Secure Execution (If Validation Succeeds)**: If the call is valid, the `ToolManager` executes it through its integrated `ToolExecutor`.
 
-6.  **Secure Execution (ToolExecutor)**: The `ToolExecutor` inspects the tool type:
+6.  **Tool Execution**: The `ToolExecutor` inspects the tool type:
 
     - **Python Function**: The call is a standard Python function call. It is executed directly in the main process.
     - **Shell Command**: The command is executed inside a secure, isolated sandbox.
@@ -123,11 +122,9 @@ graph TD
     - For Python functions, this is the return value.
     - For shell commands, this includes `stdout`, `stderr`, and the exit code.
 
-8.  **Structured Result**: The result is packaged into a `ToolResult` object and returned to the `Orchestrator`.
+8.  **Structured Result**: The result is packaged into a `ToolResult` object and returned directly to the `Agent`.
 
-9.  **Forwarding**: The `Orchestrator` forwards the `ToolResult` to the originating `Agent`.
-
-10. **Contextualization**: The `Agent` formats the result into a clear, readable format (e.g., `<tool_result tool_name="write_file">File 'test.txt' written successfully.</tool_result>`) and adds it to the conversation history for the `Brain`'s next turn. The LLM can then use this result to form its final response to the user.
+9.  **Contextualization**: The `Agent` formats the result into a clear, readable format and adds it to the conversation history for the `Brain`'s next turn. The LLM can then use this result to form its final response to the user.
 
 ## 4. Security Architecture: The Sandbox
 
