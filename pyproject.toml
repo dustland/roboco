@@ -82,11 +82,19 @@ monitor = "agentx.run:monitor"
 dev = "agentx.run:dev"
 test = "agentx.run:test"
 
+# Benchmark scripts
+benchmark = "benchmark.main:main"
+benchmark-team1 = "benchmark.main:team1"
+benchmark-team2 = "benchmark.main:team2"
+benchmark-team3 = "benchmark.main:team3"
+benchmark-quick = "benchmark.main:quick_test"
+
 [tool.setuptools]
-package-dir = { "" = "src" }
+package-dir = { "" = "src", "benchmark" = "benchmark" }
 
 [tool.setuptools.packages.find]
-where = ["src"]
+where = ["src", "."]
+include = ["agentx*", "benchmark*"]
 
 [tool.setuptools.package-data]
 agentx = ["py.typed", "**/*.jinja2", "**/*.png"]

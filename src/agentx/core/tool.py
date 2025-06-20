@@ -11,8 +11,19 @@ from dataclasses import dataclass
 from pydantic import BaseModel, Field, create_model
 
 from ..utils.logger import get_logger
+from ..utils.id import generate_short_id
 
 logger = get_logger(__name__)
+
+
+class ToolCall(BaseModel):
+    """Tool call specification with retry policy."""
+    id: str = Field(default_factory=lambda: f"tc_{generate_short_id()}")
+    tool_name: str
+    args: Dict[str, Any]
+    expected_output_type: Optional[str] = None
+    timeout: Optional[int] = None
+    retry_policy: Optional[Dict[str, Any]] = None
 
 
 @dataclass

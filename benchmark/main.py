@@ -19,10 +19,10 @@ from typing import Dict, Any, Optional
 from agentx import start_task
 
 # Import benchmark utilities
-from utils.data_loader import GAIADataLoader
-from utils.progress_tracker import TaskTracker
-from utils.evaluator import GAIAEvaluator
-from utils.output_manager import OutputManager
+from .utils.data_loader import GAIADataLoader
+from .utils.progress_tracker import TaskTracker
+from .utils.evaluator import GAIAEvaluator
+from .utils.output_manager import OutputManager
 
 
 def setup_logging(verbose: bool = False) -> None:
@@ -362,4 +362,33 @@ def main():
 
 
 if __name__ == "__main__":
+    main() 
+
+
+# Convenience functions for pyproject.toml scripts
+def team1():
+    """Run benchmark with team1 configuration."""
+    import sys
+    sys.argv = ["benchmark", "--team", "team1"]
+    main()
+
+
+def team2():
+    """Run benchmark with team2 configuration."""
+    import sys
+    sys.argv = ["benchmark", "--team", "team2"]
+    main()
+
+
+def team3():
+    """Run benchmark with team3 configuration."""
+    import sys
+    sys.argv = ["benchmark", "--team", "team3"]
+    main()
+
+
+def quick_test():
+    """Run a quick benchmark test with team3 and limited questions."""
+    import sys
+    sys.argv = ["benchmark", "--team", "team3", "--limit", "5", "--verbose"]
     main() 

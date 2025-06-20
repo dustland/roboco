@@ -1,6 +1,98 @@
-# GAIA Benchmark for AgentX
+# GAIA Benchmark for AgentX Framework
 
-This benchmark implementation evaluates AgentX multi-agent framework performance on the [GAIA (General AI Assistants) benchmark](https://arxiv.org/abs/2311.12983), a challenging evaluation suite for AI assistants requiring real-world knowledge, multi-step reasoning, and tool usage.
+A comprehensive benchmark implementation for evaluating agent teams on the GAIA (General AI Assistant) dataset using the AgentX multi-agent framework.
+
+## Quick Start
+
+### Using PyProject Scripts (Recommended)
+
+The benchmark includes convenient scripts in `pyproject.toml` for easy execution:
+
+```bash
+# Quick test with 5 questions (team3)
+uv run benchmark-quick
+
+# Run full benchmark with specific teams
+uv run benchmark-team1
+uv run benchmark-team2
+uv run benchmark-team3
+
+# Run benchmark with custom options
+uv run benchmark --team team1 --limit 10 --verbose
+```
+
+### Manual Execution
+
+You can also run the benchmark manually:
+
+```bash
+# Run with team1 configuration
+uv run python benchmark/main.py --team team1
+
+# Run limited test with verbose output
+uv run python benchmark/main.py --team team3 --limit 10 --verbose
+
+# Resume from checkpoint
+uv run python benchmark/main.py --team team1 --resume --checkpoint-dir results/team1_20231201_120000
+```
+
+## Available Scripts
+
+- **`benchmark`**: Main benchmark script with full argument control
+- **`benchmark-team1`**: Run benchmark with team1 configuration
+- **`benchmark-team2`**: Run benchmark with team2 configuration
+- **`benchmark-team3`**: Run benchmark with team3 configuration
+- **`benchmark-quick`**: Quick test with team3 and 5 questions (verbose mode)
+
+## Configuration
+
+### Team Configurations
+
+The benchmark includes three pre-configured team setups:
+
+- **Team 1**: Multi-agent research team (Coordinator, Researcher, Analyst, Synthesizer)
+- **Team 2**: Task-focused team (Planner, Executor, Validator)
+- **Team 3**: Single agent setup (GAIA Agent)
+
+Each team configuration is located in `config/team{1,2,3}/` with:
+
+- `team.yaml`: Team structure and agent definitions
+- `prompts/`: Individual agent prompt templates
+
+### Options
+
+- `--team`: Team configuration (team1, team2, team3)
+- `--limit`: Limit number of questions for testing
+- `--concurrent`: Number of concurrent tasks (default: 3)
+- `--split`: Dataset split - validation or test (default: validation)
+- `--timeout`: Timeout per question in seconds (default: 300)
+- `--resume`: Resume from checkpoint
+- `--checkpoint-dir`: Specific checkpoint directory
+- `--output-dir`: Output directory for results (default: results)
+- `--verbose`: Enable verbose logging
+
+## Output
+
+Results are saved to `results/` directory with:
+
+- Individual question results (JSON)
+- Final aggregated results
+- Evaluation metrics
+- Progress checkpoints
+
+## Evaluation Metrics
+
+- Overall accuracy
+- Per-level accuracy (Level 1, 2, 3)
+- Success rate
+- Average processing time
+- Total processing time
+
+## Requirements
+
+- Python 3.11+
+- AgentX framework installed (`uv pip install -e .`)
+- Required API keys (OpenAI, SERP API, etc.) configured in environment
 
 ## Overview
 

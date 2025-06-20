@@ -1,0 +1,50 @@
+{
+  "overall_accuracy": 0.0,
+  "success_rate": 0.0,
+  "total_questions": 5,
+  "correct_answers": 0,
+  "successful_questions": 0,
+  "error_count": 5,
+  "timeout_count": 0,
+  "level_1_accuracy": 0.0,
+  "level_2_accuracy": 0.0,
+  "level_3_accuracy": 0.0,
+  "avg_processing_time": 0,
+  "total_processing_time": 0,
+  "min_processing_time": 0,
+  "max_processing_time": 0,
+  "level_breakdown": {
+    "level_2": {
+      "total_questions": 3,
+      "completed": 0,
+      "correct": 0,
+      "errors": 3,
+      "timeouts": 0,
+      "accuracy": 0.0,
+      "success_rate": 0.0
+    },
+    "level_1": {
+      "total_questions": 2,
+      "completed": 0,
+      "correct": 0,
+      "errors": 2,
+      "timeouts": 0,
+      "accuracy": 0.0,
+      "success_rate": 0.0
+    }
+  },
+  "error_analysis": {
+    "total_errors": 5,
+    "total_timeouts": 0,
+    "error_types": {
+      "other": 5
+    },
+    "error_rate": 100.0,
+    "timeout_rate": 0.0
+  },
+  "performance_distribution": {
+    "count": 0
+  },
+  "evaluation_timestamp": "{\"timestamp\": \"now\"}",
+  "total_evaluated": 5
+}
