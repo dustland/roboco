@@ -1,0 +1,38 @@
+{
+  "team": "team3",
+  "split": "validation",
+  "total_questions": 2,
+  "completed_questions": 2,
+  "successful_questions": 0,
+  "failed_questions": 2,
+  "timeout_questions": 0,
+  "completion_rate": 1.0,
+  "success_rate": 0.0,
+  "elapsed_time": 0.552264928817749,
+  "elapsed_time_formatted": "0.6s",
+  "eta": "0.0s",
+  "avg_processing_time": 0,
+  "level_stats": {
+    "1": {
+      "completed": 0,
+      "successful": 0,
+      "total": 0
+    },
+    "2": {
+      "completed": 2,
+      "successful": 0,
+      "total": 0
+    },
+    "3": {
+      "completed": 0,
+      "successful": 0,
+      "total": 0
+    },
+    "unknown": {
+      "completed": 0,
+      "successful": 0,
+      "total": 0
+    }
+  },
+  "timestamp": "2025-06-20T12:10:37.057095"
+}

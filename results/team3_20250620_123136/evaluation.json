@@ -1,0 +1,57 @@
+{
+  "overall_accuracy": 60.0,
+  "success_rate": 100.0,
+  "total_questions": 5,
+  "correct_answers": 3,
+  "successful_questions": 5,
+  "error_count": 0,
+  "timeout_count": 0,
+  "level_1_accuracy": 50.0,
+  "level_2_accuracy": 66.66666666666666,
+  "level_3_accuracy": 0.0,
+  "avg_processing_time": 30.757620906829835,
+  "total_processing_time": 153.78810453414917,
+  "min_processing_time": 5.214398145675659,
+  "max_processing_time": 43.12741184234619,
+  "level_breakdown": {
+    "level_1": {
+      "total_questions": 2,
+      "completed": 2,
+      "correct": 1,
+      "errors": 0,
+      "timeouts": 0,
+      "accuracy": 50.0,
+      "success_rate": 100.0
+    },
+    "level_2": {
+      "total_questions": 3,
+      "completed": 3,
+      "correct": 2,
+      "errors": 0,
+      "timeouts": 0,
+      "accuracy": 66.66666666666666,
+      "success_rate": 100.0
+    }
+  },
+  "error_analysis": {
+    "total_errors": 0,
+    "total_timeouts": 0,
+    "error_types": {},
+    "error_rate": 0.0,
+    "timeout_rate": 0.0
+  },
+  "performance_distribution": {
+    "count": 5,
+    "mean": 30.757620906829835,
+    "median": 37.61517834663391,
+    "p25": 26.219830989837646,
+    "p75": 41.61128520965576,
+    "p90": 43.12741184234619,
+    "p95": 43.12741184234619,
+    "min": 5.214398145675659,
+    "max": 43.12741184234619,
+    "std": 15.739183722351466
+  },
+  "evaluation_timestamp": "{\"timestamp\": \"now\"}",
+  "total_evaluated": 5
+}

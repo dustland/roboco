@@ -1,0 +1,48 @@
+{
+  "overall_accuracy": 100.0,
+  "success_rate": 100.0,
+  "total_questions": 1,
+  "correct_answers": 1,
+  "successful_questions": 1,
+  "error_count": 0,
+  "timeout_count": 0,
+  "level_1_accuracy": 0.0,
+  "level_2_accuracy": 100.0,
+  "level_3_accuracy": 0.0,
+  "avg_processing_time": 25.08204174041748,
+  "total_processing_time": 25.08204174041748,
+  "min_processing_time": 25.08204174041748,
+  "max_processing_time": 25.08204174041748,
+  "level_breakdown": {
+    "level_2": {
+      "total_questions": 1,
+      "completed": 1,
+      "correct": 1,
+      "errors": 0,
+      "timeouts": 0,
+      "accuracy": 100.0,
+      "success_rate": 100.0
+    }
+  },
+  "error_analysis": {
+    "total_errors": 0,
+    "total_timeouts": 0,
+    "error_types": {},
+    "error_rate": 0.0,
+    "timeout_rate": 0.0
+  },
+  "performance_distribution": {
+    "count": 1,
+    "mean": 25.08204174041748,
+    "median": 25.08204174041748,
+    "p25": 25.08204174041748,
+    "p75": 25.08204174041748,
+    "p90": 25.08204174041748,
+    "p95": 25.08204174041748,
+    "min": 25.08204174041748,
+    "max": 25.08204174041748,
+    "std": 0.0
+  },
+  "evaluation_timestamp": "{\"timestamp\": \"now\"}",
+  "total_evaluated": 1
+}

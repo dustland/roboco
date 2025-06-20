@@ -15,7 +15,7 @@ if TYPE_CHECKING:
 # Note: ToolCall and ToolResult are defined in core.tool, not here. This separation is intentional:
 # - ToolCall/ToolResult = tool execution models (core.tool)
 # - ToolCallPart/ToolResultPart = conversation representations (here in message.py)
-# The conversation parts contain/reference the tool execution models
+# The conversation parts are self-contained and don't depend on tool execution models
 
 class Artifact(BaseModel):
     """Artifact reference with versioning and metadata."""
@@ -39,9 +39,12 @@ class TextPart(BaseModel):
     confidence: Optional[float] = None  # LLM confidence score
 
 class ToolCallPart(BaseModel):
-    """Tool call request part."""
+    """Tool call request part - conversation representation."""
     type: Literal["tool_call"] = "tool_call"
-    tool_call: "ToolCall"
+    tool_call_id: str
+    tool_name: str
+    args: Dict[str, Any]
+    expected_output_type: Optional[str] = None
 
 class ToolResultPart(BaseModel):
     """Tool execution result part."""

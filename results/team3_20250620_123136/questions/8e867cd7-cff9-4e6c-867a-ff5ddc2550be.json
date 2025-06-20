@@ -1,0 +1,11 @@
+{
+  "question_id": "8e867cd7-cff9-4e6c-867a-ff5ddc2550be",
+  "question": "How many studio albums were published by Mercedes Sosa between 2000 and 2009 (included)? You can use the latest 2022 version of english wikipedia.",
+  "predicted_answer": "Mercedes Sosa published **2 studio albums** between 2000 and 2009: \"Cantora 1\" and \"Cantora 2,\" both released in 2009.",
+  "ground_truth": "3",
+  "level": "1",
+  "processing_time": 37.61517834663391,
+  "status": "completed",
+  "error": null,
+  "timestamp": "2025-06-20T12:32:15.163654"
+}

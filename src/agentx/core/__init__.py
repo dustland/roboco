@@ -40,3 +40,6 @@ __all__ = [
     "StreamError",
     "StreamComplete"
 ] 
+
+# Note: No model rebuilds needed since ToolCallPart is now self-contained
+# and doesn't have forward references to ToolCall 

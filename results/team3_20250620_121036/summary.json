@@ -1,0 +1,19 @@
+{
+  "total_questions": 2,
+  "completed": 0,
+  "errors": 2,
+  "timeouts": 0,
+  "completion_rate": 0.0,
+  "error_rate": 100.0,
+  "timeout_rate": 0.0,
+  "avg_processing_time": 0,
+  "total_processing_time": 0,
+  "level_stats": {
+    "level_2": {
+      "total": 2,
+      "completed": 0,
+      "completion_rate": 0.0
+    }
+  },
+  "generated_at": "2025-06-20T12:10:37.057749"
+}

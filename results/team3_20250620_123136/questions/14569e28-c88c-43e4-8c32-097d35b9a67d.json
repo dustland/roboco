@@ -1,0 +1,11 @@
+{
+  "question_id": "14569e28-c88c-43e4-8c32-097d35b9a67d",
+  "question": "In Unlambda, what exact charcter or text needs to be added to correct the following code to output \"For penguins\"? If what is needed is a character, answer with the name of the character. If there are different names for the character, use the shortest. The text location is not needed. Code:\n\n`r```````````.F.o.r. .p.e.n.g.u.i.n.si",
+  "predicted_answer": "The exact character needed to correct the Unlambda code to output \"For penguins\" is the **backtick** (`). \n\nAnswer: backtick",
+  "ground_truth": "backtick",
+  "level": "2",
+  "processing_time": 5.214398145675659,
+  "status": "completed",
+  "error": null,
+  "timestamp": "2025-06-20T12:32:24.446373"
+}

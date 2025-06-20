@@ -829,11 +829,12 @@ class TaskExecutor:
                             "type": "text",
                             "content": part.text
                         })
-                    elif hasattr(part, 'tool_call'):
+                    elif isinstance(part, ToolCallPart):
                         step_data["parts"].append({
                             "type": "tool_call",
-                            "tool_name": part.tool_call.tool_name,
-                            "arguments": part.tool_call.arguments
+                            "tool_call_id": part.tool_call_id,
+                            "tool_name": part.tool_name,
+                            "arguments": part.args
                         })
                     elif hasattr(part, 'tool_result'):
                         step_data["parts"].append({
