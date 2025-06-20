@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="docs/public/logo.png" alt="AgentX Logo" width="120">
+  <img src="https://dustland.github.io/agentx/logo.png" alt="AgentX Logo" width="120">
   <h1 align="center">AgentX</h1>
 </div>
 

@@ -75,10 +75,14 @@ class SecurityPolicy:
             "get_context", "set_context", "create_plan", 
             "update_task_status", "get_plan_status",
             # Search and weather tools
-            "web_search", "serpapi_search", "get_weather"
+            "web_search", "serpapi_search", "get_weather",
+            # Web content tools
+            "extract_content", "crawl_website", "automate_browser",
+            # News and search tools
+            "news_search"
         ],
         "research_agent": [
-            "web_search", "serpapi_search", "read_file", "store_artifact"
+            "web_search", "serpapi_search", "extract_content", "news_search", "read_file", "store_artifact"
         ],
         "writer_agent": [
             "read_file", "write_file", "store_artifact", "get_artifact"

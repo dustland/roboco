@@ -108,25 +108,23 @@ class WebTool(Tool):
             )
         
         try:
-            # Prepare options
-            options = {
-                "formats": ["markdown", "html"],
-                "includeTags": include_tags or ["title", "meta"],
-                "excludeTags": exclude_tags or ["nav", "footer", "aside"],
-                "waitFor": 2000,  # Wait for JS to load
-            }
+            # Use the correct Firecrawl API call format
+            result = self._firecrawl_client.scrape_url(
+                url, 
+                formats=["markdown", "html"],
+                include_tags=include_tags or ["title", "meta"],
+                exclude_tags=exclude_tags or ["nav", "footer", "aside"],
+                wait_for=2000  # Wait for JS to load
+            )
             
-            result = self._firecrawl_client.scrape_url(url, options)
-            
-            if result.get("success"):
-                data = result.get("data", {})
-                
+            # Handle the ScrapeResponse object (Pydantic model with attributes)
+            if result.success:
                 web_content = WebContent(
                     url=url,
-                    title=data.get("title", ""),
-                    content=data.get("content", ""),
-                    markdown=data.get("markdown", ""),
-                    metadata=data.get("metadata", {}),
+                    title=result.metadata.get("title", "") if result.metadata else "",
+                    content=result.markdown or "",
+                    markdown=result.markdown or "",
+                    metadata=result.metadata or {},
                     success=True
                 )
                 
@@ -136,10 +134,11 @@ class WebTool(Tool):
                     metadata={"url": url, "extraction_method": "firecrawl"}
                 )
             else:
+                error_msg = result.error or "Unknown error occurred"
                 return ToolResult(
                     success=False,
-                    result=None,
-                    error=result.get("error", "Unknown error")
+                    error=f"Firecrawl extraction failed: {error_msg}",
+                    metadata={"url": url}
                 )
                 
         except Exception as e:
@@ -175,26 +174,25 @@ class WebTool(Tool):
             )
         
         try:
-            options = {
-                "limit": limit,
-                "formats": ["markdown"],
-                "excludePaths": exclude_paths or ["/admin", "/login"],
-            }
+            result = self._firecrawl_client.crawl_url(
+                url,
+                limit=limit,
+                formats=["markdown"],
+                exclude_paths=exclude_paths or ["/admin", "/login"]
+            )
             
-            result = self._firecrawl_client.crawl_url(url, options)
-            
-            if result.get("success"):
-                pages = result.get("data", [])
+            # Handle the CrawlStatusResponse object (Pydantic model with attributes)
+            if result.success:
                 web_contents = [
                     WebContent(
-                        url=page.get("url", ""),
-                        title=page.get("title", ""),
-                        content=page.get("content", ""),
-                        markdown=page.get("markdown", ""),
-                        metadata=page.get("metadata", {}),
+                        url=page.metadata.get("sourceURL", "") if page.metadata else "",
+                        title=page.metadata.get("title", "") if page.metadata else "",
+                        content=page.markdown or "",
+                        markdown=page.markdown or "",
+                        metadata=page.metadata or {},
                         success=True
                     )
-                    for page in pages
+                    for page in (result.data or [])
                 ]
                 
                 return ToolResult(
@@ -203,10 +201,11 @@ class WebTool(Tool):
                     metadata={"base_url": url, "pages_crawled": len(web_contents)}
                 )
             else:
+                error_msg = getattr(result, 'error', 'Unknown error occurred')
                 return ToolResult(
                     success=False,
-                    result=None,
-                    error=result.get("error", "Crawl failed")
+                    error=f"Firecrawl crawl failed: {error_msg}",
+                    metadata={"base_url": url}
                 )
                 
         except Exception as e:
