@@ -19,7 +19,7 @@ from .tool.models import Tool, tool
 # Logging utilities
 from .utils.logger import setup_clean_chat_logging, set_log_level
 
-__version__ = "0.11.1"
+__version__ = "0.11.2"
 
 __all__ = [
     # Main API - primary entry points
