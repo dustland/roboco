@@ -1,107 +1,48 @@
 [build-system]
-requires = ["setuptools>=42", "wheel"]
+requires = [ "setuptools>=42", "wheel",]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "agentx-py"
-version = "0.9.3"
+version = "0.9.4"
 description = "AgentX - An Opinionated Multi-Agent Framework"
-authors = [{ name = "Dustland Team", email = "hi@dustland.ai" }]
 readme = "README.md"
 requires-python = ">=3.11"
-classifiers = [
-    "Programming Language :: Python :: 3.11",
-    "Operating System :: OS Independent",
-]
+classifiers = [ "Programming Language :: Python :: 3.11", "Operating System :: OS Independent",]
 license = "Apache-2.0"
-dependencies = [
-    # Core Framework
-    "fastapi>=0.104.0",
-    "uvicorn>=0.24.0",
-    "pydantic>=2.7.1",
-    "python-dotenv>=1.0.0",
-    "pyyaml>=6.0.1",
-    "rich>=13.6.0",
-    "loguru",
-    # Opinionated Integrations (Best-in-Class)
-    "litellm",                      # LLM provider routing
-    "openai>=1.0.0",                # LLM inference with function calling
-    "google-search-results>=2.4.2", # SERP API for web search (built-in)
-    "mem0ai>=0.1.106",              # Intelligent memory management
-    "mcp>=1.4.1",                   # Model Context Protocol for tools
-    "firecrawl-py>=0.0.16",         # Web content extraction (replaces Jina)
-    "browser-use>=0.1.0",           # AI-first browser automation
-    # Supporting Libraries
-    "numpy>=1.24.3",
-    "requests>=2.31.0",       # HTTP library
-    "httpx>=0.24.0",          # Async HTTP client
-    "aiohttp>=3.8.0",         # HTTP client for server demos
-    "beautifulsoup4>=4.12.0", # HTML parsing (fallback)
-    "markdown>=3.4.0",        # Markdown processing
-    "jinja2>=3.1.6",          # Template engine
-    # Database & Storage
-    "sqlmodel>=0.0.8",   # SQL ORM
-    "sqlalchemy>=2.0.0", # SQL toolkit
-    "chromadb>=1.0.12",  # Vector database
-    "pyarrow>=19.0.1",   # Columnar data
-    "aiofiles>=24.1.0",
-    "gitpython>=3.1.44",
-    "pygithub>=2.6.1",
+dependencies = [ "fastapi>=0.104.0", "uvicorn>=0.24.0", "pydantic>=2.7.1", "python-dotenv>=1.0.0", "pyyaml>=6.0.1", "rich>=13.6.0", "loguru", "litellm", "openai>=1.0.0", "google-search-results>=2.4.2", "mem0ai>=0.1.106", "mcp>=1.4.1", "firecrawl-py>=0.0.16", "browser-use>=0.1.0", "numpy>=1.24.3", "requests>=2.31.0", "httpx>=0.24.0", "aiohttp>=3.8.0", "beautifulsoup4>=4.12.0", "markdown>=3.4.0", "jinja2>=3.1.6", "sqlmodel>=0.0.8", "sqlalchemy>=2.0.0", "chromadb>=1.0.12", "pyarrow>=19.0.1", "aiofiles>=24.1.0", "gitpython>=3.1.44", "pygithub>=2.6.1",]
+[[project.authors]]
+name = "Dustland Team"
+email = "hi@dustland.ai"
 
-]
+[dependency-groups]
+dev = [ "toml>=0.10.2",]
 
 [project.optional-dependencies]
-dev = ["pytest", "pytest-cov", "pytest-asyncio", "uv"]
-code-execution = [
-    "daytona>=0.1.0",
-] # Opinionated: Daytona for sub-90ms sandboxes
-web-automation = [
-    "browser-use>=0.1.0",
-    "playwright>=1.40.0",
-] # AI-first browser automation
-all = [
-    "streamlit>=1.32.0",
-    "daytona>=0.1.0",
-    "browser-use>=0.1.0",
-    "playwright>=1.40.0",
-]
+dev = [ "pytest", "pytest-cov", "pytest-asyncio", "uv",]
+code-execution = [ "daytona>=0.1.0",]
+web-automation = [ "browser-use>=0.1.0", "playwright>=1.40.0",]
+all = [ "streamlit>=1.32.0", "daytona>=0.1.0", "browser-use>=0.1.0", "playwright>=1.40.0",]
 
 [project.urls]
-"Homepage" = "https://github.com/dustland/agentx"
+Homepage = "https://github.com/dustland/agentx"
 "Bug Tracker" = "https://github.com/dustland/agentx/issues"
 
 [project.scripts]
-# Universal CLI (primary interface)
 agentx = "agentx.cli.main:app"
-
-# Individual commands (backward compatibility)
 start = "agentx.run:start"
 monitor = "agentx.run:monitor"
-
-# Development scripts
 dev = "agentx.run:dev"
 test = "agentx.run:test"
-
-# Benchmark scripts
 benchmark = "benchmark.main:main"
 benchmark-team1 = "benchmark.main:team1"
 benchmark-team2 = "benchmark.main:team2"
 benchmark-team3 = "benchmark.main:team3"
 benchmark-quick = "benchmark.main:quick_test"
 
-[tool.setuptools]
-package-dir = { "" = "src", "benchmark" = "benchmark" }
-
-[tool.setuptools.packages.find]
-where = ["src", "."]
-include = ["agentx*", "benchmark*"]
-
-[tool.setuptools.package-data]
-agentx = ["py.typed", "**/*.jinja2", "**/*.png"]
-
 [tool.black]
 line-length = 88
-target-version = ["py38"]
+target-version = [ "py38",]
 
 [tool.isort]
 profile = "black"
@@ -117,49 +58,31 @@ check_untyped_defs = true
 disallow_untyped_decorators = true
 no_implicit_optional = true
 strict_optional = true
-
 [[tool.mypy.overrides]]
-module = [
-    "setuptools.*",
-    "google.*",
-    "langchain.*",
-    "transformers.*",
-    "bs4.*",
-    "requests.*",
-    "feedparser.*",
-    "numpy.*",
-    "PIL.*",
-    "openai.*",
-    "qdrant_client.*",
-    "uvicorn.*",
-    "fastapi.*",
-    "markdown.*",
-    "rich.*",
-    "pymongo.*",
-    "github.*",
-    "arxiv.*",
-    "daytona.*",
-    "firecrawl.*",
-    "browser_use.*",
-    "playwright.*",
-]
+module = [ "setuptools.*", "google.*", "langchain.*", "transformers.*", "bs4.*", "requests.*", "feedparser.*", "numpy.*", "PIL.*", "openai.*", "qdrant_client.*", "uvicorn.*", "fastapi.*", "markdown.*", "rich.*", "pymongo.*", "github.*", "arxiv.*", "daytona.*", "firecrawl.*", "browser_use.*", "playwright.*",]
 ignore_missing_imports = true
 
-[tool.hatch.build.targets.wheel]
-packages = ["src/agentx"]
+[tool.setuptools.package-dir]
+"" = "src"
+benchmark = "benchmark"
 
-[tool.hatch.build.targets.sdist]
-include = ["src/agentx", "config", "examples", "tests", "README.md", "LICENSE"]
+[tool.setuptools.package-data]
+agentx = [ "py.typed", "**/*.jinja2", "**/*.png",]
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
+testpaths = [ "tests",]
 python_files = "test_*.py"
 python_functions = "test_*"
 
 [tool.uv.workspace]
-members = ["examples/superwriter"]
+members = [ "examples/superwriter",]
 
-[dependency-groups]
-dev = [
-    "toml>=0.10.2",
-]
+[tool.setuptools.packages.find]
+where = [ "src", ".",]
+include = [ "agentx*", "benchmark*",]
+
+[tool.hatch.build.targets.wheel]
+packages = [ "src/agentx",]
+
+[tool.hatch.build.targets.sdist]
+include = [ "src/agentx", "config", "examples", "tests", "README.md", "LICENSE",]
