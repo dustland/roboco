@@ -158,3 +158,8 @@ python_functions = "test_*"
 
 [tool.uv.workspace]
 members = ["examples/superwriter"]
+
+[dependency-groups]
+dev = [
+    "toml>=0.10.2",
+]

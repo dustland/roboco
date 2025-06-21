@@ -35,36 +35,31 @@ class Orchestrator:
         timeout: int = 3600,
         memory_system: Optional['MemorySystem'] = None
     ):
+        """
+        Initialize orchestrator for task coordination.
+        
+        Args:
+            task: Task instance to orchestrate (optional for standalone routing)
+            max_rounds: Maximum execution rounds
+            timeout: Task timeout in seconds
+            memory_system: Optional memory system instance
+        """
         self.task = task
         self.max_rounds = max_rounds
         self.timeout = timeout
         self.memory_system = memory_system
+        self.routing_brain = None  # Will be initialized lazily
         
-        # Initialize routing brain - REQUIRED for teams
         if task:
             if not task.agents:
-                raise ValueError(f"Task '{task.task_id}' has no agents configured")
-            
-            orchestrator_config = getattr(task.team_config, 'orchestrator', None)
-            if orchestrator_config and hasattr(orchestrator_config, 'brain_config'):
-                # Use explicit orchestrator brain config if provided
-                self.routing_brain = Brain.from_config(orchestrator_config.brain_config)
-            else:
-                # Use the first agent's brain config for routing decisions
-                first_agent = list(task.agents.values())[0]
-                self.routing_brain = Brain.from_config(first_agent.config.brain_config)
-            
-            # Routing brain is mandatory for teams
-            if not self.routing_brain:
-                raise RuntimeError(f"Failed to initialize routing brain for task '{task.task_id}'")
+                logger.warning(f"Task '{task.task_id}' has no agents configured yet - routing brain will be initialized later")
             
             # Initialize memory system if not provided
             if not self.memory_system:
                 self._initialize_memory_system()
                 
-            logger.info(f"Orchestrator initialized with task '{task.task_id}' (routing brain: enabled, memory: {'enabled' if self.memory_system else 'disabled'})")
+            logger.info(f"Orchestrator initialized with task '{task.task_id}' (routing brain: deferred, memory: {'enabled' if self.memory_system else 'disabled'})")
         else:
-            self.routing_brain = None
             logger.info("Orchestrator initialized without task (pure routing only)")
 
     def _initialize_memory_system(self) -> None:
@@ -86,6 +81,36 @@ class Orchestrator:
         except Exception as e:
             logger.warning(f"Failed to initialize memory system: {e}")
             self.memory_system = None
+
+    def _ensure_routing_brain(self):
+        """Ensure routing brain is initialized when needed."""
+        if self.routing_brain is not None:
+            return
+            
+        if not self.task or not self.task.agents:
+            raise RuntimeError("Cannot initialize routing brain: no task or agents available")
+        
+        try:
+            orchestrator_config = getattr(self.task.team_config, 'orchestrator', None)
+            if orchestrator_config and hasattr(orchestrator_config, 'brain_config'):
+                # Use explicit orchestrator brain config if provided
+                logger.debug(f"Using explicit orchestrator brain config")
+                self.routing_brain = Brain.from_config(orchestrator_config.brain_config)
+            else:
+                # Use the first agent's brain config for routing decisions
+                first_agent = list(self.task.agents.values())[0]
+                logger.debug(f"Using first agent '{first_agent.name}' brain config for routing")
+                self.routing_brain = Brain.from_config(first_agent.config.brain_config)
+            
+            # Routing brain is mandatory for teams
+            if not self.routing_brain:
+                raise RuntimeError(f"Brain.from_config() returned None for task '{self.task.task_id}'")
+                
+            logger.info(f"Routing brain initialized successfully for task '{self.task.task_id}'")
+            
+        except Exception as e:
+            logger.error(f"Failed to initialize routing brain: {e}")
+            raise
 
     # ============================================================================
     # AGENT ROUTING - Intelligent coordination decisions
@@ -166,6 +191,9 @@ class Orchestrator:
         current_agent = context.get("current_agent")
         
         try:
+            # Ensure routing brain is initialized
+            self._ensure_routing_brain()
+            
             # Get relevant handoffs for current agent
             filtered_handoffs = self._filter_relevant_handoffs(current_agent)
             
@@ -173,6 +201,9 @@ class Orchestrator:
             prompt = self._build_prompt(current_agent, last_response, filtered_handoffs)
             
             # Get brain decision
+            if not self.routing_brain:
+                raise RuntimeError("Routing brain is None after initialization attempt")
+            
             brain_response = await self.routing_brain.generate_response(
                 messages=[{"role": "user", "content": prompt}]
             )

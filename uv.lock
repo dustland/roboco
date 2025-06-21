@@ -65,6 +65,11 @@ web-automation = [
     { name = "playwright" },
 ]
 
+[package.dev-dependencies]
+dev = [
+    { name = "toml" },
+]
+
 [package.metadata]
 requires-dist = [
     { name = "aiofiles", specifier = ">=24.1.0" },
@@ -108,6 +113,9 @@ requires-dist = [
     { name = "uvicorn", specifier = ">=0.24.0" },
 ]
 provides-extras = ["dev", "code-execution", "web-automation", "all"]
+
+[package.metadata.requires-dev]
+dev = [{ name = "toml", specifier = ">=0.10.2" }]
 
 [[package]]
 name = "aiofiles"

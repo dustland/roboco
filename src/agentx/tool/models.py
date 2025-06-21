@@ -174,7 +174,7 @@ class ToolRegistryEntry(BaseModel):
     pydantic_model: Optional[BaseModel] = Field(default=None, exclude=True)
     name: str
     description: str
-    schema: Dict[str, Any]
+    tool_schema: Dict[str, Any]  # Renamed from 'schema' to avoid shadowing BaseModel.schema()
     
     class Config:
         arbitrary_types_allowed = True

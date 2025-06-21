@@ -7,7 +7,7 @@ This module provides the main Memory System interface that coordinates:
 - Context retrieval for agent prompt enhancement
 """
 
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, TYPE_CHECKING
 from datetime import datetime
 import logging
 
@@ -16,6 +16,10 @@ from .synthesis_engine import MemorySynthesisEngine
 from .types import MemoryItem, MemoryQuery, MemorySearchResult, MemoryType
 from ..event.types import Event
 from ..utils.logger import get_logger
+
+# Import Brain at runtime to avoid circular dependency
+if TYPE_CHECKING:
+    from ..core.brain import Brain
 
 logger = get_logger(__name__)
 
@@ -213,7 +217,7 @@ class MemorySystem:
 
 
 # Convenience function for creating memory systems
-def create_memory_system(backend: MemoryBackend, brain=None) -> MemorySystem:
+def create_memory_system(backend: MemoryBackend, brain: Optional['Brain'] = None) -> MemorySystem:
     """Create a memory system with synthesis engine."""
     synthesis_engine = MemorySynthesisEngine(backend, brain)
     return MemorySystem(backend, synthesis_engine) 

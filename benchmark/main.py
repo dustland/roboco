@@ -16,7 +16,7 @@ from datetime import datetime
 from typing import Dict, Any, Optional
 
 # Import AgentX core functions
-from agentx import start_task
+from agentx import start_task, set_log_level
 
 # Import benchmark utilities
 from .utils.data_loader import GAIADataLoader
@@ -25,13 +25,18 @@ from .utils.evaluator import GAIAEvaluator
 from .utils.output_manager import OutputManager
 
 
-def setup_logging(verbose: bool = False) -> None:
-    """Setup logging configuration."""
-    import logging
-    logging.basicConfig(
-        level=logging.DEBUG if verbose else logging.INFO,
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-    )
+# ANSI color codes for terminal output
+class Colors:
+    RED = '\033[91m'
+    GREEN = '\033[92m'
+    YELLOW = '\033[93m'
+    BLUE = '\033[94m'
+    MAGENTA = '\033[95m'
+    CYAN = '\033[96m'
+    WHITE = '\033[97m'
+    BOLD = '\033[1m'
+    UNDERLINE = '\033[4m'
+    RESET = '\033[0m'
 
 
 def parse_args() -> argparse.Namespace:
@@ -107,7 +112,8 @@ async def process_question(
     question: Dict[str, Any],
     team_config_path: str,
     output_manager: OutputManager,
-    timeout: int = 300
+    timeout: int = 300,
+    verbose: bool = False
 ) -> Dict[str, Any]:
     """Process a single GAIA question with the specified team."""
     question_id = question.get("task_id", question.get("id", "unknown"))
@@ -132,17 +138,33 @@ Please provide a direct, factual answer. Be concise and specific.
         
         # Execute with timeout and collect response
         final_response_parts = []
+        tool_calls_made = []
         
         async def execute_with_timeout():
-            print(f"\n🤖 Processing Question: {question_id}")
-            print(f"📋 Question: {question['Question'][:100]}{'...' if len(question['Question']) > 100 else ''}")
-            print("💭 Agent thinking...\n")
+            print(f"\n{Colors.BLUE}🤖 Processing Question: {question_id}{Colors.RESET}")
+            print(f"{Colors.CYAN}📋 Question: {question['Question'][:100]}{'...' if len(question['Question']) > 100 else ''}{Colors.RESET}")
+            print(f"{Colors.YELLOW}💭 Agent thinking...{Colors.RESET}\n")
             
             async for result in task.step(stream=True):
                 if result.get("type") == "content":
                     content = result.get("content", "")
                     print(content, end="", flush=True)  # Stream the response in real-time
                     final_response_parts.append(content)
+                elif result.get("type") == "tool_call":
+                    tool_call = result.get("tool_call", {})
+                    tool_name = tool_call.get("name", "unknown")
+                    tool_args = tool_call.get("arguments", {})
+                    tool_calls_made.append({"name": tool_name, "arguments": tool_args})
+                    if verbose:
+                        print(f"\n{Colors.MAGENTA}🔧 Tool Call: {tool_name}{Colors.RESET}")
+                        if tool_args:
+                            print(f"{Colors.MAGENTA}   Args: {tool_args}{Colors.RESET}")
+                elif result.get("type") == "tool_result":
+                    tool_result = result.get("tool_result", {})
+                    if verbose and tool_result.get("success"):
+                        print(f"{Colors.GREEN}✅ Tool completed successfully{Colors.RESET}")
+                    elif verbose and not tool_result.get("success"):
+                        print(f"{Colors.RED}❌ Tool failed: {tool_result.get('error', 'Unknown error')}{Colors.RESET}")
                 elif result.get("type") == "routing_decision" and result.get("action") == "COMPLETE":
                     break
             
@@ -167,7 +189,8 @@ Please provide a direct, factual answer. Be concise and specific.
             "processing_time": processing_time,
             "status": "completed",
             "error": None,
-            "timestamp": datetime.now().isoformat()
+            "timestamp": datetime.now().isoformat(),
+            "tool_calls": tool_calls_made
         }
         
         # Save individual result
@@ -185,7 +208,8 @@ Please provide a direct, factual answer. Be concise and specific.
             "processing_time": timeout,
             "status": "timeout",
             "error": "Task timed out",
-            "timestamp": datetime.now().isoformat()
+            "timestamp": datetime.now().isoformat(),
+            "tool_calls": []
         }
     
     except Exception as e:
@@ -198,7 +222,8 @@ Please provide a direct, factual answer. Be concise and specific.
             "processing_time": 0,
             "status": "error",
             "error": str(e),
-            "timestamp": datetime.now().isoformat()
+            "timestamp": datetime.now().isoformat(),
+            "tool_calls": []
         }
 
 
@@ -210,7 +235,8 @@ async def run_benchmark(
     resume: bool = False,
     checkpoint_dir: Optional[str] = None,
     output_dir: str = "results",
-    timeout: int = 300
+    timeout: int = 300,
+    verbose: bool = False
 ) -> None:
     """Run the GAIA benchmark with specified configuration."""
     
@@ -246,14 +272,14 @@ async def run_benchmark(
         
         print(f"Loaded {len(questions)} questions")
         
-        # Initialize tracker
-        tracker.initialize(len(questions), team, split)
-        
         # Resume from checkpoint if specified
         if resume:
             completed_ids = output_manager.get_completed_question_ids()
             questions = [q for q in questions if q.get("task_id", q.get("id")) not in completed_ids]
             print(f"Resuming: {len(questions)} questions remaining")
+        
+        # Initialize tracker with the actual number of questions to process
+        tracker.initialize(len(questions), team, split)
         
         # Process questions concurrently
         semaphore = asyncio.Semaphore(concurrent_limit)
@@ -265,7 +291,8 @@ async def run_benchmark(
                     question, 
                     str(team_config_path), 
                     output_manager, 
-                    timeout
+                    timeout,
+                    verbose
                 )
                 tracker.update_progress(result)
                 return result
@@ -280,13 +307,18 @@ async def run_benchmark(
             result = await task
             results.append(result)
             
-            # Print progress
+            # Print progress with result status
             completed = i + 1
             total = len(tasks)
             success_rate = tracker.get_success_rate()
             
+            # Show result status with color
+            status_color = Colors.GREEN if result["status"] == "completed" else Colors.RED
+            status_symbol = "✅" if result["status"] == "completed" else "❌"
+            
             print(f"Progress: {completed}/{total} ({completed/total*100:.1f}%) - "
-                  f"Success rate: {success_rate:.1f}%")
+                  f"Success rate: {success_rate:.1f}% - "
+                  f"{status_color}{status_symbol} Q{result['question_id']}: {result['status']}{Colors.RESET}")
             
             # Save checkpoint every 10 questions
             if completed % 10 == 0:
@@ -304,21 +336,70 @@ async def run_benchmark(
         
         output_manager.save_evaluation_results(evaluation_results)
         
-        # Print summary
-        print("\n" + "="*60)
-        print("BENCHMARK COMPLETED")
-        print("="*60)
-        print(f"Team: {team}")
+        # Print detailed results for each question
+        print(f"\n{Colors.BOLD}📊 DETAILED RESULTS{Colors.RESET}")
+        print("=" * 80)
+        
+        for result in results:
+            question_id = result["question_id"]
+            status = result["status"]
+            level = result["level"]
+            
+            # Determine if answer is correct
+            if status == "completed":
+                evaluator_instance = GAIAEvaluator()
+                is_correct = evaluator_instance._is_answer_correct(
+                    result["predicted_answer"], 
+                    result["ground_truth"]
+                )
+                result_color = Colors.GREEN if is_correct else Colors.RED
+                result_symbol = "✅ PASS" if is_correct else "❌ FAIL"
+            else:
+                result_color = Colors.RED
+                result_symbol = f"❌ {status.upper()}"
+            
+            print(f"{result_color}{result_symbol}{Colors.RESET} Q{question_id} (Level {level}) - "
+                  f"{result['processing_time']:.1f}s")
+            
+            if verbose:
+                print(f"  Question: {result['question'][:100]}{'...' if len(result['question']) > 100 else ''}")
+                if result['predicted_answer']:
+                    print(f"  Predicted: {result['predicted_answer'][:100]}{'...' if len(result['predicted_answer']) > 100 else ''}")
+                if result['ground_truth']:
+                    print(f"  Expected: {result['ground_truth'][:100]}{'...' if len(result['ground_truth']) > 100 else ''}")
+                if result['tool_calls']:
+                    print(f"  Tools used: {', '.join([tc['name'] for tc in result['tool_calls']])}")
+                if result['error']:
+                    print(f"  Error: {result['error']}")
+                print()
+        
+        # Print summary with colors
+        print(f"\n{Colors.BOLD}🎯 BENCHMARK COMPLETED{Colors.RESET}")
+        print("=" * 60)
+        print(f"Team: {Colors.CYAN}{team}{Colors.RESET}")
         print(f"Total questions: {len(results)}")
-        print(f"Overall accuracy: {evaluation_results['overall_accuracy']:.2f}%")
-        print(f"Level 1 accuracy: {evaluation_results['level_1_accuracy']:.2f}%")
-        print(f"Level 2 accuracy: {evaluation_results['level_2_accuracy']:.2f}%")
-        print(f"Level 3 accuracy: {evaluation_results['level_3_accuracy']:.2f}%")
+        
+        # Color-code accuracy based on performance
+        overall_acc = evaluation_results['overall_accuracy']
+        acc_color = Colors.GREEN if overall_acc >= 70 else Colors.YELLOW if overall_acc >= 50 else Colors.RED
+        print(f"Overall accuracy: {acc_color}{overall_acc:.2f}%{Colors.RESET}")
+        
+        # Level accuracies with colors
+        for level in ["1", "2", "3"]:
+            level_acc = evaluation_results.get(f'level_{level}_accuracy', 0)
+            level_color = Colors.GREEN if level_acc >= 70 else Colors.YELLOW if level_acc >= 50 else Colors.RED
+            print(f"Level {level} accuracy: {level_color}{level_acc:.2f}%{Colors.RESET}")
+        
         print(f"Average processing time: {evaluation_results['avg_processing_time']:.2f}s")
         print(f"Total processing time: {evaluation_results['total_processing_time']:.2f}s")
-        print(f"Success rate: {evaluation_results['success_rate']:.2f}%")
-        print(f"Results saved to: {output_manager.run_dir}")
-        print("="*60)
+        
+        # Success rate with color
+        success_rate = evaluation_results['success_rate']
+        success_color = Colors.GREEN if success_rate >= 90 else Colors.YELLOW if success_rate >= 70 else Colors.RED
+        print(f"Success rate: {success_color}{success_rate:.2f}%{Colors.RESET}")
+        
+        print(f"Results saved to: {Colors.BLUE}{output_manager.run_dir}{Colors.RESET}")
+        print("=" * 60)
         
     except Exception as e:
         print(f"Error running benchmark: {e}")
@@ -331,8 +412,9 @@ def main():
     """Main entry point."""
     args = parse_args()
     
-    # Setup logging
-    setup_logging(args.verbose)
+    # Setup clean logging using the framework function
+    # Use WARNING for clean output, INFO for verbose mode
+    set_log_level("INFO" if args.verbose else "WARNING")
     
     # Validate team configuration exists
     config_dir = Path(__file__).parent / "config" / args.team
@@ -351,13 +433,14 @@ def main():
             resume=args.resume,
             checkpoint_dir=args.checkpoint_dir,
             output_dir=args.output_dir,
-            timeout=args.timeout
+            timeout=args.timeout,
+            verbose=args.verbose
         ))
     except KeyboardInterrupt:
-        print("\n🛑 Benchmark interrupted by user")
+        print(f"\n{Colors.YELLOW}🛑 Benchmark interrupted by user{Colors.RESET}")
         sys.exit(1)
     except Exception as e:
-        print(f"\n❌ Benchmark failed: {e}")
+        print(f"\n{Colors.RED}❌ Benchmark failed: {e}{Colors.RESET}")
         sys.exit(1)
 
 

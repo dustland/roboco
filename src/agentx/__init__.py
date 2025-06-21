@@ -16,10 +16,10 @@ from .tool.models import Tool, tool
 
 # No configuration loading needed - users pass config paths to start_task/execute_task
 
-# Logging utilities - for debugging
-from .utils.logger import setup_clean_chat_logging
+# Logging utilities
+from .utils.logger import setup_clean_chat_logging, set_log_level
 
-__version__ = "0.9.0"
+__version__ = "0.9.3"
 
 __all__ = [
     # Main API - primary entry points
@@ -30,8 +30,7 @@ __all__ = [
     "Tool",
     "tool",
     
-
-    
-    # Utilities - for debugging
+    # Logging utilities
     "setup_clean_chat_logging",
+    "set_log_level",
 ]

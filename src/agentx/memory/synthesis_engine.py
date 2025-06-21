@@ -19,6 +19,11 @@ from ..event.types import Event
 # Brain import will be handled at runtime to avoid circular dependency
 from ..utils.logger import get_logger
 
+# Import Brain at runtime to avoid circular dependency
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from ..core.brain import Brain
+
 logger = get_logger(__name__)
 
 
@@ -33,7 +38,7 @@ class MemorySynthesisEngine:
     - Chunks document content for semantic search
     """
     
-    def __init__(self, memory_backend: MemoryBackend, brain: Optional[Brain] = None):
+    def __init__(self, memory_backend: MemoryBackend, brain: Optional['Brain'] = None):
         self.backend = memory_backend
         self.brain = brain  # For LLM-powered constraint analysis
         self._constraint_patterns = self._build_constraint_patterns()
