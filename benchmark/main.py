@@ -151,20 +151,22 @@ Please provide a direct, factual answer. Be concise and specific.
                     print(content, end="", flush=True)  # Stream the response in real-time
                     final_response_parts.append(content)
                 elif result.get("type") == "tool_call":
-                    tool_call = result.get("tool_call", {})
-                    tool_name = tool_call.get("name", "unknown")
-                    tool_args = tool_call.get("arguments", {})
+                    # Tool call data is directly in result, not nested under "tool_call"
+                    tool_name = result.get("name", "unknown")
+                    tool_args = result.get("arguments", {})
                     tool_calls_made.append({"name": tool_name, "arguments": tool_args})
-                    if verbose:
-                        print(f"\n{Colors.MAGENTA}🔧 Tool Call: {tool_name}{Colors.RESET}")
-                        if tool_args:
-                            print(f"{Colors.MAGENTA}   Args: {tool_args}{Colors.RESET}")
+                    print(f"\n{Colors.MAGENTA}🔧 Tool Call: {tool_name}{Colors.RESET}")
+                    if verbose and tool_args:
+                        print(f"{Colors.MAGENTA}   Args: {tool_args}{Colors.RESET}")
                 elif result.get("type") == "tool_result":
-                    tool_result = result.get("tool_result", {})
-                    if verbose and tool_result.get("success"):
-                        print(f"{Colors.GREEN}✅ Tool completed successfully{Colors.RESET}")
-                    elif verbose and not tool_result.get("success"):
-                        print(f"{Colors.RED}❌ Tool failed: {tool_result.get('error', 'Unknown error')}{Colors.RESET}")
+                    # Tool result data is directly in result, not nested under "tool_result"
+                    tool_name = result.get("name", "unknown")
+                    success = result.get("success", False)
+                    if success:
+                        print(f"{Colors.GREEN}✅ Tool completed: {tool_name}{Colors.RESET}")
+                    else:
+                        error_msg = result.get("error", "Unknown error")
+                        print(f"{Colors.RED}❌ Tool failed: {tool_name} - {error_msg}{Colors.RESET}")
                 elif result.get("type") == "routing_decision" and result.get("action") == "COMPLETE":
                     break
             
