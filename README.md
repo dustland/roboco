@@ -32,7 +32,7 @@ Based on a refined and modular architecture, AgentX is built around a few core c
 
 ## 🚀 Getting Started
 
-The best way to get started is by following our **[Quickstart Guide](./docs/quickstart.md)**, which will walk you through building a simple chat application and a multi-agent writer/reviewer team.
+The best way to get started is by following our **[Getting Started](https://dustland.github.io/agentx/docs/getting-started/)**, which will walk you through building a simple chat application and a multi-agent writer/reviewer team.
 
 ### 1. Installation
 
