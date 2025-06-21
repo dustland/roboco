@@ -9,6 +9,8 @@
   <a href="https://dustland.github.io/agentx"><strong>Explore the docs »</strong></a>
   <br />
   <br />
+  <a href="https://pypi.org/project/agentx-py/"><img src="https://img.shields.io/pypi/v/agentx-py.svg" alt="PyPI version" /></a>
+  <a href="https://pypi.org/project/agentx-py/"><img src="https://img.shields.io/pypi/dm/agentx-py.svg" alt="PyPI downloads" /></a>
   <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/python-3.11+-blue.svg" /></a>
   <a href="https://opensource.org/licenses/Apache-2.0"><img src="https://img.shields.io/badge/License-Apache%202.0-blue.svg"/></a>
   <a href="https://github.com/dustland/agentx/issues/new?assignees=&labels=bug&template=bug_report.md&title="><img src="https://img.shields.io/badge/Report%20an%20Issue-d73a4a?style=flat-square" alt="Report an Issue"/></a>
@@ -123,22 +125,51 @@ agentx monitor --web
 
 You can also use the observability features in CLI mode without the option `--web`.
 
-## 🏗️ Architecture Overview
+## 🛠️ Tech Stack
 
-AgentX is a modular framework composed of several key components that work together to execute complex tasks. At its heart is the `TaskExecutor`, which manages the overall workflow and provides secure tool execution through its integrated `ToolManager`. It interacts with a `Team of Agents` to perform work, and consults the `Orchestrator` for intelligent agent routing and coordination decisions.
+AgentX is built on a robust foundation of modern Python technologies and AI services:
 
-**Key Components:**
+### 🧠 **AI & LLM Integration**
 
-- **Task Executor**: Manages task lifecycle, workspace, and tool execution
-- **Orchestrator**: Handles agent routing and coordination decisions
-- **Team of Agents**: Specialized agents that perform the actual work
-- **ToolManager**: Provides secure, isolated tool execution per task
-- **Platform Services**: Shared services for memory, storage, and observability
+- **[LiteLLM](https://github.com/BerriAI/litellm)** - Unified interface for 100+ LLM providers (OpenAI, Anthropic, DeepSeek, etc.)
+- **[Pydantic](https://pydantic.dev/)** - Data validation and settings management with type hints
 
-You can discover more design details from following documents:
+### 🧠 **Memory & Knowledge**
+
+- **[Mem0](https://github.com/mem0ai/mem0)** - Intelligent memory layer for long-term context retention
+- **[ChromaDB](https://www.trychroma.com/)** - Vector database for semantic search and embeddings
+
+### 🔧 **Core Framework**
+
+- **[FastAPI](https://fastapi.tiangolo.com/)** - Modern web framework for APIs and observability dashboard
+- **[Asyncio](https://docs.python.org/3/library/asyncio.html)** - Asynchronous programming for concurrent agent execution
+- **[YAML](https://pyyaml.org/)** - Human-readable configuration files for teams and agents
+
+### 🛡️ **Security & Isolation**
+
+- **[Docker](https://www.docker.com/)** - Containerized execution environment for secure tool execution
+- **[Subprocess](https://docs.python.org/3/library/subprocess.html)** - Isolated process execution with security controls
+
+### 📊 **Observability & Monitoring**
+
+- **[Preline UI](https://preline.co/)** - Modern UI components for the web dashboard
+- **[Jinja2](https://jinja.palletsprojects.com/)** - Template engine for dynamic web interfaces
+- **Event-driven architecture** - Real-time streaming and monitoring capabilities
+
+### 🔍 **Search & Web**
+
+- **[SerpAPI](https://serpapi.com/)** - Web search capabilities for agents
+- **[BeautifulSoup](https://www.crummy.com/software/BeautifulSoup/)** - Web scraping and content extraction
+
+### 📦 **Development & Packaging**
+
+- **[UV](https://github.com/astral-sh/uv)** - Fast Python package installer and resolver
+- **[Pytest](https://pytest.org/)** - Testing framework with comprehensive test coverage
+
+You can discover more architectural details in our documentation:
 
 - **[System Architecture](docs/arch/01-architecture.md)** - Overall design and system architecture
-- **[State and Context Management](docs/arch/02-state-and-context.md)** State and Context management
+- **[State and Context Management](docs/arch/02-state-and-context.md)** - State and Context management
 - **[Tool Calling](docs/arch/03-tool-call.md)** - Invoke tools for actual tasks
 - **[Communication and Message](docs/arch/04-communication.md)** - Message format for composite content and streaming
 
