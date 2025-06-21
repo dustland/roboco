@@ -23,6 +23,7 @@ from .utils.data_loader import GAIADataLoader
 from .utils.progress_tracker import TaskTracker
 from .utils.evaluator import GAIAEvaluator
 from .utils.output_manager import OutputManager
+from .utils.cost_calculator import CostCalculator
 
 
 # ANSI color codes for terminal output
@@ -112,6 +113,7 @@ async def process_question(
     question: Dict[str, Any],
     team_config_path: str,
     output_manager: OutputManager,
+    cost_calculator: CostCalculator,
     timeout: int = 300,
     verbose: bool = False
 ) -> Dict[str, Any]:
@@ -133,8 +135,35 @@ Please provide a direct, factual answer. Be concise and specific.
         # Track start time
         start_time = time.time()
         
-        # Start the task
+        # Start the task and set up cost tracking
         task = start_task(task_content, team_config_path)
+        
+        # Set up usage tracking via Brain wrapping (simpler than callbacks)
+        wrapped_agents = []
+        try:
+            if hasattr(task, 'task') and hasattr(task.task, 'agents'):
+                agents = task.task.agents
+                if verbose:
+                    print(f"   Found {len(agents)} agents: {list(agents.keys())}")
+                
+                for agent_name, agent in agents.items():
+                    if verbose:
+                        print(f"   Agent {agent_name}: {type(agent)}")
+                        print(f"     Has brain: {hasattr(agent, 'brain')}")
+                    
+                    if hasattr(agent, 'brain'):
+                        cost_calculator.wrap_agent_brain(agent, agent_name)
+                        wrapped_agents.append(agent_name)
+                        if verbose:
+                            print(f"{Colors.CYAN}💰 Set up cost tracking for agent: {agent_name}{Colors.RESET}")
+            else:
+                if verbose:
+                    print(f"{Colors.YELLOW}⚠️  Could not access task.agents structure{Colors.RESET}")
+        except Exception as e:
+            if verbose:
+                print(f"{Colors.YELLOW}⚠️  Could not set up brain wrapping: {e}{Colors.RESET}")
+                import traceback
+                traceback.print_exc()
         
         # Execute with timeout and collect response
         final_response_parts = []
@@ -178,6 +207,15 @@ Please provide a direct, factual answer. Be concise and specific.
             timeout=timeout
         )
         
+        # Clean up brain wrapping
+        try:
+            cost_calculator.unwrap_agents()
+            if verbose and wrapped_agents:
+                print(f"{Colors.CYAN}🧹 Cleaned up cost tracking for agents: {', '.join(wrapped_agents)}{Colors.RESET}")
+        except Exception as e:
+            if verbose:
+                print(f"{Colors.YELLOW}⚠️  Error cleaning up wrapping: {e}{Colors.RESET}")
+        
         # Calculate processing time
         processing_time = time.time() - start_time
         
@@ -188,44 +226,46 @@ Please provide a direct, factual answer. Be concise and specific.
             "predicted_answer": final_answer,
             "ground_truth": question.get("answer", ""),  # Use correct field name
             "level": question.get("Level", "unknown"),
+            "tool_calls": tool_calls_made,
             "processing_time": processing_time,
-            "status": "completed",
-            "error": None,
-            "timestamp": datetime.now().isoformat(),
-            "tool_calls": tool_calls_made
+            "status": "completed"
         }
         
-        # Save individual result
-        output_manager.save_question_result(question_id, result_data)
+        print(f"{Colors.GREEN}✅ Question {question_id} completed in {processing_time:.1f}s{Colors.RESET}")
+        if verbose:
+            current_cost = cost_calculator.get_total_cost()
+            current_calls = cost_calculator.get_total_calls()
+            print(f"{Colors.CYAN}💰 Current total cost: ${current_cost:.6f} ({current_calls} calls){Colors.RESET}")
         
         return result_data
         
     except asyncio.TimeoutError:
+        print(f"{Colors.RED}⏰ Question {question_id} timed out after {timeout}s{Colors.RESET}")
         return {
             "question_id": question_id,
             "question": question["Question"],
             "predicted_answer": "",
-            "ground_truth": question.get("answer", ""),  # Use correct field name
+            "ground_truth": question.get("answer", ""),
             "level": question.get("Level", "unknown"),
+            "tool_calls": [],
             "processing_time": timeout,
             "status": "timeout",
-            "error": "Task timed out",
-            "timestamp": datetime.now().isoformat(),
-            "tool_calls": []
+            "error": f"Timeout after {timeout} seconds"
         }
-    
+        
     except Exception as e:
+        error_msg = str(e)
+        print(f"{Colors.RED}❌ Question {question_id} failed: {error_msg}{Colors.RESET}")
         return {
             "question_id": question_id,
             "question": question["Question"],
             "predicted_answer": "",
-            "ground_truth": question.get("answer", ""),  # Use correct field name
+            "ground_truth": question.get("answer", ""),
             "level": question.get("Level", "unknown"),
+            "tool_calls": [],
             "processing_time": 0,
             "status": "error",
-            "error": str(e),
-            "timestamp": datetime.now().isoformat(),
-            "tool_calls": []
+            "error": error_msg
         }
 
 
@@ -251,6 +291,7 @@ async def run_benchmark(
     
     # Initialize components
     data_loader = GAIADataLoader()
+    cost_calculator = CostCalculator()
     
     # Create output manager
     if resume and checkpoint_dir:
@@ -292,7 +333,8 @@ async def run_benchmark(
                 result = await process_question(
                     question, 
                     str(team_config_path), 
-                    output_manager, 
+                    output_manager,
+                    cost_calculator,
                     timeout,
                     verbose
                 )
@@ -338,6 +380,10 @@ async def run_benchmark(
         
         output_manager.save_evaluation_results(evaluation_results)
         
+        # Save cost summary
+        cost_summary = cost_calculator.get_summary()
+        output_manager.save_cost_summary(cost_summary)
+        
         # Print detailed results for each question
         print(f"\n{Colors.BOLD}📊 DETAILED RESULTS{Colors.RESET}")
         print("=" * 80)
@@ -371,9 +417,12 @@ async def run_benchmark(
                     print(f"  Expected: {result['ground_truth'][:100]}{'...' if len(result['ground_truth']) > 100 else ''}")
                 if result['tool_calls']:
                     print(f"  Tools used: {', '.join([tc['name'] for tc in result['tool_calls']])}")
-                if result['error']:
+                if result.get('error'):
                     print(f"  Error: {result['error']}")
                 print()
+        
+        # Print cost summary
+        cost_calculator.print_summary()
         
         # Print summary with colors
         print(f"\n{Colors.BOLD}🎯 BENCHMARK COMPLETED{Colors.RESET}")

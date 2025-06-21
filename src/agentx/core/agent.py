@@ -97,9 +97,9 @@ class Agent:
         max_tool_rounds: int = 10
     ) -> str:
         """
-        Generate a complete response with tool execution handled by orchestrator.
+        Generate response with tool execution handled by orchestrator.
         
-        This matches Brain's interface but includes tool execution loop.
+        This is a simpler, non-streaming version that returns the final response.
         
         Args:
             messages: Conversation messages in LLM format
@@ -108,11 +108,24 @@ class Agent:
             max_tool_rounds: Maximum tool execution rounds
             
         Returns:
-            Complete response after all tool executions
+            Final response string
         """
         self.state.is_active = True
         try:
-            return await self._conversation_loop(messages, system_prompt, orchestrator, max_tool_rounds)
+            # Check if brain config has streaming setting
+            if hasattr(self.brain.config, 'streaming') and not self.brain.config.streaming:
+                return await self._generate_response_non_streaming(
+                    messages, system_prompt, orchestrator, max_tool_rounds
+                )
+            
+            # Use streaming mode (existing behavior)
+            response_parts = []
+            async for chunk in self._streaming_loop(messages, system_prompt, orchestrator, max_tool_rounds):
+                if isinstance(chunk, dict) and chunk.get("type") == "content":
+                    response_parts.append(chunk.get("content", ""))
+                elif isinstance(chunk, str):
+                    response_parts.append(chunk)
+            return "".join(response_parts)
         finally:
             self.state.is_active = False
 
@@ -344,6 +357,77 @@ class Agent:
         
         # Max rounds exceeded
         yield {"type": "warning", "content": "\n⚠️ Reached maximum tool execution limit."}
+
+    async def _generate_response_non_streaming(
+        self,
+        messages: List[Dict[str, Any]],
+        system_prompt: Optional[str],
+        orchestrator,
+        max_tool_rounds: int = 10
+    ) -> str:
+        """
+        Non-streaming loop using Brain's generate_response method.
+        """
+        conversation = messages.copy()
+        available_tools = self.get_tools_json()
+        
+        for round_num in range(max_tool_rounds):
+            # Single non-streaming call
+            response = await self.brain.generate_response(
+                messages=conversation,
+                system_prompt=system_prompt,
+                tools=available_tools
+            )
+            
+            # Check if there are tool calls in the response
+            if response.tool_calls:
+                # Add assistant message with tool calls
+                conversation.append({
+                    "role": "assistant",
+                    "content": response.content or "",
+                    "tool_calls": [
+                        {
+                            "id": tc.get('id'),
+                            "type": tc.get('type', 'function'),
+                            "function": tc.get('function', {})
+                        } for tc in response.tool_calls
+                    ]
+                })
+                
+                # Execute tools
+                formatted_tool_calls = []
+                for tc in response.tool_calls:
+                    class MockToolCall:
+                        def __init__(self, data):
+                            self.id = data.get('id')
+                            self.type = data.get('type', 'function')
+                            self.function = type('obj', (object,), {
+                                'name': data.get('function', {}).get('name'),
+                                'arguments': data.get('function', {}).get('arguments')
+                            })()
+                    
+                    formatted_tool_calls.append(MockToolCall(tc))
+                
+                # Execute tools and add results to conversation
+                try:
+                    tool_messages = await self.tool_manager.execute_tool_calls(formatted_tool_calls, self.name)
+                    conversation.extend(tool_messages)
+                except Exception as e:
+                    # Handle tool execution error
+                    error_message = {
+                        "role": "tool",
+                        "content": f"Error executing tools: {str(e)}"
+                    }
+                    conversation.append(error_message)
+                
+                # Continue to next round
+                continue
+            else:
+                # No tool calls - return the response content
+                return response.content or ""
+        
+        # Max rounds exceeded
+        return "Reached maximum tool execution limit."
 
     def build_system_prompt(self, context: Dict[str, Any] = None) -> str:
         """Build the system prompt for the agent, including dynamic context and tool definitions."""

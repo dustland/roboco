@@ -62,11 +62,38 @@ class Brain:
         """
         self.config = config
         self.initialized = False
+        self._usage_callbacks = []
     
     @classmethod
     def from_config(cls, brain_config: BrainConfig) -> "Brain":
         """Create Brain instance from configuration."""
         return cls(brain_config)
+        
+    def add_usage_callback(self, callback):
+        """
+        Add a callback function to be called after each LLM request.
+        
+        The callback will be called with (model, usage_data, response) parameters.
+        - For streaming: callback(model, usage_data, None)
+        - For non-streaming: callback(model, None, response)
+        
+        Args:
+            callback: Function to call with usage data
+        """
+        self._usage_callbacks.append(callback)
+    
+    def remove_usage_callback(self, callback):
+        """Remove a usage callback."""
+        if callback in self._usage_callbacks:
+            self._usage_callbacks.remove(callback)
+    
+    def _notify_usage_callbacks(self, model: str, usage_data=None, response=None):
+        """Notify all registered usage callbacks."""
+        for callback in self._usage_callbacks:
+            try:
+                callback(model, usage_data, response)
+            except Exception as e:
+                logger.warning(f"Usage callback failed: {e}")
         
     async def _ensure_initialized(self):
         if not self.initialized:
@@ -139,6 +166,10 @@ class Brain:
             "stream": stream
         }
         
+        # For streaming calls, request usage data in the final chunk
+        if stream:
+            call_params["stream_options"] = {"include_usage": True}
+        
         # Add API credentials and base URL
         if self.config.api_key:
             call_params["api_key"] = self.config.api_key
@@ -183,6 +214,8 @@ class Brain:
         """
         await self._ensure_initialized()
         
+
+        
         formatted_messages = self._format_messages(messages, system_prompt)
         call_params = self._prepare_call_params(formatted_messages, temperature, tools, stream=False)
         
@@ -191,6 +224,9 @@ class Brain:
             
             response = await litellm.acompletion(**call_params)
             message = response.choices[0].message
+            
+            # Notify usage callbacks
+            self._notify_usage_callbacks(response.model, None, response)
             
             return BrainResponse(
                 content=message.content,
@@ -239,6 +275,8 @@ class Brain:
         """
         await self._ensure_initialized()
         
+
+        
         formatted_messages = self._format_messages(messages, system_prompt)
         call_params = self._prepare_call_params(formatted_messages, temperature, tools, stream=True)
         
@@ -275,6 +313,8 @@ class Brain:
         """Handle streaming for models with native function calling support."""
         # Track accumulated tool calls for proper reconstruction
         accumulated_tool_calls = {}
+        usage_data = None
+        model_name = None
         
         async for chunk in response:
             choice = chunk.choices[0] if chunk.choices else None
@@ -282,6 +322,18 @@ class Brain:
                 continue
                 
             delta = choice.delta
+            
+            # Capture model name and usage data when available
+            if hasattr(chunk, 'model') and chunk.model:
+                model_name = chunk.model
+            if hasattr(chunk, 'usage') and chunk.usage:
+                # Handle different usage object formats
+                if hasattr(chunk.usage, 'model_dump'):
+                    usage_data = chunk.usage.model_dump()
+                elif hasattr(chunk.usage, 'dict'):
+                    usage_data = chunk.usage.dict()
+                else:
+                    usage_data = chunk.usage
             
             # Handle text content streaming
             if hasattr(delta, 'content') and delta.content:
@@ -349,15 +401,40 @@ class Brain:
                             'tool_call': tool_call
                         }
                 
+                # For tool_calls finish reason, continue processing to get usage data
+                if choice.finish_reason == 'tool_calls':
+                    continue  # Don't yield finish yet, wait for usage data
+                
+                # Notify usage callbacks before yielding finish
+                if usage_data and model_name:
+                    self._notify_usage_callbacks(model_name, usage_data, None)
+                
                 yield {
                     'type': 'finish',
                     'finish_reason': choice.finish_reason,
-                    'tool_calls': list(accumulated_tool_calls.values()) if accumulated_tool_calls else None
+                    'tool_calls': list(accumulated_tool_calls.values()) if accumulated_tool_calls else None,
+                    'model': model_name or self.config.model,
+                    'usage': usage_data
                 }
+        
+        # After the stream ends, if we have usage data but haven't yielded finish yet, yield it now
+        # This handles the case where usage comes in a final chunk without finish_reason
+        if usage_data and model_name:
+            self._notify_usage_callbacks(model_name, usage_data, None)
+            
+            yield {
+                'type': 'finish',
+                'finish_reason': 'tool_calls',  # We know this was a tool call scenario
+                'tool_calls': list(accumulated_tool_calls.values()) if accumulated_tool_calls else None,
+                'model': model_name,
+                'usage': usage_data
+            }
     
     async def _handle_text_based_tool_calling_stream(self, response, tools) -> AsyncGenerator[Dict[str, Any], None]:
         """Handle streaming for models without native function calling support."""
         content_chunks = []
+        usage_data = None
+        model_name = None
         
         # First, collect all content from the stream
         async for chunk in response:
@@ -366,6 +443,18 @@ class Brain:
                 continue
                 
             delta = choice.delta
+            
+            # Capture model name and usage data when available
+            if hasattr(chunk, 'model') and chunk.model:
+                model_name = chunk.model
+            if hasattr(chunk, 'usage') and chunk.usage:
+                # Handle different usage object formats
+                if hasattr(chunk.usage, 'model_dump'):
+                    usage_data = chunk.usage.model_dump()
+                elif hasattr(chunk.usage, 'dict'):
+                    usage_data = chunk.usage.dict()
+                else:
+                    usage_data = chunk.usage
             
             # Stream text content and collect it
             if hasattr(delta, 'content') and delta.content:
@@ -382,7 +471,13 @@ class Brain:
             # This would parse the content for tool usage patterns and emit tool-call chunks
             # For now, just finish the stream
             
+        # Notify usage callbacks before yielding finish
+        if usage_data and model_name:
+            self._notify_usage_callbacks(model_name, usage_data, None)
+        
         yield {
             'type': 'finish',
-            'finish_reason': 'stop'
+            'finish_reason': 'stop',
+            'model': model_name or self.config.model,
+            'usage': usage_data
         } 

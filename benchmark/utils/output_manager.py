@@ -113,6 +113,18 @@ class OutputManager:
         except Exception as e:
             logger.error(f"Failed to save evaluation results: {e}")
     
+    def save_cost_summary(self, cost_summary: Dict[str, Any]):
+        """Save cost tracking summary."""
+        try:
+            cost_file = self.run_dir / "cost_summary.json"
+            with open(cost_file, 'w', encoding='utf-8') as f:
+                json.dump(cost_summary, f, indent=2, ensure_ascii=False)
+            
+            logger.info(f"Saved cost summary: ${cost_summary.get('total_cost', 0):.4f}")
+            
+        except Exception as e:
+            logger.error(f"Failed to save cost summary: {e}")
+    
     def get_completed_question_ids(self) -> Set[str]:
         """Get set of question IDs that have been completed."""
         return self._saved_questions.copy()

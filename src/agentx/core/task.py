@@ -634,31 +634,51 @@ class TaskExecutor:
         # Get conversation history
         messages = self._convert_history_to_messages()
         
-        # Stream agent response
-        response_chunks = []
-        async for chunk in agent.stream_response(
-            messages=messages,
-            system_prompt=system_prompt,
-            orchestrator=self.orchestrator
-        ):
-            # Handle different chunk types
-            if isinstance(chunk, dict):
-                # Structured chunk from agent (tool calls, tool results, etc.)
-                yield chunk
-                if chunk.get("type") == "content":
-                    response_chunks.append(chunk.get("content", ""))
-            else:
-                # Text chunk from agent
-                response_chunks.append(chunk)
-                yield {"type": "content", "content": chunk}
-        
-        # Add response to task history
-        final_response = "".join(response_chunks)
-        if final_response:
-            self.task.add_step(TaskStep(
-                agent_name=self.task.current_agent, 
-                parts=[TextPart(text=final_response)]
-            ))
+        # Check if agent brain has streaming disabled
+        if hasattr(agent.brain.config, 'streaming') and not agent.brain.config.streaming:
+            
+            # Use non-streaming mode
+            final_response = await agent.generate_response(
+                messages=messages,
+                system_prompt=system_prompt,
+                orchestrator=self.orchestrator
+            )
+            
+            # Yield the complete response as a single chunk
+            yield {"type": "content", "content": final_response}
+            
+            # Add response to task history
+            if final_response:
+                self.task.add_step(TaskStep(
+                    agent_name=self.task.current_agent, 
+                    parts=[TextPart(text=final_response)]
+                ))
+        else:
+            # Stream agent response
+            response_chunks = []
+            async for chunk in agent.stream_response(
+                messages=messages,
+                system_prompt=system_prompt,
+                orchestrator=self.orchestrator
+            ):
+                # Handle different chunk types
+                if isinstance(chunk, dict):
+                    # Structured chunk from agent (tool calls, tool results, etc.)
+                    yield chunk
+                    if chunk.get("type") == "content":
+                        response_chunks.append(chunk.get("content", ""))
+                else:
+                    # Text chunk from agent
+                    response_chunks.append(chunk)
+                    yield {"type": "content", "content": chunk}
+            
+            # Add response to task history
+            final_response = "".join(response_chunks)
+            if final_response:
+                self.task.add_step(TaskStep(
+                    agent_name=self.task.current_agent, 
+                    parts=[TextPart(text=final_response)]
+                ))
 
     async def _execute_single_tool(self, tool_call: Any) -> ToolResultPart:
         """Helper to execute one tool call and return a ToolResultPart."""

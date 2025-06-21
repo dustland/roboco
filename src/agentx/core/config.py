@@ -48,6 +48,7 @@ class BrainConfig(BaseModel):
     timeout: int = 30
     retry_policy: Dict[str, Any] = Field(default_factory=dict)
     supports_function_calls: bool = True  # Whether the model supports native function calling
+    streaming: bool = True  # Whether to use streaming mode
     
     @model_validator(mode='after')
     def set_default_base_url(self):
