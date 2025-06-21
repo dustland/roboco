@@ -55,6 +55,7 @@ jobs:
           import subprocess
           import re
           import toml
+          import os
 
           # Get commits since last release
           last_tag = '${{ steps.last_release.outputs.tag }}'
@@ -76,7 +77,8 @@ jobs:
           # Skip if no new commits
           if not commits or (len(commits) == 1 and not commits[0].strip()):
               print('No new commits found, skipping release')
-              print('skip=true')
+              with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
+                  f.write('skip=true\n')
               exit(0)
 
           # Analyze commit messages for version bump type
@@ -94,7 +96,8 @@ jobs:
 
           if not has_changes:
               print('No meaningful commits found, skipping release')
-              print('skip=true')
+              with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
+                  f.write('skip=true\n')
               exit(0)
 
           # Determine bump type
@@ -114,10 +117,15 @@ jobs:
           else:
               new_version = f'0.{minor}.{patch + 1}'
 
-          print(f'version_bump={bump_type}')
-          print(f'new_version={new_version}')
-          print(f'skip=false')
-          " >> $GITHUB_OUTPUT
+          print(f'Version bump: {bump_type}')
+          print(f'New version: {new_version}')
+
+          # Write to GITHUB_OUTPUT
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
+              f.write(f'version_bump={bump_type}\n')
+              f.write(f'new_version={new_version}\n')
+              f.write('skip=false\n')
+          "
 
       - name: Skip release if no changes
         if: steps.version_bump.outputs.skip == 'true'
@@ -260,12 +268,10 @@ jobs:
 
       - name: Create GitHub Release
         if: steps.version_bump.outputs.skip != 'true'
-        uses: actions/create-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        uses: softprops/action-gh-release@v1
         with:
           tag_name: v${{ steps.version_bump.outputs.new_version }}
-          release_name: Release v${{ steps.version_bump.outputs.new_version }}
+          name: Release v${{ steps.version_bump.outputs.new_version }}
           body_path: release_notes.txt
           draft: false
           prerelease: false
